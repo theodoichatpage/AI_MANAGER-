@@ -7,7 +7,7 @@ from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
 
-VERSION = '0.1.10'
+VERSION = '0.1.11'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/main.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -97,8 +97,9 @@ def synchronized_state(q):
     return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio}
 
 def render_index():
-    page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8'); page=re.sub(r'Phiên bản\s+0\.107\s+\(v0\.1\.7\)',f'Phiên bản {VERSION} (v{VERSION})',page)
-    marker='<div id="rootError" style="color:#d33"></div>'; download=(f'<div class="notice" style="margin-top:16px"><b>Bản Windows hiện tại: v{VERSION}</b><br><span class="muted">Tải gói mới nhất, giải nén rồi chạy MO_AI_MANAGER.bat.</span><p><a class="btn primary" href="{DOWNLOAD_URL}" target="_blank" rel="noopener">⬇ Tải AI MANAGER v{VERSION} cho Windows</a></p></div>')
+    page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
+    page=re.sub(r'Phiên bản\s+[^<·]+\s+\(v[^)]+\)',f'Phiên bản {VERSION} (v{VERSION})',page, count=1)
+    marker='<div id="rootError" style="color:#d33"></div>'; download=(f'<div class="notice" style="margin-top:16px"><b>Bản Windows hiện tại: v{VERSION}</b><br><span class="muted">Tải gói mới nhất, giải nén thư mục thành AI_MANAGER_v{VERSION} rồi chạy MO_AI_MANAGER.bat.</span><p><a class="btn primary" href="{DOWNLOAD_URL}" target="_blank" rel="noopener" download="AI_MANAGER_v{VERSION}.zip">⬇ Tải AI_MANAGER_v{VERSION}.zip</a></p></div>')
     if marker in page: page=page.replace(marker,marker+download,1)
     return page
 
@@ -106,7 +107,8 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
     def send(self,status,data,kind='application/json; charset=utf-8',cors=False):
         body=data if isinstance(data,bytes) else json.dumps(data,ensure_ascii=False).encode(); self.send_response(status); self.send_header('Content-Type',kind); self.send_header('Content-Length',str(len(body))); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff')
-        if cors: self.send_header('Access-Control-Allow-Origin','*'); self.send_header('Access-Control-Allow-Methods','POST, OPTIONS'); self.send_header('Access-Control-Allow-Headers','Content-Type')
+        if cors:
+            self.send_header('Access-Control-Allow-Origin','*'); self.send_header('Access-Control-Allow-Methods','POST, OPTIONS'); self.send_header('Access-Control-Allow-Headers','Content-Type, Access-Control-Request-Private-Network'); self.send_header('Access-Control-Allow-Private-Network','true')
         self.end_headers(); self.wfile.write(body)
     def do_OPTIONS(self):
         if urlparse(self.path).path=='/api/studio-presence': return self.send(204,b'',cors=True)
@@ -116,13 +118,14 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/': return self.send(200,render_index().encode(),'text/html; charset=utf-8')
         if path=='/api/state':
             with LOCK: return self.send(200,synchronized_state(manager()))
+        if path=='/api/studio-presence': return self.send(200,PRESENCE.snapshot(),cors=True)
         self.send(404,{'error':'Không tìm thấy'})
     def do_POST(self):
         try:
             path=urlparse(self.path).path; length=int(self.headers.get('Content-Length','0'))
             if length>5_000_000: raise ValueError('Dữ liệu quá lớn')
             data=json.loads(self.rfile.read(length) or b'{}')
-            if path=='/api/studio-presence': PRESENCE.update(data); return self.send(200,{'ok':True},cors=True)
+            if path=='/api/studio-presence': PRESENCE.update(data); return self.send(200,{'ok':True,'presence':PRESENCE.snapshot()},cors=True)
             if self.headers.get('Origin') not in ('http://127.0.0.1:8765','http://localhost:8765'): raise ValueError('Nguồn truy cập không hợp lệ')
             with LOCK:
                 if path=='/api/studio':
