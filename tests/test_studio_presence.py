@@ -44,5 +44,11 @@ class StudioPresenceTest(unittest.TestCase):
         with patch.object(server,'projects',return_value=[{'id':'local-1','name':'Local'}]), patch.object(server.STUDIO,'snapshot',return_value={'configured':True,'data':{'project_id':'remote-1','project_name':'Studio'},'status':'connected'}), patch.object(server.PRESENCE,'snapshot',return_value={'studio_tab_open':False}):
             self.assertEqual(server.synchronized_state(Q())['projects'][0]['name'],'Local')
 
+    def test_receives_project_list_for_the_correct_session(self):
+        p=StudioPresence(ttl=15)
+        p.update({'sessionId':'session111111111','tabId':'tab-a','chatReady':True,'projects':[{'id':'proj-1','name':'Lịch sử'},{'id':'proj-2','name':'Vũ trụ'}]})
+        self.assertEqual(p.snapshot('session111111111')['projects'],[{'id':'proj-1','name':'Lịch sử','updatedAt':None},{'id':'proj-2','name':'Vũ trụ','updatedAt':None}])
+        self.assertEqual(p.snapshot('session222222222')['projects'],[])
+
 if __name__=='__main__': unittest.main()
 
