@@ -140,7 +140,11 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError,OSError,TypeError,json.JSONDecodeError) as e: self.send(400,{'error':str(e)})
 
 if __name__=='__main__':
-    server=ThreadingHTTPServer(('127.0.0.1',8765),Handler)
+    try:
+        server=ThreadingHTTPServer(('127.0.0.1',8765),Handler)
+    except OSError:
+        print('Cong 8765 dang duoc su dung. Hay dong cua so AI MANAGER cu, sau do mo lai file nay.', flush=True)
+        sys.exit(1)
     print('AI MANAGER: http://127.0.0.1:8765',flush=True)
     if '--no-browser' not in sys.argv: threading.Timer(.5,lambda:webbrowser.open('http://127.0.0.1:8765')).start()
     server.serve_forever()
