@@ -12,10 +12,13 @@ class ExtensionMonitor:
   if job and expected_job and job!=expected_job:return False
   now=time.time() if now is None else now
   with self.lock:
+   previous=self.data if self.data and self.data['pairCode']==expected and self.data['activeJobId']==(job or None) else None
+   stamp=data.get('lastHeartbeatAt')
+   if not isinstance(stamp,(int,float)):stamp=previous.get('lastHeartbeatAt') if previous else None
    self.data={'pairCode':expected,'received':now,'identityVersion':data.get('identityVersion'),
     'activeJobId':job or None,'chatTabId':data.get('chatTabId') if isinstance(data.get('chatTabId'),int) else None,
     'conversationUrl':data.get('conversationUrl') if isinstance(data.get('conversationUrl'),str) and data.get('conversationUrl','').startswith('https://chatgpt.com/c/') else None,
-    'lastHeartbeatAt':data.get('lastHeartbeatAt') if isinstance(data.get('lastHeartbeatAt'),(int,float)) else None,
+    'lastHeartbeatAt':stamp,
     'version':data.get('version') if isinstance(data.get('version'),str) else None}
   return True
  def snapshot(self,expected,now=None):

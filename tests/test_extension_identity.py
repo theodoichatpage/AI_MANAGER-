@@ -21,6 +21,13 @@ class IdentityTests(unittest.TestCase):
   self.monitor.receive('pair1',self.signal(),100)
   self.assertEqual(self.monitor.snapshot('pair1',160)['status'],'heartbeat_stopped')
   self.assertEqual(self.monitor.snapshot('pair1',200)['status'],'extension_lost')
+ def test_failed_ping_keeps_last_heartbeat_for_same_job(self):
+  self.monitor.receive('pair1',self.signal(),100)
+  signal=self.signal(stamp=None);signal['chatTabId']=None
+  self.monitor.receive('pair1',signal,160)
+  snap=self.monitor.snapshot('pair1',160)
+  self.assertEqual(snap['heartbeatAge'],60)
+  self.assertEqual(snap['status'],'heartbeat_stopped')
  def test_missing_job_does_not_claim_active_task(self):
   sig=self.signal(job=None)
   self.monitor.receive('pair1',sig,100)
