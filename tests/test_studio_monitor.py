@@ -45,3 +45,16 @@ class TestTabClose(unittest.TestCase):
  def test_bad_session_cannot_close(self):
   m=StudioMonitor(reader=lambda _: {});m.configure('abcdefghijklmnop');m.presence('abcdefghijklmnop',True,tab_id='tab-a')
   self.assertFalse(m.close_tab('notvalid','tab-a'));self.assertEqual(m.snapshot()['tab_status'],'connected')
+
+class TestPresenceAge(unittest.TestCase):
+ def test_last_signal_age_updates(self):
+  t=[100.0]; m=StudioMonitor(reader=lambda _: {},clock=lambda:t[0]);m.configure('abcdefghijklmnop');m.presence('abcdefghijklmnop',True,tab_id='x'); t[0]+=24
+  self.assertEqual(m.snapshot()['last_signal_age'],24)
+  t[0]+=67;self.assertEqual(m.snapshot()['tab_status'],'lost')
+
+class TestDelayedHeartbeat(unittest.TestCase):
+ def test_closed_tab_cannot_be_resurrected_by_late_signal(self):
+  m=StudioMonitor(reader=lambda _: {});m.configure('abcdefghijklmnop')
+  m.presence('abcdefghijklmnop',True,tab_id='old');m.close_tab('abcdefghijklmnop','old')
+  self.assertFalse(m.presence('abcdefghijklmnop',True,tab_id='old'));self.assertEqual(m.snapshot()['tab_status'],'lost')
+  self.assertTrue(m.presence('abcdefghijklmnop',True,tab_id='new'));self.assertEqual(m.snapshot()['tab_status'],'connected')
