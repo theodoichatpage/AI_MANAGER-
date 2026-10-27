@@ -21,4 +21,19 @@ class StudioPresenceTest(unittest.TestCase):
         self.assertFalse(p.snapshot()['studio_tab_open'])
         self.assertFalse(p.snapshot()['chat_connected'])
 
+    def test_presence_is_scoped_to_requested_session(self):
+        p=StudioPresence(ttl=15)
+        p.update({'sessionId':'session111111111','tabId':'tab-a','chatReady':True})
+        p.update({'sessionId':'session222222222','tabId':'tab-b','chatReady':False})
+        self.assertTrue(p.snapshot('session111111111')['chat_connected'])
+        self.assertFalse(p.snapshot('session222222222')['chat_connected'])
+        self.assertFalse(p.snapshot('session333333333')['studio_tab_open'])
+
+    def test_close_does_not_close_another_session(self):
+        p=StudioPresence(ttl=15)
+        p.update({'sessionId':'session111111111','tabId':'tab-a','chatReady':True})
+        p.update({'sessionId':'session222222222','tabId':'tab-a','event':'close'})
+        self.assertTrue(p.snapshot('session111111111')['studio_tab_open'])
+
 if __name__=='__main__': unittest.main()
+
