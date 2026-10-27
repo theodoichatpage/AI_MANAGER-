@@ -15,6 +15,10 @@ CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
 STUDIO_ORIGINS={'https://video-image-studio.vercel.app','https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app'}
 
+def catalog_log(message):
+    BASE.mkdir(parents=True,exist_ok=True)
+    with (BASE/'studio_catalog.log').open('a',encoding='utf-8') as f: f.write(f'{datetime.now(timezone.utc).isoformat()} – {message}\n')
+
 class StudioPresence:
     def __init__(self, ttl=15): self.ttl=ttl; self.lock=threading.RLock(); self.tabs={}
     def update(self, data):
@@ -139,9 +143,13 @@ class Handler(BaseHTTPRequestHandler):
                 origin=self.headers.get('Origin',''); instance=data.get('studioInstance')
                 if origin not in STUDIO_ORIGINS: return self.send(403,{'error':'Nguồn không hợp lệ'})
                 with STUDIO.lock: expected=STUDIO.code
-                if not expected or data.get('sessionId')!=expected: return self.send(403,{'error':'Phiên không khớp'})
+                if not expected or data.get('sessionId')!=expected:
+                    catalog_log('Từ chối tín hiệu Studio: phiên không khớp')
+                    return self.send(403,{'error':'Phiên không khớp'})
                 if data.get('event')!='close' and isinstance(instance,str) and re.fullmatch(r'[A-Za-z0-9_-]{16,64}',instance) and isinstance(data.get('projects'),list):
-                    if data.get('activeProjectId') != expected: return self.send(400,{'error':'Dự án đang mở không khớp'})
+                    if data.get('activeProjectId') != expected:
+                        catalog_log('Từ chối danh sách Studio: dự án đang mở không khớp')
+                        return self.send(400,{'error':'Dự án đang mở không khớp'})
                     clean=StudioPresence();clean.update(data); entries=clean.snapshot(expected).get('projects',[])
                     if len(entries)!=len(data['projects']): return self.send(400,{'error':'Danh sách dự án không hợp lệ'})
                     StudioCatalog(BASE/'studio_catalog.sqlite3').replace(origin,instance,entries)
