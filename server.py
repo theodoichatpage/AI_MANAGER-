@@ -106,8 +106,10 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 size=int(self.headers.get('Content-Length','0'))
                 if not 0<size<=512: raise ValueError('Dữ liệu không hợp lệ')
-                data=json.loads(self.rfile.read(size)); ready=data.get('chatReady')
-                if not isinstance(ready,bool) or not STUDIO.presence(data.get('sessionId',''),ready): raise ValueError('Phiên không khớp')
+                data=json.loads(self.rfile.read(size)); ready=data.get('chatReady'); tab_id=data.get('tabId','legacy')
+                if data.get('event')=='close':
+                    if not STUDIO.close_tab(data.get('sessionId',''),tab_id): raise ValueError('Phiên không khớp')
+                elif not isinstance(ready,bool) or not STUDIO.presence(data.get('sessionId',''),ready,tab_id=tab_id): raise ValueError('Phiên không khớp')
                 self.send_response(204); self.send_header('Access-Control-Allow-Origin',self.headers.get('Origin')); self.send_header('Vary','Origin'); self.end_headers(); return
             except (ValueError,TypeError,json.JSONDecodeError): return self.send(403,{'error':'Phiên không khớp'})
         try:

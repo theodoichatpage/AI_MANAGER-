@@ -25,5 +25,8 @@ class PresenceHTTPTest(unittest.TestCase):
     self.assertEqual(post('/api/studio-presence',{'sessionId':code,'chatReady':True},'https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app'),204)
     with urllib.request.urlopen(base+'/api/state',timeout=2) as r:state=json.load(r)
     self.assertEqual(state['studio']['tab_status'],'connected');self.assertEqual(state['studio']['chat_status'],'connected')
+    self.assertEqual(post('/api/studio-presence',{'sessionId':code,'event':'close','tabId':'legacy'},'https://video-image-studio.vercel.app'),204)
+    with urllib.request.urlopen(base+'/api/state',timeout=2) as r:state=json.load(r)
+    self.assertEqual(state['studio']['tab_status'],'lost')
    finally:proc.terminate();proc.wait(timeout=5)
 if __name__=='__main__':unittest.main()
