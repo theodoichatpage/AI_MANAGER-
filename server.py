@@ -7,6 +7,7 @@ from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
 
+VERSION = '0.1.10'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
@@ -92,7 +93,7 @@ def synchronized_state(q):
                 if p.get('id')==target: p['name']=studio_name;p['studio_project_id']=data.get('project_id')
             for item in qs:
                 if item.get('id')==target: item['name']=studio_name
-    return {'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio}
+    return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio}
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
@@ -101,7 +102,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status); self.send_header('Content-Type',kind); self.send_header('Content-Length',str(len(body))); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.end_headers(); self.wfile.write(body)
     def do_GET(self):
         path=urlparse(self.path).path
-        if path=='/': return self.send(200,(Path(__file__).parent/'index.html').read_bytes(),'text/html; charset=utf-8')
+        if path=='/':
+            page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
+            page=re.sub(r'Phiên bản\s+0\.107\s+\(v0\.1\.7\)',f'Phiên bản {VERSION} (v{VERSION})',page)
+            return self.send(200,page.encode('utf-8'),'text/html; charset=utf-8')
         if path=='/api/state':
             with LOCK:
                 q=manager(); return self.send(200,synchronized_state(q))
@@ -157,6 +161,6 @@ if __name__=='__main__':
     try: server=ThreadingHTTPServer(('127.0.0.1',8765),Handler)
     except OSError:
         print('Cong 8765 dang duoc su dung. Hay dong cua so AI MANAGER cu, sau do mo lai file nay.', flush=True);sys.exit(1)
-    print('AI MANAGER: http://127.0.0.1:8765',flush=True)
+    print(f'AI MANAGER v{VERSION}: http://127.0.0.1:8765',flush=True)
     if '--no-browser' not in sys.argv: threading.Timer(.5,lambda:webbrowser.open('http://127.0.0.1:8765')).start()
     server.serve_forever()
