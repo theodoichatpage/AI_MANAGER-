@@ -10,6 +10,7 @@ from studio_monitor import StudioMonitor
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
+STUDIO_ORIGINS = {'https://video-image-studio.vercel.app', 'https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app', 'https://video-image-studio-j13rtc3p0-image-studio1.vercel.app'}
 
 def atomic(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -90,10 +91,10 @@ class Handler(BaseHTTPRequestHandler):
                 q=manager(); return self.send(200,{'config':config(),'projects':projects(),'queue':q.list(),'logs':q.logs(),'studio':STUDIO.snapshot()})
         self.send(404,{'error':'Không tìm thấy'})
     def do_OPTIONS(self):
-        if self.path != '/api/studio-presence' or self.headers.get('Origin') != 'https://video-image-studio.vercel.app':
+        if self.path != '/api/studio-presence' or self.headers.get('Origin') not in STUDIO_ORIGINS:
             return self.send(403,{'error':'Nguồn truy cập không hợp lệ'})
         self.send_response(204)
-        self.send_header('Access-Control-Allow-Origin','https://video-image-studio.vercel.app')
+        self.send_header('Access-Control-Allow-Origin',self.headers.get('Origin'))
         self.send_header('Access-Control-Allow-Methods','POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers','Content-Type')
         self.send_header('Access-Control-Allow-Private-Network','true')
@@ -101,13 +102,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
     def do_POST(self):
         if self.path == '/api/studio-presence':
-            if self.headers.get('Origin') != 'https://video-image-studio.vercel.app': return self.send(403,{'error':'Nguồn truy cập không hợp lệ'})
+            if self.headers.get('Origin') not in STUDIO_ORIGINS: return self.send(403,{'error':'Nguồn truy cập không hợp lệ'})
             try:
                 size=int(self.headers.get('Content-Length','0'))
                 if not 0<size<=512: raise ValueError('Dữ liệu không hợp lệ')
                 data=json.loads(self.rfile.read(size)); ready=data.get('chatReady')
                 if not isinstance(ready,bool) or not STUDIO.presence(data.get('sessionId',''),ready): raise ValueError('Phiên không khớp')
-                self.send_response(204); self.send_header('Access-Control-Allow-Origin','https://video-image-studio.vercel.app'); self.send_header('Vary','Origin'); self.end_headers(); return
+                self.send_response(204); self.send_header('Access-Control-Allow-Origin',self.headers.get('Origin')); self.send_header('Vary','Origin'); self.end_headers(); return
             except (ValueError,TypeError,json.JSONDecodeError): return self.send(403,{'error':'Phiên không khớp'})
         try:
             if self.headers.get('Origin') not in ('http://127.0.0.1:8765','http://localhost:8765'): raise ValueError('Nguồn truy cập không hợp lệ')
