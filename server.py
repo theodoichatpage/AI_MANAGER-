@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
+from studio_monitor import StudioMonitor
 
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -63,6 +64,9 @@ def create_project(name, script, test_key=None):
 
 MANAGER = None
 WORKER = None
+STUDIO = StudioMonitor()
+STUDIO_STOP = threading.Event()
+threading.Thread(target=STUDIO.run,args=(STUDIO_STOP,),daemon=True).start()
 
 def manager():
     global MANAGER, WORKER
@@ -83,7 +87,7 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/': return self.send(200,(Path(__file__).parent/'index.html').read_bytes(),'text/html; charset=utf-8')
         if path=='/api/state':
             with LOCK:
-                q=manager(); return self.send(200,{'config':config(),'projects':projects(),'queue':q.list(),'logs':q.logs()})
+                q=manager(); return self.send(200,{'config':config(),'projects':projects(),'queue':q.list(),'logs':q.logs(),'studio':STUDIO.snapshot()})
         self.send(404,{'error':'Không tìm thấy'})
     def do_POST(self):
         try:
@@ -92,6 +96,13 @@ class Handler(BaseHTTPRequestHandler):
             if length>5_000_000: raise ValueError('Dữ liệu quá lớn')
             data=json.loads(self.rfile.read(length)); path=urlparse(self.path).path
             with LOCK:
+                if path=='/api/studio':
+                    if data.get('action')=='disconnect': STUDIO.disconnect()
+                    elif data.get('action')=='connect':
+                        STUDIO.configure(data.get('code',''))
+                        threading.Thread(target=STUDIO.poll,daemon=True).start()
+                    else: raise ValueError('Lệnh không hợp lệ')
+                    return self.send(200,{'ok':True})
                 if path=='/api/test-projects':
                     existing={p.get('simulation_test_key'):p for p in projects() if p.get('simulation_test_key')}
                     result=[]

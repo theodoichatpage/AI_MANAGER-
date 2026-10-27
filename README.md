@@ -9,3 +9,6 @@ Mỗi thư mục gốc có database `.ai_manager_queue.sqlite3` chứa hàng đ�
 
 ## Kiểm tra Phase 2
 Mở MO_AI_MANAGER.bat và giữ cửa sổ đó mở. Bấm “Tạo / nạp 3 dự án TEST”, sau đó “Chạy tất cả”. Trong Hàng đợi có các nút thử hoàn tất và thử lỗi. Để thử khôi phục, đóng cửa sổ chạy khi tiến độ 30–50%, mở lại file .bat và bấm Tiếp tục. Các dự án TEST được lưu thật; bấm nút tạo lần nữa sẽ nạp lại, không đặt lại tiến độ.
+
+## Đọc phiên Studio (bản kiểm tra)
+Mở VIDEO IMAGE STUDIO, chọn Kết nối ChatGPT và sao chép mã kết nối. Trong AI MANAGER chọn Kết nối Studio và dán mã. Dữ liệu được đọc định kỳ, không gửi lệnh tới Studio. Mã phiên được giữ trong bộ nhớ đến khi chương trình đóng; cần nhập lại sau khi khởi động. Đọc được dữ liệu máy chủ không chứng minh tab Studio hay ChatGPT đang mở, do đó hai trạng thái này được ghi là chưa xác định. Chức năng chưa điều khiển phân tích, ảnh hoặc tải xuống.
