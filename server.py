@@ -8,6 +8,7 @@ from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
 
 VERSION = '0.1.10'
+DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/main.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
@@ -77,10 +78,6 @@ def manager():
     return MANAGER
 
 def synchronized_state(q):
-    """Display the active real Manager project with the exact name reported by Studio.
-
-    This is a presentation sync only: folder names/checkpoints are never renamed or reset.
-    """
     ps=projects(); qs=q.list(); studio=STUDIO.snapshot(); data=studio.get('data') or {}; studio_name=data.get('project_name')
     if studio_name:
         candidates=[x for x in qs if x.get('status') in ('running','paused') and not x.get('simulation_test_key')]
@@ -95,6 +92,16 @@ def synchronized_state(q):
                 if item.get('id')==target: item['name']=studio_name
     return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio}
 
+def render_index():
+    page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
+    page=re.sub(r'Phiên bản\s+0\.107\s+\(v0\.1\.7\)',f'Phiên bản {VERSION} (v{VERSION})',page)
+    marker='<div id="rootError" style="color:#d33"></div>'
+    download=(f'<div class="notice" style="margin-top:16px"><b>Bản Windows hiện tại: v{VERSION}</b><br>'
+              f'<span class="muted">Tải gói mới nhất, giải nén rồi chạy MO_AI_MANAGER.bat.</span><p>'
+              f'<a class="btn primary" href="{DOWNLOAD_URL}" target="_blank" rel="noopener">⬇ Tải AI MANAGER v{VERSION} cho Windows</a></p></div>')
+    if marker in page: page=page.replace(marker,marker+download,1)
+    return page
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
     def send(self,status,data,kind='application/json; charset=utf-8'):
@@ -102,10 +109,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status); self.send_header('Content-Type',kind); self.send_header('Content-Length',str(len(body))); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.end_headers(); self.wfile.write(body)
     def do_GET(self):
         path=urlparse(self.path).path
-        if path=='/':
-            page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
-            page=re.sub(r'Phiên bản\s+0\.107\s+\(v0\.1\.7\)',f'Phiên bản {VERSION} (v{VERSION})',page)
-            return self.send(200,page.encode('utf-8'),'text/html; charset=utf-8')
+        if path=='/': return self.send(200,render_index().encode('utf-8'),'text/html; charset=utf-8')
         if path=='/api/state':
             with LOCK:
                 q=manager(); return self.send(200,synchronized_state(q))
@@ -119,8 +123,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 if path=='/api/studio':
                     if data.get('action')=='disconnect': STUDIO.disconnect()
-                    elif data.get('action')=='connect':
-                        STUDIO.configure(data.get('code',''));threading.Thread(target=STUDIO.poll,daemon=True).start()
+                    elif data.get('action')=='connect': STUDIO.configure(data.get('code',''));threading.Thread(target=STUDIO.poll,daemon=True).start()
                     else: raise ValueError('Lệnh không hợp lệ')
                     return self.send(200,{'ok':True})
                 if path=='/api/test-projects':
