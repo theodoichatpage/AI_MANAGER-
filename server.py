@@ -57,9 +57,7 @@ def create_project(name, script, test_key=None):
         for d in ('analysis','scenes','prompts','images','logs'): (folder/d).mkdir()
         atomic(folder/'project.json',project)
         (folder/'logs'/'activity.log').write_text(f'{now} – Đã tạo dự án\n',encoding='utf-8')
-    except Exception:
-        # Never remove an existing project on error; leave this folder for inspection.
-        raise
+    except Exception: raise
     return project
 
 MANAGER = None
@@ -77,6 +75,25 @@ def manager():
         WORKER=SimulationWorker(MANAGER)
     return MANAGER
 
+def synchronized_state(q):
+    """Display the active real Manager project with the exact name reported by Studio.
+
+    This is a presentation sync only: folder names/checkpoints are never renamed or reset.
+    """
+    ps=projects(); qs=q.list(); studio=STUDIO.snapshot(); data=studio.get('data') or {}; studio_name=data.get('project_name')
+    if studio_name:
+        candidates=[x for x in qs if x.get('status') in ('running','paused') and not x.get('simulation_test_key')]
+        target=(candidates[0].get('id') if candidates else None)
+        if target is None:
+            real=[p for p in ps if not p.get('simulation_test_key')]
+            if len(real)==1: target=real[0].get('id')
+        if target:
+            for p in ps:
+                if p.get('id')==target: p['name']=studio_name;p['studio_project_id']=data.get('project_id')
+            for item in qs:
+                if item.get('id')==target: item['name']=studio_name
+    return {'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio}
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
     def send(self,status,data,kind='application/json; charset=utf-8'):
@@ -87,7 +104,7 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/': return self.send(200,(Path(__file__).parent/'index.html').read_bytes(),'text/html; charset=utf-8')
         if path=='/api/state':
             with LOCK:
-                q=manager(); return self.send(200,{'config':config(),'projects':projects(),'queue':q.list(),'logs':q.logs(),'studio':STUDIO.snapshot()})
+                q=manager(); return self.send(200,synchronized_state(q))
         self.send(404,{'error':'Không tìm thấy'})
     def do_POST(self):
         try:
@@ -99,19 +116,16 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/studio':
                     if data.get('action')=='disconnect': STUDIO.disconnect()
                     elif data.get('action')=='connect':
-                        STUDIO.configure(data.get('code',''))
-                        threading.Thread(target=STUDIO.poll,daemon=True).start()
+                        STUDIO.configure(data.get('code',''));threading.Thread(target=STUDIO.poll,daemon=True).start()
                     else: raise ValueError('Lệnh không hợp lệ')
                     return self.send(200,{'ok':True})
                 if path=='/api/test-projects':
-                    existing={p.get('simulation_test_key'):p for p in projects() if p.get('simulation_test_key')}
-                    result=[]
+                    existing={p.get('simulation_test_key'):p for p in projects() if p.get('simulation_test_key')};result=[]
                     for key in ('A','B','C'):
-                        p=existing.get(key) or create_project('TEST PROJECT '+key, '', test_key=key)
-                        manager().add(p); result.append(p)
+                        p=existing.get(key) or create_project('TEST PROJECT '+key, '', test_key=key);manager().add(p);result.append(p)
                     return self.send(200,{'projects':result})
                 if path=='/api/project':
-                    p=create_project(str(data.get('name','')),str(data.get('script',''))); manager().add(p); return self.send(201,p)
+                    p=create_project(str(data.get('name','')),str(data.get('script','')));manager().add(p);return self.send(201,p)
                 if path=='/api/root':
                     global MANAGER, WORKER
                     if MANAGER and any(p['status'] in ('running','paused') for p in MANAGER.list()): raise ValueError('Dừng hàng đợi trước khi đổi thư mục.')
@@ -120,11 +134,11 @@ class Handler(BaseHTTPRequestHandler):
                     root.mkdir(parents=True,exist_ok=True)
                     if not root.is_dir(): raise ValueError('Đường dẫn không phải thư mục.')
                     atomic(CONFIG,{'root':str(root.resolve())})
-                    if WORKER: WORKER.close(); WORKER=None
-                    if MANAGER: MANAGER.close(); MANAGER=None
+                    if WORKER: WORKER.close();WORKER=None
+                    if MANAGER: MANAGER.close();MANAGER=None
                     return self.send(200,config())
                 if path=='/api/queue':
-                    q=manager(); action=data.get('action'); pid=str(data.get('id',''))
+                    q=manager();action=data.get('action');pid=str(data.get('id',''))
                     if action=='start': q.start_all()
                     elif action=='pause': q.pause(pid or next((p['id'] for p in q.list() if p['status']=='running'),''))
                     elif action=='resume': q.resume(pid or next((p['id'] for p in q.list() if p['status']=='paused'),''))
@@ -140,11 +154,9 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError,OSError,TypeError,json.JSONDecodeError) as e: self.send(400,{'error':str(e)})
 
 if __name__=='__main__':
-    try:
-        server=ThreadingHTTPServer(('127.0.0.1',8765),Handler)
+    try: server=ThreadingHTTPServer(('127.0.0.1',8765),Handler)
     except OSError:
-        print('Cong 8765 dang duoc su dung. Hay dong cua so AI MANAGER cu, sau do mo lai file nay.', flush=True)
-        sys.exit(1)
+        print('Cong 8765 dang duoc su dung. Hay dong cua so AI MANAGER cu, sau do mo lai file nay.', flush=True);sys.exit(1)
     print('AI MANAGER: http://127.0.0.1:8765',flush=True)
     if '--no-browser' not in sys.argv: threading.Timer(.5,lambda:webbrowser.open('http://127.0.0.1:8765')).start()
     server.serve_forever()
