@@ -6,31 +6,36 @@ from urllib.parse import urlparse
 from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
+from studio_catalog import StudioCatalog
 
-VERSION = '0.1.14'
-DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase3-status-fix-preview.zip'
+VERSION = '0.1.15'
+DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase3-catalog-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
+STUDIO_ORIGINS={'https://video-image-studio.vercel.app','https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app'}
 
 class StudioPresence:
     def __init__(self, ttl=15): self.ttl=ttl; self.lock=threading.RLock(); self.tabs={}
     def update(self, data):
         session=str(data.get('sessionId','')).strip(); tab=str(data.get('tabId','')).strip()
         if not session or not tab: return
+        entries=data.get('projects',[])
+        if not isinstance(entries,list): entries=[]
+        entries=[{'id':p['id'],'name':p['name'],'updatedAt':p.get('updatedAt') if isinstance(p.get('updatedAt'),int) and not isinstance(p.get('updatedAt'),bool) else None} for p in entries[:500] if isinstance(p,dict) and isinstance(p.get('id'),str) and re.fullmatch(r'[A-Za-z0-9_-]{1,64}',p['id']) and isinstance(p.get('name'),str) and 0<len(p['name'])<=200]
         with self.lock:
             if data.get('event')=='close': self.tabs.pop((session,tab),None); return
             self.tabs[(session,tab)]={'session_id':session,'tab_id':tab,'chat_connected':bool(data.get('chatReady')),
-                'project_name':str(data.get('projectName','')).strip() or None,'at':time.time()}
+                'project_name':str(data.get('projectName','')).strip() or None,'projects':entries,'origin':data.get('_origin'),'instance':data.get('studioInstance'),'at':time.time()}
     def snapshot(self, session_id=None):
         now=time.time()
         with self.lock:
             self.tabs={k:v for k,v in self.tabs.items() if now-v['at']<=self.ttl}
             matching=[v for v in self.tabs.values() if session_id is None or v['session_id']==session_id]
-            if not matching: return {'studio_tab_open':False,'chat_connected':False,'session_id':None,'project_name':None,'last_seen':None}
+            if not matching: return {'studio_tab_open':False,'chat_connected':False,'session_id':None,'project_name':None,'projects':[],'last_seen':None}
             latest=max(matching,key=lambda x:x['at'])
             return {'studio_tab_open':True,'chat_connected':any(v['chat_connected'] for v in matching),
-                'session_id':latest['session_id'],'project_name':latest.get('project_name'),'last_seen':latest['at']}
+                'session_id':latest['session_id'],'project_name':latest.get('project_name'),'projects':latest.get('projects',[]),'origin':latest.get('origin'),'instance':latest.get('instance'),'last_seen':latest['at']}
 PRESENCE=StudioPresence()
 
 def atomic(path, data):
@@ -80,6 +85,8 @@ def manager():
 def synchronized_state(q):
     ps=projects(); qs=q.list(); studio=STUDIO.snapshot(); data=studio.get('data') or {}; presence=PRESENCE.snapshot(data.get('project_id') or '')
     studio=dict(studio); studio['presence']=presence
+    if presence.get('origin') and presence.get('instance'):
+        studio['presence']['projects']=StudioCatalog(BASE/'studio_catalog.sqlite3').list(presence['origin'],presence['instance'])
     if presence['studio_tab_open']:
         data=dict(data); data['studio_tab_open']=True; data['chat_connected']=presence['chat_connected']; data['project_id']=presence['session_id'] or data.get('project_id')
         if presence.get('project_name'): data['project_name']=presence['project_name']
@@ -107,24 +114,38 @@ class Handler(BaseHTTPRequestHandler):
     def send(self,status,data,kind='application/json; charset=utf-8',cors=False):
         body=data if isinstance(data,bytes) else json.dumps(data,ensure_ascii=False).encode(); self.send_response(status); self.send_header('Content-Type',kind); self.send_header('Content-Length',str(len(body))); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff')
         if cors:
-            self.send_header('Access-Control-Allow-Origin','*'); self.send_header('Access-Control-Allow-Methods','POST, OPTIONS'); self.send_header('Access-Control-Allow-Headers','Content-Type, Access-Control-Request-Private-Network'); self.send_header('Access-Control-Allow-Private-Network','true')
+            origin=self.headers.get('Origin','')
+            if origin in STUDIO_ORIGINS: self.send_header('Access-Control-Allow-Origin',origin); self.send_header('Vary','Origin')
+            self.send_header('Access-Control-Allow-Methods','POST, OPTIONS'); self.send_header('Access-Control-Allow-Headers','Content-Type'); self.send_header('Access-Control-Allow-Private-Network','true')
         self.end_headers(); self.wfile.write(body)
     def do_OPTIONS(self):
-        if urlparse(self.path).path=='/api/studio-presence': return self.send(204,b'',cors=True)
+        if urlparse(self.path).path=='/api/studio-presence':
+            if self.headers.get('Origin','') not in STUDIO_ORIGINS:return self.send(403,{'error':'Nguồn không hợp lệ'})
+            return self.send(204,b'',cors=True)
         self.send(404,{'error':'Không tìm thấy'})
     def do_GET(self):
         path=urlparse(self.path).path
         if path=='/': return self.send(200,render_index().encode(),'text/html; charset=utf-8')
         if path=='/api/state':
             with LOCK: return self.send(200,synchronized_state(manager()))
-        if path=='/api/studio-presence': return self.send(200,PRESENCE.snapshot(),cors=True)
+        if path=='/api/studio-presence': return self.send(404,{'error':'Không tìm thấy'})
         self.send(404,{'error':'Không tìm thấy'})
     def do_POST(self):
         try:
             path=urlparse(self.path).path; length=int(self.headers.get('Content-Length','0'))
             if length>5_000_000: raise ValueError('Dữ liệu quá lớn')
             data=json.loads(self.rfile.read(length) or b'{}')
-            if path=='/api/studio-presence': PRESENCE.update(data); return self.send(200,{'ok':True,'presence':PRESENCE.snapshot()},cors=True)
+            if path=='/api/studio-presence':
+                origin=self.headers.get('Origin',''); instance=data.get('studioInstance')
+                if origin not in STUDIO_ORIGINS: return self.send(403,{'error':'Nguồn không hợp lệ'})
+                with STUDIO.lock: expected=STUDIO.code
+                if not expected or data.get('sessionId')!=expected: return self.send(403,{'error':'Phiên không khớp'})
+                if data.get('event')!='close' and isinstance(instance,str) and re.fullmatch(r'[A-Za-z0-9_-]{16,64}',instance) and isinstance(data.get('projects'),list):
+                    if data.get('activeProjectId') != expected: return self.send(400,{'error':'Dự án đang mở không khớp'})
+                    clean=StudioPresence();clean.update(data); entries=clean.snapshot(expected).get('projects',[])
+                    if len(entries)!=len(data['projects']): return self.send(400,{'error':'Danh sách dự án không hợp lệ'})
+                    StudioCatalog(BASE/'studio_catalog.sqlite3').replace(origin,instance,entries)
+                data['_origin']=origin; PRESENCE.update(data); return self.send(200,{'ok':True},cors=True)
             if self.headers.get('Origin') not in ('http://127.0.0.1:8765','http://localhost:8765'): raise ValueError('Nguồn truy cập không hợp lệ')
             with LOCK:
                 if path=='/api/studio':
