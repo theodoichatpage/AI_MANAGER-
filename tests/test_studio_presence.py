@@ -1,4 +1,5 @@
 import json, time, unittest
+from unittest.mock import patch
 from server import StudioPresence
 
 class StudioPresenceTest(unittest.TestCase):
@@ -34,6 +35,14 @@ class StudioPresenceTest(unittest.TestCase):
         p.update({'sessionId':'session111111111','tabId':'tab-a','chatReady':True})
         p.update({'sessionId':'session222222222','tabId':'tab-a','event':'close'})
         self.assertTrue(p.snapshot('session111111111')['studio_tab_open'])
+
+    def test_studio_name_does_not_rename_unrelated_local_project(self):
+        import server
+        class Q:
+            def list(self): return [{'id':'local-1','name':'Local','status':'waiting'}]
+            def logs(self): return []
+        with patch.object(server,'projects',return_value=[{'id':'local-1','name':'Local'}]), patch.object(server.STUDIO,'snapshot',return_value={'configured':True,'data':{'project_id':'remote-1','project_name':'Studio'},'status':'connected'}), patch.object(server.PRESENCE,'snapshot',return_value={'studio_tab_open':False}):
+            self.assertEqual(server.synchronized_state(Q())['projects'][0]['name'],'Local')
 
 if __name__=='__main__': unittest.main()
 
