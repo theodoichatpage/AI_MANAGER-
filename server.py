@@ -7,8 +7,8 @@ from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
 
-VERSION = '0.1.11'
-DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/main.zip'
+VERSION = '0.1.12'
+DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase3-status-fix-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
@@ -19,16 +19,17 @@ class StudioPresence:
         session=str(data.get('sessionId','')).strip(); tab=str(data.get('tabId','')).strip()
         if not session or not tab: return
         with self.lock:
-            if data.get('event')=='close': self.tabs.pop(tab,None); return
-            self.tabs[tab]={'session_id':session,'tab_id':tab,'chat_connected':bool(data.get('chatReady')),
+            if data.get('event')=='close': self.tabs.pop((session,tab),None); return
+            self.tabs[(session,tab)]={'session_id':session,'tab_id':tab,'chat_connected':bool(data.get('chatReady')),
                 'project_name':str(data.get('projectName','')).strip() or None,'at':time.time()}
-    def snapshot(self):
+    def snapshot(self, session_id=None):
         now=time.time()
         with self.lock:
             self.tabs={k:v for k,v in self.tabs.items() if now-v['at']<=self.ttl}
-            if not self.tabs: return {'studio_tab_open':False,'chat_connected':False,'session_id':None,'project_name':None,'last_seen':None}
-            latest=max(self.tabs.values(),key=lambda x:x['at'])
-            return {'studio_tab_open':True,'chat_connected':any(v['chat_connected'] for v in self.tabs.values()),
+            matching=[v for v in self.tabs.values() if session_id is None or v['session_id']==session_id]
+            if not matching: return {'studio_tab_open':False,'chat_connected':False,'session_id':None,'project_name':None,'last_seen':None}
+            latest=max(matching,key=lambda x:x['at'])
+            return {'studio_tab_open':True,'chat_connected':any(v['chat_connected'] for v in matching),
                 'session_id':latest['session_id'],'project_name':latest.get('project_name'),'last_seen':latest['at']}
 PRESENCE=StudioPresence()
 
@@ -77,7 +78,8 @@ def manager():
     return MANAGER
 
 def synchronized_state(q):
-    ps=projects(); qs=q.list(); studio=STUDIO.snapshot(); data=studio.get('data') or {}; presence=PRESENCE.snapshot()
+    ps=projects(); qs=q.list(); studio=STUDIO.snapshot(); data=studio.get('data') or {}; presence=PRESENCE.snapshot(data.get('project_id') or '')
+    studio=dict(studio); studio['presence']=presence
     if presence['studio_tab_open']:
         data=dict(data); data['studio_tab_open']=True; data['chat_connected']=presence['chat_connected']; data['project_id']=presence['session_id'] or data.get('project_id')
         if presence.get('project_name'): data['project_name']=presence['project_name']
@@ -170,3 +172,4 @@ if __name__=='__main__':
     print(f'AI MANAGER v{VERSION}: http://127.0.0.1:8765',flush=True)
     if '--no-browser' not in sys.argv: threading.Timer(.5,lambda:webbrowser.open('http://127.0.0.1:8765')).start()
     server.serve_forever()
+
