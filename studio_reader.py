@@ -44,4 +44,6 @@ def read_session(session_id,timeout=8):
     if len(payload)>5_000_000: raise ValueError('Dữ liệu quá lớn')
     session=json.loads(payload).get('session')
     if not isinstance(session,dict): raise ValueError('Không tìm thấy phiên Studio')
+    if session.get('id') != session_id: raise ValueError('Mã phiên Studio không khớp')
     return summarize_session(session)
+
