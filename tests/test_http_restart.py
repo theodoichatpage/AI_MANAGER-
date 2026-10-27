@@ -17,7 +17,8 @@ class ProcessTest(unittest.TestCase):
     with urllib.request.urlopen(req,timeout=2) as r:return json.load(r)
    try:
     p=start(); post('/api/root',{'root':td+'/projects'})
-    for n in 'ABC': post('/api/project',{'name':n,'script':'test'})
+    created=post('/api/test-projects',{}); self.assertEqual(len(created['projects']),3)
+    again=post('/api/test-projects',{}); self.assertEqual([p['id'] for p in created['projects']],[p['id'] for p in again['projects']]); self.assertEqual(len(get()['projects']),3)
     post('/api/queue',{'action':'start'}); a,b,c=get()['queue']; self.assertEqual([x['status'] for x in (a,b,c)],['running','waiting','waiting'])
     post('/api/queue',{'action':'pause','id':a['id']}); before=get()['queue'][0]['sim_done']; time.sleep(3.2); self.assertEqual(get()['queue'][0]['sim_done'],before)
     post('/api/queue',{'action':'resume','id':a['id']}); post('/api/queue',{'action':'simulate_complete','id':a['id']}); self.assertEqual(get()['queue'][1]['status'],'running')
@@ -25,7 +26,7 @@ class ProcessTest(unittest.TestCase):
     post('/api/queue',{'action':'retry','id':b['id']}); self.assertEqual(get()['queue'][1]['status'],'waiting')
     post('/api/queue',{'action':'stop_all'}); self.assertEqual([x['status'] for x in get()['queue']],['completed','stopped','stopped'])
     post('/api/queue',{'action':'start'}); time.sleep(3.2); before=get(); self.assertEqual(before['queue'][1]['status'],'running'); self.assertGreater(before['queue'][1]['sim_done'],0)
-    p.kill();p.wait();p=start(); after=get();self.assertEqual(after['queue'][1]['status'],'paused');self.assertEqual(after['queue'][1]['sim_done'],before['queue'][1]['sim_done']);self.assertEqual([x['id'] for x in after['queue']],[x['id'] for x in before['queue']]);self.assertGreaterEqual(len(after['logs']),len(before['logs']));self.assertEqual(after['queue'][0]['status'],'completed')
+    p.kill();p.wait();p=start(); after=get();self.assertEqual(after['queue'][1]['status'],'paused');self.assertEqual(after['queue'][1]['sim_done'],before['queue'][1]['sim_done']);self.assertEqual([x['id'] for x in after['queue']],[x['id'] for x in before['queue']]);self.assertGreaterEqual(len(after['logs']),len(before['logs'])); self.assertTrue(any('Tiếp tục' in x['message'] for x in after['logs'])); self.assertTrue(any('Lỗi mô phỏng' in x['message'] for x in after['logs']));self.assertEqual(after['queue'][0]['status'],'completed')
    finally:
     if p and p.poll() is None: p.terminate();p.wait()
 if __name__=='__main__':unittest.main()

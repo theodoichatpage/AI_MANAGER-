@@ -38,7 +38,7 @@ class QueueManager:
  def _account(self,p): return p['elapsed_time'] + max(0,time.time()-p['running_since']) if p['running_since'] else p['elapsed_time']
  def _launch(self,p):
   if self._running(): raise ValueError('Một dự án khác đang chạy')
-  self._set(p['id'],status='running',current_stage='Mô phỏng',started_at=p['started_at'] or now(),running_since=time.time()); self._log(p['id'],'Bắt đầu hoặc tiếp tục mô phỏng')
+  self._set(p['id'],status='running',current_stage='Mô phỏng',started_at=p['started_at'] or now(),running_since=time.time()); self._log(p['id'],'Tiếp tục mô phỏng' if p['status']=='paused' else 'Bắt đầu mô phỏng')
  def _next(self):
   if not self._enabled() or self._running(): return
   # A paused project blocks automatic advancement until explicitly resumed/stopped.

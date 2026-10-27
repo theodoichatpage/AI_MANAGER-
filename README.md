@@ -6,3 +6,6 @@ Các nút điều phối đang khóa: chưa triển khai hàng đợi, Studio, C
 
 ## Phase 2: hàng đợi mô phỏng
 Mỗi thư mục gốc có database `.ai_manager_queue.sqlite3` chứa hàng đợi, checkpoint và nhật ký. Chỉ chạy một dự án; mở lại sau gián đoạn sẽ tạm dừng dự án đang chạy. Chọn Hàng đợi để kiểm tra trạng thái và điều khiển. Tiến độ và lỗi trong Phase 2 là mô phỏng, không phải ảnh thật. Các nút Test: hoàn tất/lỗi dùng để kiểm tra chuyển trạng thái. Để cập nhật, dừng chương trình cũ trước khi chạy phiên bản mới.
+
+## Kiểm tra Phase 2
+Mở MO_AI_MANAGER.bat và giữ cửa sổ đó mở. Bấm “Tạo / nạp 3 dự án TEST”, sau đó “Chạy tất cả”. Trong Hàng đợi có các nút thử hoàn tất và thử lỗi. Để thử khôi phục, đóng cửa sổ chạy khi tiến độ 30–50%, mở lại file .bat và bấm Tiếp tục. Các dự án TEST được lưu thật; bấm nút tạo lần nữa sẽ nạp lại, không đặt lại tiến độ.

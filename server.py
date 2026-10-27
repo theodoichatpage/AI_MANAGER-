@@ -39,7 +39,7 @@ def projects():
             except (OSError,ValueError): continue
     return result
 
-def create_project(name, script):
+def create_project(name, script, test_key=None):
     name = name.strip() or next((x.strip() for x in script.splitlines() if x.strip()), '')[:100]
     if not name: raise ValueError('Nhập tên dự án hoặc kịch bản.')
     root=Path(config()['root']); root.mkdir(parents=True, exist_ok=True)
@@ -51,6 +51,7 @@ def create_project(name, script):
         except FileExistsError: n+=1
     now=datetime.now(timezone.utc).isoformat()
     project={'schema':'ai-manager-1','id':str(uuid.uuid4()),'name':name,'folder':str(folder),'created_at':now,'status':'Chưa bắt đầu','script':script,'parts':0,'scenes':0,'images':0,'errors':0}
+    if test_key: project['simulation_test_key']=test_key
     try:
         for d in ('analysis','scenes','prompts','images','logs'): (folder/d).mkdir()
         atomic(folder/'project.json',project)
@@ -91,6 +92,13 @@ class Handler(BaseHTTPRequestHandler):
             if length>5_000_000: raise ValueError('Dữ liệu quá lớn')
             data=json.loads(self.rfile.read(length)); path=urlparse(self.path).path
             with LOCK:
+                if path=='/api/test-projects':
+                    existing={p.get('simulation_test_key'):p for p in projects() if p.get('simulation_test_key')}
+                    result=[]
+                    for key in ('A','B','C'):
+                        p=existing.get(key) or create_project('TEST PROJECT '+key, '', test_key=key)
+                        manager().add(p); result.append(p)
+                    return self.send(200,{'projects':result})
                 if path=='/api/project':
                     p=create_project(str(data.get('name','')),str(data.get('script',''))); manager().add(p); return self.send(201,p)
                 if path=='/api/root':
