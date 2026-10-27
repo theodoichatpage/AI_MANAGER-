@@ -7,7 +7,7 @@ from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
 
-VERSION = '0.1.13'
+VERSION = '0.1.14'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase3-status-fix-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -87,10 +87,7 @@ def synchronized_state(q):
         if studio.get('status') in ('unconfigured','connecting','lost','error'): studio['status']='connected'
     studio_name=data.get('project_name')
     if studio_name:
-        candidates=[x for x in qs if x.get('status') in ('running','paused') and not x.get('simulation_test_key')]; target=candidates[0].get('id') if candidates else None
-        if target is None:
-            real=[p for p in ps if not p.get('simulation_test_key')]
-            if len(real)==1: target=real[0].get('id')
+        target=next((p.get('id') for p in ps if p.get('studio_project_id') and p.get('studio_project_id')==data.get('project_id')),None)
         if target:
             for p in ps:
                 if p.get('id')==target: p['name']=studio_name; p['studio_project_id']=data.get('project_id')
