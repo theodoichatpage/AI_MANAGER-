@@ -7,7 +7,7 @@ from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
 
-VERSION = '0.1.12'
+VERSION = '0.1.13'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase3-status-fix-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
