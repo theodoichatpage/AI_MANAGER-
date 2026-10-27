@@ -6,9 +6,10 @@ from urllib.parse import urlparse
 from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
+from extension_monitor import ExtensionMonitor
 
-VERSION = '0.1.14'
-DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase3-status-fix-preview.zip'
+VERSION = '0.1.17'
+DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase3-identity-monitor-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
@@ -68,7 +69,7 @@ def create_project(name, script, test_key=None):
     for d in ('analysis','scenes','prompts','images','logs'): (folder/d).mkdir()
     atomic(folder/'project.json',project); (folder/'logs'/'activity.log').write_text(f'{now} – Đã tạo dự án\n',encoding='utf-8'); return project
 
-MANAGER=None; WORKER=None; STUDIO=StudioMonitor(); STUDIO_STOP=threading.Event(); threading.Thread(target=STUDIO.run,args=(STUDIO_STOP,),daemon=True).start()
+MANAGER=None; WORKER=None; STUDIO=StudioMonitor(); EXTENSION=ExtensionMonitor(); STUDIO_STOP=threading.Event(); threading.Thread(target=STUDIO.run,args=(STUDIO_STOP,),daemon=True).start()
 def manager():
     global MANAGER,WORKER
     if MANAGER is None:
@@ -93,7 +94,10 @@ def synchronized_state(q):
                 if p.get('id')==target: p['name']=studio_name; p['studio_project_id']=data.get('project_id')
             for item in qs:
                 if item.get('id')==target: item['name']=studio_name
-    return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio}
+    with STUDIO.lock: code=STUDIO.code
+    ext=EXTENSION.snapshot(code)
+    if ext['status']=='extension_lost' and presence.get('studio_tab_open') and presence.get('chat_connected'): ext['status']='legacy_or_unavailable'
+    return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'extension':ext}
 
 def render_index():
     page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
@@ -125,6 +129,12 @@ class Handler(BaseHTTPRequestHandler):
             if length>5_000_000: raise ValueError('Dữ liệu quá lớn')
             data=json.loads(self.rfile.read(length) or b'{}')
             if path=='/api/studio-presence': PRESENCE.update(data); return self.send(200,{'ok':True,'presence':PRESENCE.snapshot()},cors=True)
+            if path=='/api/ext/heartbeat':
+                origin=self.headers.get('Origin','')
+                if origin and not origin.startswith('chrome-extension://'): return self.send(403,{'error':'Nguồn không hợp lệ'})
+                with STUDIO.lock: code=STUDIO.code; job=(STUDIO.data or {}).get('active_job_id')
+                if not EXTENSION.receive(code,data,expected_job=job): return self.send(403,{'error':'Phiên hoặc tác vụ không khớp'})
+                return self.send(200,{'commands':[],'mode':'read-only'})
             if self.headers.get('Origin') not in ('http://127.0.0.1:8765','http://localhost:8765'): raise ValueError('Nguồn truy cập không hợp lệ')
             with LOCK:
                 if path=='/api/studio':

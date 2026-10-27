@@ -28,7 +28,7 @@ def summarize_session(session):
         part_id, index=key.rsplit(':',1)
         part=next((p for p in parts if p.get('id')==part_id),None)
         if part and index.isdigit() and int(index)<len(part.get('scenes',[])): current=part['scenes'][int(index)].get('title')
-    return {'project_id':session.get('id'), 'project_name':_project_name(session), 'status':session.get('status'),
+    return {'project_id':session.get('id'), 'project_name':_project_name(session), 'status':session.get('status'), 'active_job_id':job.get('id'),
         'total_parts':len(parts) if isinstance(parts,list) else None,
         'completed_parts':sum(p.get('status')=='complete' for p in parts) if isinstance(parts,list) else None,
         'total_scenes':len(scenes) if scenes is not None else None, 'analyzed_scenes':sum(bool(s.get('prompt')) for s in scenes) if scenes is not None else None,
