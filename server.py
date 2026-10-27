@@ -7,12 +7,14 @@ from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
 from studio_catalog import StudioCatalog
+from recovery_monitor import RecoveryMonitor
 
-VERSION = '0.1.15'
-DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase3-catalog-preview.zip'
+VERSION = '0.1.16'
+DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase3-dryrun-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
+RECOVERY = RecoveryMonitor(BASE)
 STUDIO_ORIGINS={'https://video-image-studio.vercel.app','https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app'}
 
 def catalog_log(message):
@@ -104,7 +106,7 @@ def synchronized_state(q):
                 if p.get('id')==target: p['name']=studio_name; p['studio_project_id']=data.get('project_id')
             for item in qs:
                 if item.get('id')==target: item['name']=studio_name
-    return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio}
+    return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'recovery':RECOVERY.snapshot()}
 
 def render_index():
     page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
@@ -139,6 +141,14 @@ class Handler(BaseHTTPRequestHandler):
             path=urlparse(self.path).path; length=int(self.headers.get('Content-Length','0'))
             if length>5_000_000: raise ValueError('Dữ liệu quá lớn')
             data=json.loads(self.rfile.read(length) or b'{}')
+            if path=='/api/ext/heartbeat':
+                if length>8192:return self.send(413,{'error':'Tín hiệu quá lớn'})
+                with STUDIO.lock: expected=STUDIO.code; studio_data=dict(STUDIO.data or {}); current_job=studio_data.get('active_job_id')
+                if not expected or data.get('pairCode')!=expected:return self.send(403,{'error':'Phiên không khớp'})
+                if data.get('activeJobId') and data.get('activeJobId')!=current_job:return self.send(409,{'error':'Tác vụ không khớp; bỏ qua tín hiệu'})
+                result=RECOVERY.receive(expected,data,studio=studio_data)
+                if result is False:return self.send(403,{'error':'Phiên không khớp hoặc tín hiệu không hợp lệ'})
+                return self.send(200,{'commands':[],'mode':'dry-run'})
             if path=='/api/studio-presence':
                 origin=self.headers.get('Origin',''); instance=data.get('studioInstance')
                 if origin not in STUDIO_ORIGINS: return self.send(403,{'error':'Nguồn không hợp lệ'})
