@@ -1,0 +1,56 @@
+name: Build Windows ZIP Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION=$(python - <<'PY'
+          import re
+          text=open('server.py',encoding='utf-8').read()
+          print(re.search(r"VERSION\s*=\s*'([^']+)'", text).group(1))
+          PY
+          )
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Package versioned folder
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DIR="AI_MANAGER_v${VERSION}"
+          mkdir -p "$DIR"
+          rsync -a --exclude '.git' --exclude '.github' --exclude "$DIR" ./ "$DIR/"
+          zip -r "AI_MANAGER_v${VERSION}.zip" "$DIR"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI_MANAGER_v${{ steps.version.outputs.version }}
+          path: AI_MANAGER_v${{ steps.version.outputs.version }}.zip
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AI MANAGER v${{ steps.version.outputs.version }}
+          files: AI_MANAGER_v${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
