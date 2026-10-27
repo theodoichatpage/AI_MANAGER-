@@ -89,7 +89,26 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 q=manager(); return self.send(200,{'config':config(),'projects':projects(),'queue':q.list(),'logs':q.logs(),'studio':STUDIO.snapshot()})
         self.send(404,{'error':'Không tìm thấy'})
+    def do_OPTIONS(self):
+        if self.path != '/api/studio-presence' or self.headers.get('Origin') != 'https://video-image-studio.vercel.app':
+            return self.send(403,{'error':'Nguồn truy cập không hợp lệ'})
+        self.send_response(204)
+        self.send_header('Access-Control-Allow-Origin','https://video-image-studio.vercel.app')
+        self.send_header('Access-Control-Allow-Methods','POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers','Content-Type')
+        self.send_header('Access-Control-Allow-Private-Network','true')
+        self.send_header('Vary','Origin')
+        self.end_headers()
     def do_POST(self):
+        if self.path == '/api/studio-presence':
+            if self.headers.get('Origin') != 'https://video-image-studio.vercel.app': return self.send(403,{'error':'Nguồn truy cập không hợp lệ'})
+            try:
+                size=int(self.headers.get('Content-Length','0'))
+                if not 0<size<=512: raise ValueError('Dữ liệu không hợp lệ')
+                data=json.loads(self.rfile.read(size)); ready=data.get('chatReady')
+                if not isinstance(ready,bool) or not STUDIO.presence(data.get('sessionId',''),ready): raise ValueError('Phiên không khớp')
+                self.send_response(204); self.send_header('Access-Control-Allow-Origin','https://video-image-studio.vercel.app'); self.send_header('Vary','Origin'); self.end_headers(); return
+            except (ValueError,TypeError,json.JSONDecodeError): return self.send(403,{'error':'Phiên không khớp'})
         try:
             if self.headers.get('Origin') not in ('http://127.0.0.1:8765','http://localhost:8765'): raise ValueError('Nguồn truy cập không hợp lệ')
             length=int(self.headers.get('Content-Length','0'))
