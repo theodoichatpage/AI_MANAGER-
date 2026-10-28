@@ -30,23 +30,58 @@ def verify_binding(target):
  if not b or not b.get('window_nonce') or win32gui.GetProp(int(target.get('hwnd') or 0),'AI_MANAGER_EDGE_PROFILE')!=b['window_nonce'] or any(b.get(k)!=target.get(k) for k in ('pid','process_started','browser_profile')):
   raise RuntimeError('Chưa xác minh đúng Edge Profile/cửa sổ. Chọn profile rồi bấm Mở Edge trước.')
 
+def toolbar_profile_matches(names,profile,profiles):
+ selected=next((p for p in profiles if p['directory']==profile),None)
+ if not selected:return False
+ name=selected['name']
+ if sum(p['name']==name for p in profiles)!=1:return False
+ return name in names
+
+def native_profile_names(win):
+ names=[]
+ # Never use title, bookmarks, arbitrary page text or a page-created toolbar.
+ for c in win.descendants(control_type='Button'):
+  i=c.element_info
+  if i.automation_id not in ('profile-button','avatarToolbarButton','profileButton') and i.class_name not in ('AvatarToolbarButton','AvatarToolbarButtonView','BrowserProfileButton','ProfileToolbarButton'):continue
+  parent=c
+  for _ in range(20):
+   if parent.element_info.control_type=='Document':break
+   if parent.element_info.handle==win.handle:
+    names.append(c.window_text());break
+   try:parent=parent.parent()
+   except Exception:break
+ return names
+
 def prove_window(w,profile):
  # Read-only inspection of diagnostic page, no input to an unverified window.
  from pywinauto import Desktop
  win=Desktop(backend='uia').window(handle=w['hwnd'])
+ if toolbar_profile_matches(native_profile_names(win),profile,list_profiles()):return True
  bars=win.descendants(control_type='Edit')
  diagnostic=False
  for bar in bars:
   info=bar.element_info
-  if info.class_name=='OmniboxViewViews' or info.automation_id in ('addressEditBox','view_1020'):
+  if info.class_name=='OmniboxViewViews' or info.automation_id in ('addressEditBox','view_1020') or info.name in ('Address and search bar','Thanh địa chỉ và tìm kiếm'):
    try:diagnostic=bar.get_value().rstrip('/')=='edge://version'
    except Exception:continue
    if diagnostic:break
  if not diagnostic:return False
  texts=[]
+ for c in win.descendants(auto_id='profile_path'):
+  texts.extend(c.window_text().splitlines())
  for c in win.descendants(control_type='Text'):
   texts.extend(c.window_text().splitlines())
  return matches_profile_path(texts,user_data_root()/profile)
+
+def matching_windows(rows,profile):
+ matches=[]
+ for w in rows:
+  try:
+   if prove_window(w,profile):matches.append(w)
+  except Exception:
+   # A stale/inaccessible window is not proof and must not abort other windows.
+   continue
+ return matches
 
 class EdgeController(BrowserController):
  def __init__(self,target):
@@ -59,16 +94,16 @@ class EdgeController(BrowserController):
   if rows:return {'already_running':True,'context':dict(rows[0],target_app='edge'),'windows':rows}
   # Adopt an already-open version page if it proves the exact profile.
   before=wm.windows('edge')
-  matches=[w for w in before if prove_window(w,profile)]
+  matches=matching_windows(before,profile)
   if not matches:
    exe=wm.executable('edge',settings)
    subprocess.Popen([exe,'--profile-directory='+profile,'--force-renderer-accessibility','--new-window','edge://version/'],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_BREAKAWAY_FROM_JOB',0))
    deadline=time.monotonic()+35
    while time.monotonic()<deadline:
-    matches=[w for w in wm.windows('edge') if prove_window(w,profile)]
+    matches=matching_windows(wm.windows('edge'),profile)
     if matches:break
     time.sleep(.4)
-  if len(matches)!=1:raise RuntimeError('Không xác minh được duy nhất cửa sổ Edge Profile. Mở edge://version trong profile đã chọn rồi thử lại. Không thao tác vào trang khác.')
+  if len(matches)!=1:raise RuntimeError('Không xác minh được duy nhất cửa sổ Edge Profile. Chưa đọc được danh tính profile qua Accessibility. Trong cửa sổ Edge cần dùng, mở edge://version rồi bấm Mở Edge lại; giữ trang đó đến khi danh sách cửa sổ xuất hiện. Không thao tác vào trang khác.')
   context=dict(matches[0],target_app='edge',browser='edge',browser_profile=profile,browser_profile_name=meta['name'])
   import win32gui
   context['window_nonce']=secrets.randbelow(2**30)+1

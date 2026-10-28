@@ -61,3 +61,21 @@ class EdgeWorkflowTests(unittest.TestCase):
   t={'hwnd':1,'pid':2,'process_started':3,'browser_profile':'Default','window_nonce':123}
   with patch.object(ec,'require_profile'),patch.object(ec,'bindings',return_value={'1':t}),patch.dict('sys.modules',{'win32gui':SimpleNamespace(GetProp=lambda *a:0)}):
    with self.assertRaisesRegex(RuntimeError,'Chưa xác minh'):ec.verify_binding(t)
+
+class EdgeToolbarProofTests(unittest.TestCase):
+ def test_unique_exact_toolbar_profile_name(self):
+  from automation_agent.edge_controller import toolbar_profile_matches
+  rows=[{'directory':'Default','name':'Profile 1'},{'directory':'Profile 2','name':'Work'}]
+  self.assertTrue(toolbar_profile_matches(['Profile 1'],'Default',rows))
+  self.assertFalse(toolbar_profile_matches(['Profile 10'],'Default',rows))
+ def test_duplicate_names_never_prove_identity(self):
+  from automation_agent.edge_controller import toolbar_profile_matches
+  rows=[{'directory':'Default','name':'Work'},{'directory':'Profile 2','name':'Work'}]
+  self.assertFalse(toolbar_profile_matches(['Work'],'Default',rows))
+
+class EdgeWindowScanTests(unittest.TestCase):
+ def test_one_inaccessible_window_does_not_block_other_window(self):
+  from unittest.mock import patch
+  from automation_agent import edge_controller as ec
+  with patch.object(ec,'prove_window',side_effect=[RuntimeError('UIA unavailable'),True]):
+   self.assertEqual(ec.matching_windows([{'hwnd':1},{'hwnd':2}],'Default'),[{'hwnd':2}])

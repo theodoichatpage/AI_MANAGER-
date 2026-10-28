@@ -14,3 +14,8 @@ assert(html.includes('Microsoft Edge'));assert(html.includes('Chọn Edge Profil
 vm.runInContext("edgeProfile='Profile 2';setAppWindows('edge',[{hwnd:4,pid:4,process_started:1,process:'msedge.exe',title:'Edge',browser_profile:'Profile 1'},{hwnd:5,pid:5,process_started:2,process:'msedge.exe',title:'Edge 2',browser_profile:'Profile 2'}])",c);
 assert.equal(vm.runInContext('appUI.edge.selected.hwnd',c),5);
 console.log('Edge card and profile-window separation PASS');
+vm.runInContext("edgeProfiles=[{directory:'Default',name:'Profile 1'}];edgeProfile='Default'",c);
+const edgeHTML=vm.runInContext('edgeCard()',c);
+assert(!edgeHTML.includes('step-number">4'));
+assert(!edgeHTML.includes('chrome / Default'));
+assert(edgeHTML.includes('Chạy kiểm tra Edge'));

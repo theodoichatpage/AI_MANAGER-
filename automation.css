@@ -2,3 +2,13 @@
 
 /* Edge uses the same cards, with responsive wrapping. */
 .app-card-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr))}
+
+/* Three equal cards. The Edge test shares its third section with window selection. */
+.app-card-grid{grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}
+.app-control-card{display:grid;grid-template-rows:auto 90px 164px minmax(200px,auto);align-content:start}
+.app-control-card .app-step{min-height:0;margin:9px 0 0;padding:14px 12px}
+.app-control-card .test-step{align-content:start}
+.window-picker .btn.refresh-window{font-size:21px;padding:6px 11px;flex-shrink:0}
+.app-card-title h2{font-size:21px}
+.edge-card .agent-error{grid-column:1/-1}
+@media(max-width:1250px){.app-card-grid{grid-template-columns:1fr}.app-control-card{grid-template-rows:auto 90px 164px minmax(200px,auto)}}
