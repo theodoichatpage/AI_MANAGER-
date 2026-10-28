@@ -2,6 +2,7 @@
 import json,os,secrets,socket,subprocess,sys,threading,time,urllib.request,urllib.error
 from pathlib import Path
 from .watchdog import ChildJob
+from .build_identity import identity
 
 class AgentClient:
  def __init__(self,home):
@@ -46,6 +47,9 @@ class AgentClient:
      if self.job:self.job.close()
      self.spawn();self.closing.wait(.5)
     state=self.request('/state',timeout=1)
+    expected=identity();actual=state.get('agent_identity') or {}
+    if actual.get('version')!=expected['version'] or actual.get('source_sha256')!=expected['source_sha256'] or actual.get('source_root')!=expected['source_root']:
+     raise RuntimeError('Agent khác phiên bản/source Manager; đã chặn kết nối và sẽ khởi động lại Agent.')
     with self.lock:self.cache=state
     failures=0
    except Exception as e:

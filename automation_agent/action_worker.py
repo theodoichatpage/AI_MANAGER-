@@ -13,7 +13,8 @@ def dispatch(a,context,home,settings):
   from .edge_controller import EdgeController,verified_windows
   if name=='EDGE_DIAGNOSTICS':
    from .edge_controller import diagnostics
-   return diagnostics(a.get('browser_profile'))
+   from .build_identity import identity
+   return dict(diagnostics(a.get('browser_profile')),worker_identity=identity())
   if name=='LIST_EDGE_PROFILES':
    from .edge_profiles import list_profiles
    try:installed=bool(wm.executable('edge',settings))

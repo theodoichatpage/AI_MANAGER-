@@ -3,11 +3,13 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 from .runtime import AgentRuntime
 from .action_executor import ActionExecutor
+from .build_identity import identity
+from .windows_api_contract import audit
 
 class AgentServer(ThreadingHTTPServer):
  daemon_threads=True
  def __init__(self,port,token,home,settings=None):
-  self.token=token;self.started=time.time();self.runtime=AgentRuntime(home,settings);self.home=home
+  self.api_contract=audit();self.agent_identity=identity();self.token=token;self.started=time.time();self.runtime=AgentRuntime(home,settings);self.home=home
   super().__init__(('127.0.0.1',port),AgentHandler)
 
 class AgentHandler(BaseHTTPRequestHandler):
@@ -18,7 +20,7 @@ class AgentHandler(BaseHTTPRequestHandler):
  def do_GET(self):
   if not self.authorized():return self.reply(403,{'error':'Forbidden'})
   r=self.server.runtime
-  if self.path=='/state':return self.reply(200,{'online':True,'windows':sys.platform=='win32','pid':os.getpid(),'uptime':time.time()-self.server.started,'current_task':r.current,'enabled':r.enabled,'tasks':r.store.list(),'logs':r.store.logs()})
+  if self.path=='/state':return self.reply(200,{'online':True,'agent_identity':self.server.agent_identity,'windows_api_contract':self.server.api_contract,'windows':sys.platform=='win32','pid':os.getpid(),'uptime':time.time()-self.server.started,'current_task':r.current,'enabled':r.enabled,'tasks':r.store.list(),'logs':r.store.logs()})
   self.reply(404,{'error':'Not found'})
  def do_POST(self):
   if not self.authorized():return self.reply(403,{'error':'Forbidden'})
@@ -29,6 +31,8 @@ class AgentHandler(BaseHTTPRequestHandler):
    if self.path=='/inspect':
     if data.get('action') not in ('LIST_WINDOWS','LIST_PROCESSES','CHECK_PROCESS','LIST_EDGE_PROFILES','EDGE_DIAGNOSTICS'):raise ValueError('Inspect chỉ cho phép đọc trạng thái')
     result=ActionExecutor(self.server.home).run('inspection',dict(data,timeout=20 if data.get('action')=='EDGE_DIAGNOSTICS' else 5),{},threading.Event())
+    if data.get('action')=='EDGE_DIAGNOSTICS':
+     result.setdefault('result',{}).update(agent_identity=self.server.agent_identity,windows_api_contract=self.server.api_contract)
     return self.reply(200,result)
    if self.path=='/submit':
     tid=r.store.submit(data['actions'],data.get('project'),data.get('stage','Automation'),data.get('context'),initial_status='held' if data.get('held') else 'waiting')

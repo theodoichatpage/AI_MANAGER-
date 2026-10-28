@@ -13,6 +13,11 @@ def main():
  if probe.returncode:
   print('Installing free Windows automation libraries. Internet is required on first launch.',flush=True)
   subprocess.run([str(python),'-m','pip','install','--disable-pip-version-check','-r',str(root/'requirements-windows.txt')],check=True)
+ report_home=Path(os.environ.get('AI_MANAGER_HOME',str(Path.home()/'.ai_manager')))/'automation'
+ report_home.mkdir(parents=True,exist_ok=True)
+ with (report_home/'windows_api_contract.json').open('w',encoding='utf8') as report:
+  check=subprocess.run([str(python),'-m','automation_agent.windows_api_contract'],cwd=str(root),stdout=report,stderr=subprocess.STDOUT)
+ if check.returncode:print('Windows API contract FAIL. See Windows Agent diagnostics; unsupported APIs are not treated as PASS.',flush=True)
  return subprocess.call([str(python),str(root/'server.py')],cwd=str(root))
 if __name__=='__main__':
  try:raise SystemExit(main())

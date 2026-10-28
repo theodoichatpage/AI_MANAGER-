@@ -1,5 +1,5 @@
 """Existing Edge profiles, UIA version-page proof, durable exact-window binding."""
-import json,os,time,subprocess,secrets
+import json,os,time,subprocess
 from pathlib import Path
 from . import window_manager as wm
 from .edge_profiles import list_profiles,require_profile,user_data_root,matches_profile_path
@@ -24,11 +24,14 @@ def verified_windows(profile=None):
  return out
 
 def verify_binding(target):
+ from .edge_bindings import validate_record,validate_live
+ from .edge_native import window_profile_report
  profile=target.get('browser_profile');require_profile(profile)
- b=bindings().get(str(target.get('hwnd')))
- import win32gui
- if not b or not b.get('window_nonce') or win32gui.GetProp(int(target.get('hwnd') or 0),'AI_MANAGER_EDGE_PROFILE')!=b['window_nonce'] or any(b.get(k)!=target.get(k) for k in ('pid','process_started','browser_profile')):
-  raise RuntimeError('Chưa xác minh đúng Edge Profile/cửa sổ. Chọn profile rồi bấm Mở Edge trước.')
+ record=bindings().get(str(target.get('hwnd')))
+ validate_record(target,record)
+ live=next((w for w in wm.windows('edge') if w['hwnd']==target.get('hwnd')),None)
+ if not live:validate_live(record,None,{})
+ validate_live(record,live,window_profile_report(live,profile))
 
 def toolbar_profile_matches(names,profile,profiles):
  selected=next((p for p in profiles if p['directory']==profile),None)
@@ -138,12 +141,10 @@ class EdgeController(BrowserController):
   if not matches:
    causes=sorted({r.get('native_error','không có thuộc tính profile phù hợp') for r in reports})
    raise RuntimeError('Edge đã mở nhưng Windows chưa xác nhận profile. Đã dừng xác minh; không tự mở thêm cửa sổ. Chi tiết: '+', '.join(causes or ['không thấy cửa sổ Edge']))
-  import win32gui
+  from .edge_bindings import make_record
   data=bindings();contexts=[]
   for w in matches:
-   context=dict(w,target_app='edge',browser='edge',browser_profile=profile,browser_profile_name=meta['name'],profile_proof='Windows Shell')
-   context['window_nonce']=secrets.randbelow(2**30)+1
-   win32gui.SetProp(context['hwnd'],'AI_MANAGER_EDGE_PROFILE',context['window_nonce'])
+   context=make_record(w,profile,meta['name'])
    data[str(context['hwnd'])]=context;contexts.append(context)
   path=binding_file();tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(data),encoding='utf8');tmp.replace(path)
   return {'context':contexts[0] if len(contexts)==1 else {'target_app':'edge','browser':'edge','browser_profile':profile},'profile_verified':True,'windows':contexts}

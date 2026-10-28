@@ -31,3 +31,12 @@ vm.createContext(clock);vm.runInContext(fs.readFileSync('automation.js','utf8'),
 vm.runInContext("autoNotice='Saved';automationToastHTML()",clock);
 assert.equal(toastDelay,4000);toastCallback();assert.equal(vm.runInContext('toastState',clock),null);
 console.log('Toast consumes notice, floats outside layout and expires at 4000 ms PASS');
+vm.runInContext("state.automation={online:true,windows:true,tasks:[{id:'new-open-failed',status:'failed',current_action:'OPEN_APP',next_action:0,actions:[{action:'OPEN_APP',target_app:'edge',browser_profile:'Default'}],context:{target_app:'edge'},error:\"module win32gui has no attribute SetProp\"}]};edgeProfile='Default'",c);
+const failedCard=vm.runInContext('edgeCard()',c);
+assert(failedCard.includes('SetProp'));
+assert(!failedCard.includes('Đang xác minh…'));
+assert(/<button class="btn"\s+onclick="openApplication\('edge'\)">.*Thử lại Edge/.test(failedCard));
+console.log('Failed OPEN_APP exposes error, exits verifying, enables retry PASS');
+vm.runInContext("toastState=null;autoError='';autoNotice='';Object.values(appUI).forEach(u=>u.error='');state.automation.tasks=[{id:'stale-old-error',status:'failed',context:{target_app:'edge'},error:'OLD ERROR'},{id:'new-success',status:'completed',context:{target_app:'edge'}}]",c);
+assert.equal(vm.runInContext('automationToastHTML()',c),'');
+console.log('Older failure is not re-announced after newer success PASS');

@@ -34,3 +34,7 @@ Thông báo nổi tự ẩn sau 4 giây. Có Chẩn đoán Edge để đọc b�
 ## v0.2.10
 
 Đổi xác minh Edge sang Windows Shell properties, bỏ chờ Accessibility trên luồng mở profile. Xem [EDGE_v0.2.10.md](EDGE_v0.2.10.md). Windows vẫn chờ nghiệm thu, không lấy test mô phỏng làm bằng chứng PASS.
+
+## v0.2.11
+
+Sửa lỗi win32gui.SetProp: Agent không ghi thuộc tính lên cửa sổ. Thêm real-Windows API contract, Agent build identity và nút thử lại khi OPEN_APP lỗi. Xem [EDGE_v0.2.11.md](EDGE_v0.2.11.md). Kiểm thử API Windows và kiểm thử Edge thực tế là hai kết quả riêng.

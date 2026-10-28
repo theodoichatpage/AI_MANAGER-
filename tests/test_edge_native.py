@@ -27,7 +27,7 @@ class NativeOpenTests(unittest.TestCase):
   from types import SimpleNamespace
   from automation_agent import edge_controller as ec
   w={'hwnd':42,'pid':7,'process_started':1,'title':'Edge','process':'msedge.exe'}
-  with tempfile.TemporaryDirectory() as d,patch.dict(os.environ,{'AI_MANAGER_AGENT_HOME':d}),patch.object(ec.wm,'require_windows'),patch.object(ec,'require_profile',return_value={'name':'Profile 1'}),patch.object(ec,'verified_windows',return_value=[]),patch.object(ec.wm,'windows',return_value=[w]),patch.object(ec,'native_matching_windows',return_value=([w],[{'hwnd':42,'verified':True}])),patch.object(ec,'prove_window',side_effect=AssertionError('UIA must not run')),patch.object(ec.subprocess,'Popen') as launch,patch.dict('sys.modules',{'win32gui':SimpleNamespace(SetProp=lambda *args:None)}):
+  with tempfile.TemporaryDirectory() as d,patch.dict(os.environ,{'AI_MANAGER_AGENT_HOME':d}),patch.object(ec.wm,'require_windows'),patch.object(ec,'require_profile',return_value={'name':'Profile 1'}),patch.object(ec,'verified_windows',return_value=[]),patch.object(ec.wm,'windows',return_value=[w]),patch.object(ec,'native_matching_windows',return_value=([w],[{'hwnd':42,'verified':True}])),patch.object(ec,'prove_window',side_effect=AssertionError('UIA must not run')),patch.object(ec.subprocess,'Popen') as launch,patch.dict('sys.modules',{'win32gui':SimpleNamespace()}):
    result=ec.EdgeController.open('Default')
    self.assertTrue(result['profile_verified']);self.assertEqual(result['context']['hwnd'],42);launch.assert_not_called()
  def test_failure_has_limit_and_does_not_use_uia(self):
