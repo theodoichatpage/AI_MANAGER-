@@ -1,16 +1,13 @@
-AI MANAGER v0.2.4
+AI MANAGER v0.2.12
 
-1. Dong cua so chay AI MANAGER cu.
-2. Giai nen ZIP, mo MO_AI_MANAGER.bat trong thu muc AI_MANAGER_v0.2.4.
-3. Chon menu: Dieu khien ung dung.
-4. Tai the Google Chrome hoac CapCut: bam Mo ung dung.
-5. Chon dung cua so trong danh sach. Bam mui ten lam moi neu chua thay cua so.
-6. Bam Chay kiem tra. Xem Tien trinh hien tai va Ket qua gan nhat.
-7. Bam Xem anh de xem ket qua chup cua so.
+1. Đóng cửa sổ server AI MANAGER cũ. Giải nén vào thư mục AI_MANAGER_v0.2.12.
+2. Mở MO_AI_MANAGER.bat. Giữ nguyên thư mục dữ liệu dự án cũ trong Cài đặt.
+3. Mở Studio Preview trong đúng Edge Profile; chọn dự án thật, kết nối Extension/ChatGPT như trước.
+4. Manager → Điều phối Studio → chọn dự án Manager, Studio ID, Edge Profile → lưu liên kết và đưa vào Queue.
+5. Bấm Chạy tất cả. Nghiệm thu một dự án trước: phân tích cấu trúc → phân cảnh từng phần → lưu kết quả.
 
-Nut do DUNG TAT CA luon o tren cung man Dieu khien ung dung.
-Cai dat nang cao chua cong cu ky thuat, hang doi du an, duong dan ung dung va nhat ky chi tiet.
-Moi ung dung co lua chon cua so rieng. Khi cua so da dong, hay lam moi va chon lai.
-May Windows can dang dang nhap va khong khoa man hinh.
-Ban nay khong thay doi Extension, prompt hay quy trinh VIDEO IMAGE STUDIO.
-Chua nghiem thu giao dien va thao tac tren Windows that trong moi truong phat trien.
+Hướng dẫn chi tiết: STUDIO_v0.2.12.md.
+Kết quả kiểm thử và giới hạn: WINDOWS_TEST_RESULTS.txt.
+Không cần nạp lại Extension. Các chức năng Chrome/Edge/CapCut cũ vẫn ở Điều khiển ứng dụng.
+Pause/STOP không gửi phần tiếp theo; lệnh đã gửi ChatGPT vẫn có thể trả kết quả về Studio.
+Bản này chưa tự ghép ChatGPT cho dự án tiếp theo, chưa tạo ảnh/dựng video.
