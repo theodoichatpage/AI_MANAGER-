@@ -2,3 +2,9 @@ const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('nod
 const c={};vm.createContext(c);vm.runInContext(fs.readFileSync('automation.js','utf8'),c);
 assert.equal(vm.runInContext('autoAttr(\'"<&\\\'\')',c),'&quot;&lt;&amp;&#39;');
 console.log('HTML attribute escaping PASS');
+c.state={projects:[],automation:{tasks:[],logs:[]}};c.esc=s=>String(s??'');
+vm.runInContext("autoInspection={success:true,action:'LIST_WINDOWS',result:{windows:[{title:'Chrome Test',hwnd:42,pid:123,process:'chrome.exe'}]}}",c);
+const html=vm.runInContext('automationHTML()',c);
+assert(html.indexOf('Danh sách cửa sổ / Kết quả kiểm tra')<html.indexOf('Ứng dụng đích'));
+assert(html.includes('Chọn Chrome này'));assert(html.includes("chooseAgentWindow(42,'chrome')"));
+console.log('Visible window-selection rendering PASS');

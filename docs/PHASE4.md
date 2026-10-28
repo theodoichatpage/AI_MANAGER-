@@ -23,3 +23,5 @@ Final automated result: 46/46 unittest checks PASS; Python compile and JavaScrip
 Hotfix v0.2.1: CreateJobObject uses a unique string name (pywin32 rejects None). Added regression test with strict Windows binding behavior. Escaped quoted UIA selectors in input attributes and moved Agent status above Automation Test. Real Windows startup still needs user confirmation.
 
 Hotfix v0.2.2: enqueue/start idempotent while running; read-only process/window inspection runs outside input queue; ambiguous window choice fails immediately; Chrome wait limited to 20 seconds; show selected window buttons and wait duration; UI polling avoids replacing controls while pointer/input is active.
+
+Hotfix v0.2.3: STOP no longer sends unconditional key/mouse release. Cleanup is restricted to a running input action and only pressed buttons/modifiers. Windows list moved directly below test buttons with explicit Chrome/CapCut selection. User confirmed CapCut can open; Chrome logs show ambiguous multiple windows.
