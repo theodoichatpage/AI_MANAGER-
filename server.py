@@ -9,7 +9,7 @@ from studio_monitor import StudioMonitor
 from extension_monitor import ExtensionMonitor
 from automation_agent.manager_service import AutomationService
 
-VERSION = '0.2.12'
+VERSION = '0.2.16'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase4-windows-agent-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -167,7 +167,6 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get('Origin') not in ('http://127.0.0.1:8765','http://localhost:8765'): raise ValueError('Nguồn truy cập không hợp lệ')
             if path=='/api/automation':
                 result=automation().control(data)
-                if data.get('command')=='studio_attach':STUDIO.configure(str(data.get('studio_project_id','')))
                 return self.send(200,result)
             with LOCK:
                 if path=='/api/studio':
@@ -180,6 +179,24 @@ class Handler(BaseHTTPRequestHandler):
                     for key in ('A','B','C'):
                         p=existing.get(key) or create_project('TEST PROJECT '+key,'',test_key=key); manager().add(p); result.append(p)
                     return self.send(200,{'projects':result})
+                if path=='/api/studio-import':
+                    from automation_agent.studio_workflow import validate_url,ID
+                    from automation_agent.edge_profiles import require_profile
+                    sid=str(data.get('studio_project_id',''));origin=validate_url(str(data.get('studio_url',''))).rstrip('/')
+                    profile=str(data.get('browser_profile','Default'));require_profile(profile)
+                    if not ID.fullmatch(sid):raise ValueError('Studio ID không hợp lệ')
+                    live=PRESENCE.snapshot();entry=next((x for x in live.get('projects',[]) if x.get('id')==sid),None)
+                    if not entry or live.get('origin','').rstrip('/')!=origin:raise ValueError('Không thấy dự án tại nguồn Studio đang kết nối. Mở đúng Studio rồi thử lại.')
+                    key={'id':sid,'origin':origin,'browser':'edge','profile':profile}
+                    p=next((x for x in projects() if x.get('studio_source')==key),None)
+                    if p is None:
+                        p=create_project(str(entry.get('name') or sid),'')
+                        p.update(studio_source=key,studio_import_id=sid,studio_url=origin+'/',browser='edge',browser_profile=profile,source='studio',profile_verification='pending')
+                    p['name']=str(entry.get('name') or p['name']);atomic(Path(p['folder'])/'project.json',p)
+                    q=manager()
+                    if not any(x['id']==p['id'] for x in q.list()):
+                        q.add(p);q.stop(p['id'])
+                    return self.send(200,p)
                 if path=='/api/project': p=create_project(str(data.get('name','')),str(data.get('script',''))); manager().add(p); return self.send(201,p)
                 if path=='/api/root':
                     global MANAGER,WORKER
@@ -194,7 +211,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200,config())
                 if path=='/api/queue':
                     q=manager(); action=data.get('action'); pid=str(data.get('id',''))
-                    if action=='start':
+                    if action=='start_selected':
+                        automation().ensure_bridge();q.start_selected(pid)
+                    elif action=='start':
                         automation().ensure_bridge();q.start_all()
                     elif action=='pause':
                         target=pid or next((p['id'] for p in q.list() if p['status']=='running'),'');p=q.get(target);q.pause(target)

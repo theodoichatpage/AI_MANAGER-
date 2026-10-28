@@ -45,7 +45,7 @@ class AutomationService:
    from .studio_workflow import atomic
    atomic(Path(p['folder'])/'project.json',metadata)
    result=self.client.request('/submit',{'actions':actions,'context':context,'project':p['id'],'held':True})
-   q.attach_automation(p['id'],result['task_id']);self.ensure_bridge();return result
+   q.attach_automation(p['id'],result['task_id']);q.stop(p['id']);self.ensure_bridge();return result
   if cmd=='start_agent':self.client.restart();return {'ok':True}
   if cmd=='stop_agent':
    self.queue_getter().stop_all();self.client.stop(terminate=True);return {'ok':True}

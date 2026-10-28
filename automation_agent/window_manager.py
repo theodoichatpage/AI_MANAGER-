@@ -59,12 +59,18 @@ def validate_target(target,foreground=False):
  if app=='edge':
   from .edge_controller import verify_binding
   verify_binding(dict(target,pid=pid,process_started=p.create_time()))
- if foreground and win32gui.GetForegroundWindow()!=hwnd:raise RuntimeError('Cửa sổ đích không có focus; đã chặn nhập/click để bảo vệ ứng dụng khác')
+ if foreground and app=='edge':
+  from .edge_focus import check
+  check(target)
+ if foreground and app!='edge' and win32gui.GetForegroundWindow()!=hwnd:raise RuntimeError('Cửa sổ đích không có focus; đã chặn nhập/click để bảo vệ ứng dụng khác')
  import ctypes
  if ctypes.windll.user32.IsHungAppWindow(hwnd):raise RuntimeError('Windows báo cửa sổ không phản hồi')
  return hwnd
 
 def focus(target):
+ if target.get("target_app")=="edge":
+  from .edge_focus import acquire
+  return acquire(target)
  require_windows();import win32gui,win32con
  hwnd=validate_target(target);win32gui.ShowWindow(hwnd,win32con.SW_RESTORE)
  from pywinauto import Desktop

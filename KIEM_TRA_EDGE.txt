@@ -1,0 +1,9 @@
+AI MANAGER v0.2.14 — kiểm tra bản sửa
+1. Đóng cửa sổ server AI Manager cũ. Không xóa thư mục dữ liệu dự án.
+2. Giải nén ZIP, mở MO_AI_MANAGER.bat trong AI_MANAGER_v0.2.14.
+3. Xác nhận giao diện hiện phiên bản 0.2.14.
+4. Vào Điều khiển ứng dụng → Microsoft Edge → chọn Default và đúng cửa sổ.
+5. Chạy kiểm tra Edge với https://example.com trước. Không thao tác chuột/phím khi Agent chạy.
+6. Nếu lỗi, gửi dòng lỗi và file edge_focus_failure.json trong thư mục dữ liệu Agent (đường dẫn hiện trong lỗi).
+7. Nếu kiểm tra Edge thành công, mới thử lại điều phối Studio. Task needs_review cũ không tự được tiếp tục.
+Bản này chưa được nghiệm thu trên Windows thật; kiểm thử tự động không thay thế nghiệm thu.

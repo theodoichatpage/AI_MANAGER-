@@ -72,6 +72,13 @@ class QueueManager:
   if self.db.execute("SELECT 1 FROM projects WHERE status='paused'").fetchone(): return
   p=self.db.execute("SELECT * FROM projects WHERE status='waiting' ORDER BY position LIMIT 1").fetchone()
   if p: self._launch(dict(p))
+ def start_selected(self,pid):
+  with self.lock,self.db:
+   p=self.get(pid)
+   if p['execution_mode']!='automation' or not p['automation_task_id']:raise ValueError('Lưu liên kết Studio trước khi chạy')
+   if p['status'] not in ('waiting','stopped'):raise ValueError('Dự án không ở trạng thái chờ/đã dừng')
+   if any(x['id']!=pid and x['status'] in ('waiting','running','paused') for x in self.list()):raise ValueError('Dừng các dự án khác trong hàng đợi trước khi chạy riêng dự án này')
+   self._set(pid,status='waiting');self._enabled(True);self._next()
  def start_all(self):
   with self.lock,self.db:
    self._enabled(True)

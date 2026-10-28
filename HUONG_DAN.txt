@@ -1,13 +1,8 @@
-AI MANAGER v0.2.12
-
-1. Đóng cửa sổ server AI MANAGER cũ. Giải nén vào thư mục AI_MANAGER_v0.2.12.
-2. Mở MO_AI_MANAGER.bat. Giữ nguyên thư mục dữ liệu dự án cũ trong Cài đặt.
-3. Mở Studio Preview trong đúng Edge Profile; chọn dự án thật, kết nối Extension/ChatGPT như trước.
-4. Manager → Điều phối Studio → chọn dự án Manager, Studio ID, Edge Profile → lưu liên kết và đưa vào Queue.
-5. Bấm Chạy tất cả. Nghiệm thu một dự án trước: phân tích cấu trúc → phân cảnh từng phần → lưu kết quả.
-
-Hướng dẫn chi tiết: STUDIO_v0.2.12.md.
-Kết quả kiểm thử và giới hạn: WINDOWS_TEST_RESULTS.txt.
-Không cần nạp lại Extension. Các chức năng Chrome/Edge/CapCut cũ vẫn ở Điều khiển ứng dụng.
-Pause/STOP không gửi phần tiếp theo; lệnh đã gửi ChatGPT vẫn có thể trả kết quả về Studio.
-Bản này chưa tự ghép ChatGPT cho dự án tiếp theo, chưa tạo ảnh/dựng video.
+AI MANAGER v0.2.16 — Bản kiểm tra
+Đóng server cũ, mở MO_AI_MANAGER.bat. Giữ Studio mở và bật giám sát Manager.
+Chọn đúng Edge Profile trong Manager. Danh sách từ Studio đang kết nối tự nhập sau khoảng 5 giây.
+Chọn dự án Manager muốn xử lý; Lưu liên kết; Chạy quy trình.
+Studio mở trong tab mới, giữ tab Manager. NEW_TAB có checkpoint nhưng lần chạy mới có thể tạo thêm tab.
+Bản này chỉ hỗ trợ Phân tích/Phân cảnh. Chưa có lựa chọn nhiều công đoạn hay chạy ảnh/transcript.
+Đồng bộ danh sách và tên dự án từ presence hiện có, KHÔNG phải sao chép toàn bộ dữ liệu/ảnh.
+Nguồn Studio khác hoặc profile chưa mở không thể tự đọc. Profile do người dùng chọn, Agent xác minh khi điều khiển.

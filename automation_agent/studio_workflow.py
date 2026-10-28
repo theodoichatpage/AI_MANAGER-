@@ -35,7 +35,7 @@ def workflow(sid,url,browser,profile,folder,script,context=None):
  target=dict(context or {},target_app=browser,browser=browser,browser_profile=profile,studio_project_id=sid,studio_run_id=nonce,studio_origin=base.rstrip('/'),studio_folder=str(folder),studio_script=script)
  launch=base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':nonce})
  def a(name,**kw):return dict(action=name,target_app=browser,**({'browser_profile':profile} if browser=='edge' else {}),**kw)
- actions=[a('OPEN_APP',timeout=25),a('WAIT_WINDOW',timeout=20),a('FOCUS_WINDOW'),a('OPEN_URL',url=launch),a('WAIT_PAGE',url=launch,timeout=30),a('STUDIO_READY'),a('STUDIO_ANALYZE'),a('STUDIO_SCENES')]
+ actions=[a('OPEN_APP',timeout=25),a('WAIT_WINDOW',timeout=20),a('FOCUS_WINDOW'),a('NEW_TAB'),a('OPEN_URL',url=launch),a('WAIT_PAGE',url=launch,timeout=30),a('STUDIO_READY'),a('STUDIO_ANALYZE'),a('STUDIO_SCENES')]
  return actions,target
 
 class StudioStep:
@@ -99,8 +99,8 @@ class StudioStep:
   for p in parts:
    if p.get('status')=='complete':
     part_id=str(p['id'])
-    if not re.fullmatch(r'[A-Za-z0-9-]+',part_id):raise ValueError('Part ID không an toàn')
-    atomic(self.folder/'scenes'/(part_id+'.json'),p)
+    filename=part_id if re.fullmatch(r'[A-Za-z0-9_-]{1,120}',part_id) else 'part_'+hashlib.sha256(part_id.encode('utf8')).hexdigest()
+    atomic(self.folder/'scenes'/(filename+'.json'),p)
   atomic(self.folder/'analysis'/'studio_progress.json',dict(actual,project_id=self.sid,updated_at=self.clock()))
   if all(p.get('status')=='complete' for p in parts):return {'context':dict(actual,studio_stage='Hoàn tất phân cảnh',studio_waiting_action=None)}
   part=next(p for p in parts if p.get('status')!='complete');key='part:'+str(part['id'])
