@@ -1,9 +1,8 @@
-AI MANAGER v0.2.17 — Giao diện neon thống nhất
-1. Đóng cửa sổ server Manager cũ.
-2. Giải nén AI_MANAGER_v0.2.17.zip, mở MO_AI_MANAGER.bat trong thư mục cùng tên.
-3. Dùng menu ngang: Dự án / Hàng đợi / Điều khiển ứng dụng / Điều phối Studio / Cài đặt.
-4. Dự án: tìm/lọc, chọn dòng để xem thông tin; bấm Điều phối để theo dõi dự án.
-5. Cài đặt: đường dẫn Chrome/CapCut, thư mục gốc, trạng thái Agent và kết nối Studio. Các thao tác sử dụng API hiện có.
-DỪNG TẤT CẢ luôn ở đầu trang. Nhật ký và checkpoint giữ cơ chế lưu cũ.
-Dữ liệu dự án nằm trong thư mục gốc đã cấu hình, không nằm trong gói ZIP. Không xóa thư mục dữ liệu cũ.
-Bản này ưu tiên giao diện. Không bổ sung tự động transcript, tạo/lưu ảnh hay dựng video; không thêm chức năng giả theo ảnh mẫu.
+AI MANAGER v0.2.18 — sửa thao tác và bố cục compact
+1. Đóng server Manager cũ, giải nén AI_MANAGER_v0.2.18.zip.
+2. Mở MO_AI_MANAGER.bat. Không xóa hoặc đổi thư mục dữ liệu đang dùng.
+3. Vào Điều phối Studio, chọn dự án. Thiết lập không tự thu gọn sau khi chọn hoặc khi cập nhật; mở/đóng bằng thanh tiêu đề.
+4. Nút Lưu liên kết cần Agent online, dự án và Studio ID. Nút Chạy cần workflow đã lưu và dự án Chờ/Đã dừng. Dự án lỗi có nút Chạy lại lỗi; tác vụ cần kiểm tra vẫn giữ guard backend.
+5. Điều khiển ứng dụng: Chrome / Edge / CapCut ba cột, ảnh chụp lấy từ Agent. Công cụ kỹ thuật mở riêng, trạng thái mở giữ khi polling.
+Giao diện compact kiểm tra ở 1920x1080 và 1366x768 CSS pixel. Nội dung chính nằm trong viewport; danh sách/nhật ký dài cuộn bên trong khung. Trình duyệt zoom lớn hoặc màn hình nhỏ dùng bố cục responsive có cuộn để không che nút.
+Không triển khai thêm công đoạn transcript, tạo ảnh hoặc dựng video trong bản này.
