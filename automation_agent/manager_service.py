@@ -32,16 +32,22 @@ class AutomationService:
    sid=str(data.get('studio_project_id',''));url=validate_url(str(data.get('studio_url','')))
    metadata=json.loads((Path(p['folder'])/'project.json').read_text(encoding='utf8'))
    if metadata.get('simulation_test_key'):raise ValueError('Chọn dự án thật, không dùng project TEST cho Studio')
-   actions,context=studio_workflow(sid,url,browser,profile,p['folder'],metadata.get('script',''),data.get('context'))
+   actions,context=studio_workflow(sid,url,browser,profile,p['folder'],metadata.get('script',''),data.get('context'),stages=data.get('stages',metadata.get('studio_stages',['analysis'])))
+   if context['studio_stages']==['images']:
+    from .studio_workflow import StudioAPI
+    from .studio_images import rows
+    current=StudioAPI().request(sid);scenes=rows(current)
+    if not scenes or any(not scene.get('prompt') for _,scene in scenes):raise ValueError('Dự án chưa có đủ scene/prompt. Chọn Phân tích — Phân cảnh trước.')
+    if any(not(scene.get('imageStatus')=='complete' and scene.get('imageResults')) for _,scene in scenes) and not str(current.get('stylePrompt') or '').strip():raise ValueError('Studio chưa lưu phong cách ảnh. Vào tab Tạo ảnh, lưu phong cách rồi thử lại.')
    for other in q.list():
     if other['id']==p['id']:continue
     other_path=Path(other['folder'])/'project.json'
     try:other_meta=json.loads(other_path.read_text(encoding='utf8'))
     except (OSError,ValueError):continue
-    if other_meta.get('studio_project_id')==sid:raise ValueError('Studio project ID này đã liên kết với dự án khác')
+    if not other_meta.get('studio_duplicate_of') and other_meta.get('studio_project_id')==sid:raise ValueError('Studio project ID này đã liên kết với dự án khác')
    q.bind_studio(p['id'],sid,url,browser,profile)
    q.set_browser(p['id'],browser,profile,profile_name)
-   metadata.update(browser=browser,browser_profile=profile,browser_profile_name=profile_name,studio_project_id=sid,studio_url=url)
+   metadata.update(browser=browser,browser_profile=profile,browser_profile_name=profile_name,studio_project_id=sid,studio_url=url,studio_stages=context['studio_stages'])
    from .studio_workflow import atomic
    atomic(Path(p['folder'])/'project.json',metadata)
    result=self.client.request('/submit',{'actions':actions,'context':context,'project':p['id'],'held':True})

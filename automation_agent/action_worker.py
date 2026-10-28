@@ -9,7 +9,7 @@ def dispatch(a,context,home,settings):
  os.environ['AI_MANAGER_AGENT_HOME']=str(home)
  name=a['action'];app=a.get('target_app') or context.get('target_app')
  target=dict(context,target_app=app)
- if name in ('STUDIO_READY','STUDIO_ANALYZE','STUDIO_SCENES'):
+ if name in ('STUDIO_READY','STUDIO_ANALYZE','STUDIO_SCENES','STUDIO_IMAGES'):
   wm.validate_target(target)
   from .studio_workflow import StudioStep
   return StudioStep(target).step(name)

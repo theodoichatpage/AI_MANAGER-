@@ -1,8 +1,10 @@
-AI MANAGER v0.2.18 — sửa thao tác và bố cục compact
-1. Đóng server Manager cũ, giải nén AI_MANAGER_v0.2.18.zip.
-2. Mở MO_AI_MANAGER.bat. Không xóa hoặc đổi thư mục dữ liệu đang dùng.
-3. Vào Điều phối Studio, chọn dự án. Thiết lập không tự thu gọn sau khi chọn hoặc khi cập nhật; mở/đóng bằng thanh tiêu đề.
-4. Nút Lưu liên kết cần Agent online, dự án và Studio ID. Nút Chạy cần workflow đã lưu và dự án Chờ/Đã dừng. Dự án lỗi có nút Chạy lại lỗi; tác vụ cần kiểm tra vẫn giữ guard backend.
-5. Điều khiển ứng dụng: Chrome / Edge / CapCut ba cột, ảnh chụp lấy từ Agent. Công cụ kỹ thuật mở riêng, trạng thái mở giữ khi polling.
-Giao diện compact kiểm tra ở 1920x1080 và 1366x768 CSS pixel. Nội dung chính nằm trong viewport; danh sách/nhật ký dài cuộn bên trong khung. Trình duyệt zoom lớn hoặc màn hình nhỏ dùng bố cục responsive có cuộn để không che nút.
-Không triển khai thêm công đoạn transcript, tạo ảnh hoặc dựng video trong bản này.
+AI MANAGER v0.2.19 — Chọn công đoạn và tạo/lưu ảnh
+1. Đóng server Manager cũ, giải nén bản mới, mở MO_AI_MANAGER.bat.
+2. F5 tab Studio Preview để nhận bản mở đúng công đoạn. Không cần nạp lại Extension.
+3. Giữ Studio kết nối và chọn đúng Edge Profile trong Manager. Chờ đồng bộ: hồ sơ trùng cùng ID/nguồn/profile sẽ quy về hồ sơ có tiến trình. Thư mục cũ được giữ, không xóa.
+4. Chọn dự án Nhật Bản; bấm Rà soát Studio. Đã phân cảnh đủ thì bỏ tích 2, chỉ tích 3. Nếu thiếu phong cách ảnh, lưu phong cách ở tab Tạo ảnh của Studio trước.
+5. Lưu liên kết → Chạy quy trình. Studio mở tab Tạo ảnh; Manager giữ tab riêng. Theo dõi số ảnh tạo/lưu và lỗi. Ảnh được lưu trong images/ thuộc thư mục dự án.
+Công đoạn 1 Transcript/Viết lại vẫn chưa được tự động hóa. Phân tích/Phân cảnh và Tạo ảnh/Lưu ảnh được chọn riêng hoặc cùng nhau.
+Manager chỉ gửi một cảnh còn thiếu mỗi lần. Không chạy tạo ảnh thủ công đồng thời với Manager. Tác vụ có sẵn ngoài Manager sẽ bị chặn để tránh gửi trùng.
+Pause/STOP không gửi cảnh tiếp theo; lệnh đã gửi ChatGPT vẫn có thể hoàn tất. Resume đối soát trạng thái và ảnh đã lưu. Không tự F5 hoặc gửi lại lệnh chưa rõ kết quả.
+Bản này chưa nghiệm thu Windows/ChatGPT tạo ảnh thật; cần kiểm tra một dự án trước.

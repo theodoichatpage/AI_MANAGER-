@@ -28,14 +28,18 @@ def validate_url(url):
  if p.scheme!='https' or p.path not in ('','/') or p.username or p.password or p.port not in (None,443) or not re.fullmatch(r'video-image-studio(?:-[a-z0-9-]+)?\.vercel\.app',p.hostname or ''):raise ValueError('Chọn URL Studio Vercel HTTPS hợp lệ')
  return p._replace(query='',fragment='').geturl().rstrip('/')+'/'
 
-def workflow(sid,url,browser,profile,folder,script,context=None):
+def workflow(sid,url,browser,profile,folder,script,context=None,stages=None):
  if not ID.fullmatch(sid):raise ValueError('Studio ID không hợp lệ')
  if browser not in ('chrome','edge'):raise ValueError('Chọn Chrome hoặc Edge')
+ stages=['analysis'] if stages is None else stages
+ if not isinstance(stages,list) or not stages or any(x not in ('analysis','images') for x in stages):raise ValueError('Chọn Phân tích/Phân cảnh hoặc Tạo ảnh; transcript chưa hỗ trợ')
  base=validate_url(url);nonce=uuid.uuid4().hex
- target=dict(context or {},target_app=browser,browser=browser,browser_profile=profile,studio_project_id=sid,studio_run_id=nonce,studio_origin=base.rstrip('/'),studio_folder=str(folder),studio_script=script)
- launch=base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':nonce})
+ target=dict(context or {},target_app=browser,browser=browser,browser_profile=profile,studio_project_id=sid,studio_run_id=nonce,studio_origin=base.rstrip('/'),studio_folder=str(folder),studio_script=script,studio_stages=stages)
+ launch=base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':nonce,'managerStage':'analysis' if 'analysis' in stages else 'images'})
  def a(name,**kw):return dict(action=name,target_app=browser,**({'browser_profile':profile} if browser=='edge' else {}),**kw)
- actions=[a('OPEN_APP',timeout=25),a('WAIT_WINDOW',timeout=20),a('FOCUS_WINDOW'),a('NEW_TAB'),a('OPEN_URL',url=launch),a('WAIT_PAGE',url=launch,timeout=30),a('STUDIO_READY'),a('STUDIO_ANALYZE'),a('STUDIO_SCENES')]
+ actions=[a('OPEN_APP',timeout=25),a('WAIT_WINDOW',timeout=20),a('FOCUS_WINDOW'),a('NEW_TAB'),a('OPEN_URL',url=launch),a('WAIT_PAGE',url=launch,timeout=30),a('STUDIO_READY')]
+ if 'analysis' in stages:actions.extend([a('STUDIO_ANALYZE'),a('STUDIO_SCENES')])
+ if 'images' in stages:actions.append(a('STUDIO_IMAGES'))
  return actions,target
 
 class StudioStep:
@@ -93,6 +97,9 @@ class StudioStep:
     if not script:raise ValueError('Dự án chưa có kịch bản')
     s=self.send('structure','/analysis',{'script':script,'confirmReset':False,'expectedWorkEpoch':s.get('workEpoch',0)},s)
    return self.wait(name,1800,dict(actual,studio_stage='Phân tích cấu trúc'))
+  if name=='STUDIO_IMAGES':
+   from .studio_images import step
+   return step(self,s)
   if name!='STUDIO_SCENES':raise ValueError('Studio action không hợp lệ')
   if not parts:raise RuntimeError('Studio chưa có phần để phân cảnh')
   # Save only real successful outputs, one file per immutable part ID.

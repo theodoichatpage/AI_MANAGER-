@@ -9,7 +9,7 @@ from studio_monitor import StudioMonitor
 from extension_monitor import ExtensionMonitor
 from automation_agent.manager_service import AutomationService
 
-VERSION = '0.2.18'
+VERSION = '0.2.19'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase4-windows-agent-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -48,13 +48,13 @@ def config():
     return {'root': str(Path.home() / 'VIDEO_PROJECTS')}
 def slug(name):
     name=unicodedata.normalize('NFKD',name.replace('đ','d').replace('Đ','D')).encode('ascii','ignore').decode(); name=re.sub(r'[^A-Za-z0-9]+','_',name).strip('_')[:70]; return name or 'Du_An'
-def projects():
+def projects(include_duplicates=False):
     root=Path(config()['root']); result=[]
     if root.exists():
         for p in sorted(root.glob('*/project.json')):
             try:
                 data=json.loads(p.read_text(encoding='utf-8'))
-                if data.get('schema')=='ai-manager-1': result.append(data)
+                if data.get('schema')=='ai-manager-1' and (include_duplicates or not data.get('studio_duplicate_of')): result.append(data)
             except (OSError,ValueError): continue
     return result
 def create_project(name, script, test_key=None):
@@ -86,10 +86,12 @@ def manager():
     return MANAGER
 
 def synchronized_state(q):
-    ps=projects(); qs=q.list(); studio=STUDIO.snapshot(); data=studio.get('data') or {}; presence=PRESENCE.snapshot(data.get('project_id') or '')
+    ps=projects(); visible={p['id'] for p in ps}; qs=[p for p in q.list() if p['id'] in visible]; studio=STUDIO.snapshot(); data=studio.get('data') or {}; presence=PRESENCE.snapshot(data.get('project_id') or '')
     for project in ps:
         item=next((r for r in qs if r['id']==project['id']),{})
         if item.get('execution_mode')=='automation':project.update(scenes=item.get('total_scenes',0),parts=item.get('total_parts',0))
+        try:project['image_progress']=json.loads((Path(project['folder'])/'analysis'/'studio_image_progress.json').read_text(encoding='utf8'))
+        except (OSError,ValueError,KeyError):pass
         sid=project.get('studio_project_id')
         if sid:
             live=PRESENCE.snapshot(sid);name=live.get('project_name')
@@ -184,6 +186,11 @@ class Handler(BaseHTTPRequestHandler):
                     for key in ('A','B','C'):
                         p=existing.get(key) or create_project('TEST PROJECT '+key,'',test_key=key); manager().add(p); result.append(p)
                     return self.send(200,{'projects':result})
+                if path=='/api/studio-plan':
+                    from automation_agent.studio_workflow import StudioAPI
+                    from automation_agent.studio_images import rows
+                    session=StudioAPI().request(str(data.get('studio_project_id','')));scenes=rows(session);parts=session.get('parts') or []
+                    return self.send(200,{'project_id':session['id'],'parts':len(parts),'parts_done':sum(p.get('status')=='complete' for p in parts),'scenes':len(scenes),'images_done':sum(s.get('imageStatus')=='complete' and bool(s.get('imageResults')) for _,s in scenes),'images_error':sum(s.get('imageStatus')=='error' for _,s in scenes),'missing_prompts':sum(not s.get('prompt') for _,s in scenes),'style_saved':bool(str(session.get('stylePrompt') or '').strip()),'active_job':bool(session.get('activeJob'))})
                 if path=='/api/studio-import':
                     from automation_agent.studio_workflow import validate_url,ID
                     from automation_agent.edge_profiles import require_profile
@@ -193,7 +200,17 @@ class Handler(BaseHTTPRequestHandler):
                     live=PRESENCE.snapshot();entry=next((x for x in live.get('projects',[]) if x.get('id')==sid),None)
                     if not entry or live.get('origin','').rstrip('/')!=origin:raise ValueError('Không thấy dự án tại nguồn Studio đang kết nối. Mở đúng Studio rồi thử lại.')
                     key={'id':sid,'origin':origin,'browser':'edge','profile':profile}
-                    p=next((x for x in projects() if x.get('studio_source')==key),None)
+                    from studio_catalog import matches,canonical
+                    q=manager();qrows={x['id']:x for x in q.list()}
+                    candidates=[x for x in projects(include_duplicates=True) if matches(x,key) and not x.get('studio_duplicate_of')]
+                    p=canonical(candidates,qrows) if candidates else None
+                    if p:
+                        for duplicate in candidates:
+                            if duplicate['id']==p['id']:continue
+                            if qrows.get(duplicate['id'],{}).get('status') in ('running','paused'):raise ValueError('Dừng hồ sơ trùng trước khi hợp nhất')
+                            if qrows.get(duplicate['id'],{}).get('status')=='waiting':q.stop(duplicate['id'])
+                            duplicate['studio_duplicate_of']=p['id'];atomic(Path(duplicate['folder'])/'project.json',duplicate)
+                        p['studio_source']=key
                     if p is None:
                         p=create_project(str(entry.get('name') or sid),'')
                         p.update(studio_source=key,studio_import_id=sid,studio_url=origin+'/',browser='edge',browser_profile=profile,source='studio',profile_verification='pending')
