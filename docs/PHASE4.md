@@ -19,3 +19,5 @@ Implementation ledger:
 - UI JavaScript syntax checked. Headless browser test could not run: Chromium executable not present. No Windows UI run claimed.
 
 Final automated result: 46/46 unittest checks PASS; Python compile and JavaScript syntax checks PASS. Windows/Chrome/CapCut UI acceptance remains pending.
+
+Hotfix v0.2.1: CreateJobObject uses a unique string name (pywin32 rejects None). Added regression test with strict Windows binding behavior. Escaped quoted UIA selectors in input attributes and moved Agent status above Automation Test. Real Windows startup still needs user confirmation.

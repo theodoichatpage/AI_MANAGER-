@@ -1,6 +1,6 @@
-AI MANAGER v0.2.0 - WINDOWS AUTOMATION AGENT
+AI MANAGER v0.2.1 - WINDOWS AUTOMATION AGENT
 
-1. Giai nen ZIP. Tat ca file nam trong mot thu muc AI_MANAGER_v0.2.0.
+1. Giai nen ZIP. Tat ca file nam trong mot thu muc AI_MANAGER_v0.2.1.
 2. Dong cua so AI MANAGER cu. Mo MO_AI_MANAGER.bat trong thu muc moi.
 May Windows can dang dang nhap, man hinh khong khoa de UI Automation hoat dong.
 3. Lan dau se cai thu vien Windows mien phi; can Internet. Giu cua so nay mo.

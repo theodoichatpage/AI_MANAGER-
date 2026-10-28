@@ -13,7 +13,7 @@ Mở MO_AI_MANAGER.bat và giữ cửa sổ đó mở. Bấm “Tạo / nạp 3 
 ## Đọc phiên Studio (bản kiểm tra)
 Mở VIDEO IMAGE STUDIO, chọn Kết nối ChatGPT và sao chép mã kết nối. Trong AI MANAGER chọn Kết nối Studio và dán mã. Dữ liệu được đọc định kỳ, không gửi lệnh tới Studio. Mã phiên được giữ trong bộ nhớ đến khi chương trình đóng; cần nhập lại sau khi khởi động. Đọc được dữ liệu máy chủ không chứng minh tab Studio hay ChatGPT đang mở, do đó hai trạng thái này được ghi là chưa xác định. Chức năng chưa điều khiển phân tích, ảnh hoặc tải xuống.
 
-## Phase 4 — Windows Automation Agent, v0.2.0
+## Phase 4 — Windows Automation Agent, v0.2.1
 
 Mở `MO_AI_MANAGER.bat` trên Windows 10/11 với Python 3.10+. Lần đầu launcher tự tạo môi trường riêng và cài thư viện miễn phí. Agent chạy riêng, API chỉ bind loopback và dùng token ngẫu nhiên; mọi action UI chạy trong subprocess có timeout.
 
