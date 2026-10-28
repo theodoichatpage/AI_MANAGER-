@@ -1,6 +1,6 @@
 import time, uuid
 from pathlib import Path
-from .window_manager import require_windows, validate_target
+from .window_manager import require_windows, validate_target, focus
 
 SELECTORS={'title','title_re','auto_id','control_type','class_name','control_id'}
 
@@ -64,7 +64,14 @@ def screenshot(target,directory,full=False):
   from PIL import ImageGrab
   image=ImageGrab.grab(all_screens=True)
  else:
-  validate_target(target,True);image=root(target).capture_as_image()
+  # Focus can change between isolated FOCUS_WINDOW and SCREENSHOT workers.
+  # Validate identity first; reacquire this exact window once, never another one.
+  validate_target(target)
+  try:validate_target(target,True)
+  except RuntimeError:
+   focus(target)
+   validate_target(target,True)
+  image=root(target).capture_as_image()
  image.save(directory/name);return {'screenshot':name,'width':image.width,'height':image.height}
 
 def scroll(target,selector,direction='down',amount=3):
