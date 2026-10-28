@@ -43,7 +43,7 @@ class AutomationService:
    if pid:
     q=self.queue_getter();p=q.get(pid)
     if p['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi gắn workflow')
-   result=self.client.request('/submit',{'actions':actions,'project':pid,'held':bool(pid)})
+   result=self.client.request('/submit',{'actions':actions,'project':pid,'held':bool(pid),'context':data.get('context')})
    if pid:
     self.queue_getter().attach_automation(pid,result['task_id']);self.ensure_bridge()
    else:self.client.request('/start',{})

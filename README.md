@@ -13,11 +13,11 @@ Mở MO_AI_MANAGER.bat và giữ cửa sổ đó mở. Bấm “Tạo / nạp 3 
 ## Đọc phiên Studio (bản kiểm tra)
 Mở VIDEO IMAGE STUDIO, chọn Kết nối ChatGPT và sao chép mã kết nối. Trong AI MANAGER chọn Kết nối Studio và dán mã. Dữ liệu được đọc định kỳ, không gửi lệnh tới Studio. Mã phiên được giữ trong bộ nhớ đến khi chương trình đóng; cần nhập lại sau khi khởi động. Đọc được dữ liệu máy chủ không chứng minh tab Studio hay ChatGPT đang mở, do đó hai trạng thái này được ghi là chưa xác định. Chức năng chưa điều khiển phân tích, ảnh hoặc tải xuống.
 
-## Phase 4 — Windows Automation Agent, v0.2.3
+## Phase 4 — Windows Automation Agent, v0.2.4
 
 Mở `MO_AI_MANAGER.bat` trên Windows 10/11 với Python 3.10+. Lần đầu launcher tự tạo môi trường riêng và cài thư viện miễn phí. Agent chạy riêng, API chỉ bind loopback và dùng token ngẫu nhiên; mọi action UI chạy trong subprocess có timeout.
 
-Vào **Automation Test** để chạy Chrome/CapCut, liệt kê PID/HWND, screenshot, hoặc thử nhập trong cửa sổ test riêng. Có thể gắn workflow vào dự án rồi dùng **Chạy tất cả**. **Dừng tất cả** dừng cả Queue và Agent; **Dừng Agent** còn đóng tiến trình Agent.
+Vào **Điều khiển ứng dụng** để chạy Chrome/CapCut, liệt kê PID/HWND, screenshot, hoặc thử nhập trong cửa sổ test riêng. Có thể gắn workflow vào dự án rồi dùng **Chạy tất cả**. **Dừng tất cả** dừng cả Queue và Agent; **Dừng Agent** còn đóng tiến trình Agent.
 
 Dữ liệu task, checkpoint và log lưu riêng trong `~/.ai_manager/automation`. Không xóa dữ liệu dự án cũ. Dự án mô phỏng cũ vẫn giữ chế độ mô phỏng; không báo số ảnh giả. Lỗi giữa thao tác nhập/click cần kiểm tra thủ công, không tự phát lại. Browser recovery chỉ phục hồi cửa sổ/URL đã biết; không gửi lại prompt ChatGPT. CapCut chỉ là nền tảng mở/focus/UIA/screenshot/đóng, chưa phục hồi timeline/project editing.
 

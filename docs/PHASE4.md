@@ -25,3 +25,5 @@ Hotfix v0.2.1: CreateJobObject uses a unique string name (pywin32 rejects None).
 Hotfix v0.2.2: enqueue/start idempotent while running; read-only process/window inspection runs outside input queue; ambiguous window choice fails immediately; Chrome wait limited to 20 seconds; show selected window buttons and wait duration; UI polling avoids replacing controls while pointer/input is active.
 
 Hotfix v0.2.3: STOP no longer sends unconditional key/mouse release. Cleanup is restricted to a running input action and only pressed buttons/modifiers. Windows list moved directly below test buttons with explicit Chrome/CapCut selection. User confirmed CapCut can open; Chrome logs show ambiguous multiple windows.
+
+v0.2.4: Applied approved application-control mockup: separate Chrome/CapCut cards, three steps, per-app identity-aware window selections, progress/recent-results/live activity, single sticky Stop All, technical inputs/logs in Advanced. Selected PID/create-time context reaches worker validation. No new Studio/CapCut editing functionality.

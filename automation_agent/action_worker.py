@@ -23,7 +23,9 @@ def dispatch(a,context,home,settings):
   if app not in wm.APPS:raise ValueError('Ứng dụng không hợp lệ')
   ps=[p for p in wm.processes() if (p['name'] or '').lower() in wm.APPS[app]['names']]
   return {'running':bool(ps),'processes':ps}
- if name=='OPEN_APP':return wm.open_app(app,settings)
+ if name=='OPEN_APP':
+  if a.get('hwnd') and context.get('hwnd')==int(a['hwnd']):wm.validate_target(target)
+  return wm.open_app(app,settings)
  if name=='OPEN_TEST_WINDOW':
   wm.require_windows()
   if not wm.windows('test'):subprocess.Popen([sys.executable,'-m','automation_agent.test_window'],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
