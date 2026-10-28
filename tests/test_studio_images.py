@@ -67,3 +67,8 @@ class ImageTests(unittest.TestCase):
   self.api.s['parts'][0]['scenes'][0]['imageStatus']='error'
   with self.assertRaises(RuntimeError):self.step()
   self.assertEqual(self.api.posts,[]);self.c['studio_retry_epoch']=1;self.step();self.assertEqual(len(self.api.posts),1)
+
+ def test_incomplete_part_cannot_be_marked_complete_by_image_only_run(self):
+  self.api.s['parts'].append({'id':'p2','status':'ready','scenes':[]})
+  with self.assertRaisesRegex(ValueError,'Phân cảnh'):self.step()
+  self.assertEqual(self.api.posts,[])

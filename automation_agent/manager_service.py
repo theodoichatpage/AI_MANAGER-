@@ -37,7 +37,7 @@ class AutomationService:
     from .studio_workflow import StudioAPI
     from .studio_images import rows
     current=StudioAPI().request(sid);scenes=rows(current)
-    if not scenes or any(not scene.get('prompt') for _,scene in scenes):raise ValueError('Dự án chưa có đủ scene/prompt. Chọn Phân tích — Phân cảnh trước.')
+    if not scenes or any(p.get('status')!='complete' for p in current.get('parts',[])) or any(not scene.get('prompt') for _,scene in scenes):raise ValueError('Dự án chưa có đủ scene/prompt. Chọn Phân tích — Phân cảnh trước.')
     if any(not(scene.get('imageStatus')=='complete' and scene.get('imageResults')) for _,scene in scenes) and not str(current.get('stylePrompt') or '').strip():raise ValueError('Studio chưa lưu phong cách ảnh. Vào tab Tạo ảnh, lưu phong cách rồi thử lại.')
    for other in q.list():
     if other['id']==p['id']:continue

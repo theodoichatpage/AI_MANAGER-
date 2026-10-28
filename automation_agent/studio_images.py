@@ -40,6 +40,7 @@ def save_image(folder,sid,key,result,ordinal=0,fetch=fetch_image):
  return str(path)
 
 def step(worker,session):
+ if any(p.get('status')!='complete' for p in session.get('parts',[])):raise ValueError('Phân cảnh chưa hoàn tất. Chọn công đoạn 2 trước khi chạy ảnh.')
  scenes=rows(session)
  if not scenes:raise ValueError('Chưa có scene; chọn Phân tích/Phân cảnh trước')
  missing=[key for key,s in scenes if not s.get('prompt')]
