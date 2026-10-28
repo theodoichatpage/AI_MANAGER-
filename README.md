@@ -30,3 +30,7 @@ Automated checks: `python -m unittest discover -s tests -v`; JavaScript: `node -
 ## v0.2.8
 
 Thông báo nổi tự ẩn sau 4 giây. Có Chẩn đoán Edge để đọc bằng chứng UIA trên Windows; chưa xác nhận sửa được lỗi nhận diện profile.
+
+## v0.2.10
+
+Đổi xác minh Edge sang Windows Shell properties, bỏ chờ Accessibility trên luồng mở profile. Xem [EDGE_v0.2.10.md](EDGE_v0.2.10.md). Windows vẫn chờ nghiệm thu, không lấy test mô phỏng làm bằng chứng PASS.

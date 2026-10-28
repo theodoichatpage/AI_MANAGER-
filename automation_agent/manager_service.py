@@ -54,6 +54,12 @@ class AutomationService:
    return self.client.request('/inspect',body,timeout=7)
   if cmd in ('test','submit'):
    actions=workflow(data.get('kind'),data.get('app','chrome'),data.get('url','https://example.com'),data.get('hwnd') or None,data.get('browser_profile')) if cmd=='test' else data.get('actions')
+   if len(actions or [])==1 and actions[0].get('action')=='OPEN_APP' and actions[0].get('target_app')=='edge':
+    profile=actions[0].get('browser_profile')
+    existing=next((t for t in self.snapshot().get('tasks',[]) if t['status'] in ('running','waiting') and len(t['actions'])==1 and t['actions'][0].get('action')=='OPEN_APP' and t['actions'][0].get('target_app')=='edge' and t['actions'][0].get('browser_profile')==profile),None)
+    if existing:
+     if existing['status']=='waiting':self.client.request('/start',{})
+     return {'task_id':existing['id'],'already_pending':True}
    pid=data.get('project') or None
    if pid:
     q=self.queue_getter();p=q.get(pid)

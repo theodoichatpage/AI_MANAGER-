@@ -86,7 +86,8 @@ def prove_window(w,profile):return inspect_window_profile(w,profile)['verified']
 def diagnostics(profile):
  require_profile(profile)
  rows=wm.windows('edge')
- return {'profile':profile,'window_count':len(rows),'windows':[inspect_window_profile(w,profile) for w in rows[:10]],'truncated':len(rows)>10,'read_only':True}
+ from .edge_native import window_profile_report
+ return {'profile':profile,'window_count':len(rows),'windows':[window_profile_report(w,profile) for w in rows[:10]],'truncated':len(rows)>10,'read_only':True}
 
 def matching_windows(rows,profile):
  matches=[]
@@ -98,31 +99,51 @@ def matching_windows(rows,profile):
    continue
  return matches
 
+def native_matching_windows(rows,profile):
+ from .edge_native import window_profile_report
+ reports=[window_profile_report(w,profile) for w in rows]
+ valid={r['hwnd'] for r in reports if r['verified']}
+ return [w for w in rows if w['hwnd'] in valid],reports
+
 class EdgeController(BrowserController):
  def __init__(self,target):
   verify_binding(target);super().__init__(target)
+ def address_bar(self):
+  try:return super().address_bar()
+  except RuntimeError as exc:raise RuntimeError(str(exc).replace('Chrome','Edge')) from exc
  @staticmethod
  def open(profile,settings=None):
   wm.require_windows();meta=require_profile(profile)
   rows=verified_windows(profile)
-  if len(rows)>1:raise wm.WindowChoiceRequired('Có nhiều cửa sổ Edge đã xác minh. Chọn cửa sổ trước khi chạy.')
-  if rows:return {'already_running':True,'context':dict(rows[0],target_app='edge'),'windows':rows}
-  # Adopt an already-open version page if it proves the exact profile.
-  before=wm.windows('edge')
-  matches=matching_windows(before,profile)
+  if rows:return {'already_running':True,'context':dict(rows[0],target_app='edge') if len(rows)==1 else {'target_app':'edge','browser':'edge','browser_profile':profile},'windows':rows}
+  matches,reports=native_matching_windows(wm.windows('edge'),profile)
   if not matches:
-   exe=wm.executable('edge',settings)
-   subprocess.Popen([exe,'--profile-directory='+profile,'--force-renderer-accessibility','--new-window','edge://version/'],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_BREAKAWAY_FROM_JOB',0))
-   deadline=time.monotonic()+35
+   # One launch per minute/profile even after timeout; repeated clicks do not spawn windows.
+   launch_path=binding_file().with_name('edge_launches.json')
+   try:launches=json.loads(launch_path.read_text(encoding='utf8'))
+   except (OSError,ValueError):launches={}
+   if time.time()-float(launches.get(profile,0))>=60:
+    exe=wm.executable('edge',settings)
+    launch_path.parent.mkdir(parents=True,exist_ok=True);launches[profile]=time.time()
+    tmp=launch_path.with_suffix('.tmp');tmp.write_text(json.dumps(launches),encoding='utf8');tmp.replace(launch_path)
+    subprocess.Popen([exe,'--profile-directory='+profile,'--force-renderer-accessibility','--new-window','about:blank'],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_BREAKAWAY_FROM_JOB',0))
+   deadline=time.monotonic()+12
    while time.monotonic()<deadline:
-    matches=matching_windows(wm.windows('edge'),profile)
+    matches,reports=native_matching_windows(wm.windows('edge'),profile)
     if matches:break
     time.sleep(.4)
-  if len(matches)!=1:raise RuntimeError('Không xác minh được duy nhất cửa sổ Edge Profile. Chưa đọc được danh tính profile qua Accessibility. Trong cửa sổ Edge cần dùng, mở edge://version rồi bấm Mở Edge lại; giữ trang đó đến khi danh sách cửa sổ xuất hiện. Không thao tác vào trang khác.')
-  context=dict(matches[0],target_app='edge',browser='edge',browser_profile=profile,browser_profile_name=meta['name'])
+  # Keep safe diagnostics automatically, with no URLs, page text or credentials.
+  report_path=binding_file().with_name('edge_last_verification.json')
+  report_path.parent.mkdir(parents=True,exist_ok=True);report_path.write_text(json.dumps({'profile':profile,'windows':reports}),encoding='utf8')
+  if not matches:
+   causes=sorted({r.get('native_error','không có thuộc tính profile phù hợp') for r in reports})
+   raise RuntimeError('Edge đã mở nhưng Windows chưa xác nhận profile. Đã dừng xác minh; không tự mở thêm cửa sổ. Chi tiết: '+', '.join(causes or ['không thấy cửa sổ Edge']))
   import win32gui
-  context['window_nonce']=secrets.randbelow(2**30)+1
-  win32gui.SetProp(context['hwnd'],'AI_MANAGER_EDGE_PROFILE',context['window_nonce'])
-  data=bindings();data[str(context['hwnd'])]=context
-  path=binding_file();path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(data),encoding='utf8');tmp.replace(path)
-  return {'context':context,'profile_verified':True,'windows':[context]}
+  data=bindings();contexts=[]
+  for w in matches:
+   context=dict(w,target_app='edge',browser='edge',browser_profile=profile,browser_profile_name=meta['name'],profile_proof='Windows Shell')
+   context['window_nonce']=secrets.randbelow(2**30)+1
+   win32gui.SetProp(context['hwnd'],'AI_MANAGER_EDGE_PROFILE',context['window_nonce'])
+   data[str(context['hwnd'])]=context;contexts.append(context)
+  path=binding_file();tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(data),encoding='utf8');tmp.replace(path)
+  return {'context':contexts[0] if len(contexts)==1 else {'target_app':'edge','browser':'edge','browser_profile':profile},'profile_verified':True,'windows':contexts}
