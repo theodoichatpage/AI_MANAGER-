@@ -21,3 +21,5 @@ Implementation ledger:
 Final automated result: 46/46 unittest checks PASS; Python compile and JavaScript syntax checks PASS. Windows/Chrome/CapCut UI acceptance remains pending.
 
 Hotfix v0.2.1: CreateJobObject uses a unique string name (pywin32 rejects None). Added regression test with strict Windows binding behavior. Escaped quoted UIA selectors in input attributes and moved Agent status above Automation Test. Real Windows startup still needs user confirmation.
+
+Hotfix v0.2.2: enqueue/start idempotent while running; read-only process/window inspection runs outside input queue; ambiguous window choice fails immediately; Chrome wait limited to 20 seconds; show selected window buttons and wait duration; UI polling avoids replacing controls while pointer/input is active.

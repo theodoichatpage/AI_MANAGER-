@@ -13,6 +13,7 @@ class AgentRuntime:
   self.thread=threading.Thread(target=self.loop,daemon=True);self.thread.start()
  def start(self):
   with self.lock:
+   if self.current and self.enabled and not self.cancel.is_set():return
    if self.current:raise ValueError('Đợi action hiện tại dừng hoàn toàn trước khi chạy tiếp')
    self.cancel.clear();self.enabled=True
  def stop(self):

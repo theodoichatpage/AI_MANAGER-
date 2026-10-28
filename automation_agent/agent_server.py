@@ -2,6 +2,7 @@ import json,os,secrets,threading,time,sys
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 from .runtime import AgentRuntime
+from .action_executor import ActionExecutor
 
 class AgentServer(ThreadingHTTPServer):
  daemon_threads=True
@@ -25,6 +26,10 @@ class AgentHandler(BaseHTTPRequestHandler):
    n=int(self.headers.get('Content-Length','0'))
    if not 0<=n<=1_000_000:raise ValueError('Payload quá lớn')
    data=json.loads(self.rfile.read(n) or b'{}');r=self.server.runtime
+   if self.path=='/inspect':
+    if data.get('action') not in ('LIST_WINDOWS','LIST_PROCESSES','CHECK_PROCESS'):raise ValueError('Inspect chỉ cho phép đọc trạng thái')
+    result=ActionExecutor(self.server.home).run('inspection',dict(data,timeout=5),{},threading.Event())
+    return self.reply(200,result)
    if self.path=='/submit':
     tid=r.store.submit(data['actions'],data.get('project'),data.get('stage','Automation'),data.get('context'),initial_status='held' if data.get('held') else 'waiting')
     return self.reply(200,{'task_id':tid})

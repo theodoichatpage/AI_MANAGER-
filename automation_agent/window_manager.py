@@ -2,6 +2,12 @@
 import os, sys, time, subprocess
 from pathlib import Path
 
+class WindowNotFoundError(RuntimeError):
+ pass
+
+class WindowChoiceRequired(RuntimeError):
+ pass
+
 class WindowLostError(RuntimeError):
  pass
 
@@ -37,8 +43,8 @@ def windows(app=None,title=None):
 def find_window(app, title=None):
  if app not in APPS:raise ValueError('Ứng dụng chưa được cấu hình')
  rows=windows(app,title)
- if not rows:raise RuntimeError('Không tìm thấy cửa sổ '+app)
- if len(rows)>1 and not title:raise RuntimeError('Có nhiều cửa sổ '+app+'. Chọn đúng cửa sổ bằng HWND hoặc title trước khi điều khiển.')
+ if not rows:raise WindowNotFoundError('Không tìm thấy cửa sổ '+app)
+ if len(rows)>1:raise WindowChoiceRequired('Có nhiều cửa sổ '+app+'. Chọn đúng cửa sổ bằng HWND hoặc title trước khi điều khiển.')
  return rows[0]
 
 def validate_target(target,foreground=False):

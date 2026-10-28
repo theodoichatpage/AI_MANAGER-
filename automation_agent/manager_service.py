@@ -32,6 +32,11 @@ class AutomationService:
   if cmd=='ping':return self.client.request('/state')
   if cmd=='resume':return self.client.request('/resume',{'task_id':data['task_id']})
   if cmd=='start':return self.client.request('/start',{})
+  if cmd=='test' and data.get('kind') in ('windows','processes','find','check'):
+   kind=data['kind'];action={'windows':'LIST_WINDOWS','processes':'LIST_PROCESSES','find':'LIST_WINDOWS','check':'CHECK_PROCESS'}[kind]
+   body={'action':action}
+   if kind in ('find','check'):body['target_app']=data.get('app','chrome')
+   return self.client.request('/inspect',body,timeout=7)
   if cmd in ('test','submit'):
    actions=workflow(data.get('kind'),data.get('app','chrome'),data.get('url','https://example.com'),data.get('hwnd') or None) if cmd=='test' else data.get('actions')
    pid=data.get('project') or None

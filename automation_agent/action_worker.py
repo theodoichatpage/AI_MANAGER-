@@ -34,7 +34,7 @@ def dispatch(a,context,home,settings):
   while True:
    try:
     t=wm.find_window(app,a.get('title'));return {'context':dict(t,target_app=app),'window':t}
-   except RuntimeError:
+   except wm.WindowNotFoundError:
     if name=='FIND_WINDOW' or time.monotonic()>=deadline:raise
     time.sleep(.2)
  if not target.get('hwnd'):

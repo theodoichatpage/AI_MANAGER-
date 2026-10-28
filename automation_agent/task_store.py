@@ -47,7 +47,7 @@ class TaskStore:
   with self.lock,self.db:
    t=self.get(tid)
    if t['status']!='running':return False
-   a=t['actions'][index];t.update(current_action=a['action'],target_app=a.get('target_app') or t['context'].get('target_app'),target_window=t['context'].get('hwnd'),retry_count=retry,in_flight=True);self.save(t);return True
+   a=t['actions'][index];t.update(current_action=a['action'],target_app=a.get('target_app') or t['context'].get('target_app'),target_window=t['context'].get('hwnd'),retry_count=retry,in_flight=True,action_started_at=time.time());self.save(t);return True
  def complete_action(self,tid,index,result):
   with self.lock,self.db:
    t=self.get(tid)
