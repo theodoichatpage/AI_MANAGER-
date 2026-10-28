@@ -1,8 +1,9 @@
-AI MANAGER v0.2.16 — Bản kiểm tra
-Đóng server cũ, mở MO_AI_MANAGER.bat. Giữ Studio mở và bật giám sát Manager.
-Chọn đúng Edge Profile trong Manager. Danh sách từ Studio đang kết nối tự nhập sau khoảng 5 giây.
-Chọn dự án Manager muốn xử lý; Lưu liên kết; Chạy quy trình.
-Studio mở trong tab mới, giữ tab Manager. NEW_TAB có checkpoint nhưng lần chạy mới có thể tạo thêm tab.
-Bản này chỉ hỗ trợ Phân tích/Phân cảnh. Chưa có lựa chọn nhiều công đoạn hay chạy ảnh/transcript.
-Đồng bộ danh sách và tên dự án từ presence hiện có, KHÔNG phải sao chép toàn bộ dữ liệu/ảnh.
-Nguồn Studio khác hoặc profile chưa mở không thể tự đọc. Profile do người dùng chọn, Agent xác minh khi điều khiển.
+AI MANAGER v0.2.17 — Giao diện neon thống nhất
+1. Đóng cửa sổ server Manager cũ.
+2. Giải nén AI_MANAGER_v0.2.17.zip, mở MO_AI_MANAGER.bat trong thư mục cùng tên.
+3. Dùng menu ngang: Dự án / Hàng đợi / Điều khiển ứng dụng / Điều phối Studio / Cài đặt.
+4. Dự án: tìm/lọc, chọn dòng để xem thông tin; bấm Điều phối để theo dõi dự án.
+5. Cài đặt: đường dẫn Chrome/CapCut, thư mục gốc, trạng thái Agent và kết nối Studio. Các thao tác sử dụng API hiện có.
+DỪNG TẤT CẢ luôn ở đầu trang. Nhật ký và checkpoint giữ cơ chế lưu cũ.
+Dữ liệu dự án nằm trong thư mục gốc đã cấu hình, không nằm trong gói ZIP. Không xóa thư mục dữ liệu cũ.
+Bản này ưu tiên giao diện. Không bổ sung tự động transcript, tạo/lưu ảnh hay dựng video; không thêm chức năng giả theo ảnh mẫu.

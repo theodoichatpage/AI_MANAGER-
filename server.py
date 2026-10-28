@@ -9,7 +9,7 @@ from studio_monitor import StudioMonitor
 from extension_monitor import ExtensionMonitor
 from automation_agent.manager_service import AutomationService
 
-VERSION = '0.2.16'
+VERSION = '0.2.17'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase4-windows-agent-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -113,13 +113,16 @@ def synchronized_state(q):
     with STUDIO.lock: code=STUDIO.code
     ext=EXTENSION.snapshot(code)
     if ext['status']=='extension_lost' and presence.get('studio_tab_open') and presence.get('chat_connected'): ext['status']='legacy_or_unavailable'
-    return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot()}
+    application_paths={}
+    try:
+        settings=json.loads((BASE/'automation'/'settings.json').read_text(encoding='utf8'))
+        application_paths={k:str(settings.get(k,'')) for k in ('chrome_path','capcut_path')}
+    except (OSError,ValueError):pass
+    return {'application_paths':application_paths,'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot()}
 
 def render_index():
     page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
     page=re.sub(r'Phiên bản\s+[^<·]+\s+\(v[^)]+\)',f'Phiên bản {VERSION} (v{VERSION})',page, count=1)
-    marker='<div id="rootError" style="color:#d33"></div>'; download=(f'<div class="notice" style="margin-top:16px"><b>Bản Windows hiện tại: v{VERSION}</b><br><span class="muted">Tải gói mới nhất, giải nén thư mục thành AI_MANAGER_v{VERSION} rồi chạy MO_AI_MANAGER.bat.</span><p><a class="btn primary" href="{DOWNLOAD_URL}" target="_blank" rel="noopener" download="AI_MANAGER_v{VERSION}.zip">⬇ Tải AI_MANAGER_v{VERSION}.zip</a></p></div>')
-    if marker in page: page=page.replace(marker,marker+download,1)
     return page
 
 class Handler(BaseHTTPRequestHandler):
@@ -134,6 +137,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404,{'error':'Không tìm thấy'})
     def do_GET(self):
         path=urlparse(self.path).path
+        if path=='/theme.css': return self.send(200,(Path(__file__).parent/'theme.css').read_bytes(),'text/css; charset=utf-8')
+        if path=='/ui_shell.js': return self.send(200,(Path(__file__).parent/'ui_shell.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/automation.css': return self.send(200,(Path(__file__).parent/'automation.css').read_bytes(),'text/css; charset=utf-8')
         if path=='/studio_automation.js':return self.send(200,(Path(__file__).parent/'studio_automation.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/automation.js': return self.send(200,(Path(__file__).parent/'automation.js').read_bytes(),'application/javascript; charset=utf-8')
