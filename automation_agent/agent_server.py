@@ -27,7 +27,7 @@ class AgentHandler(BaseHTTPRequestHandler):
    if not 0<=n<=1_000_000:raise ValueError('Payload quá lớn')
    data=json.loads(self.rfile.read(n) or b'{}');r=self.server.runtime
    if self.path=='/inspect':
-    if data.get('action') not in ('LIST_WINDOWS','LIST_PROCESSES','CHECK_PROCESS'):raise ValueError('Inspect chỉ cho phép đọc trạng thái')
+    if data.get('action') not in ('LIST_WINDOWS','LIST_PROCESSES','CHECK_PROCESS','LIST_EDGE_PROFILES'):raise ValueError('Inspect chỉ cho phép đọc trạng thái')
     result=ActionExecutor(self.server.home).run('inspection',dict(data,timeout=5),{},threading.Event())
     return self.reply(200,result)
    if self.path=='/submit':

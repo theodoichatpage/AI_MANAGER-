@@ -17,7 +17,13 @@ class QueueManager:
     backup=sqlite3.connect(backup_path)
     try:self.db.backup(backup)
     finally:backup.close()
-  for key,definition in [('execution_mode',"TEXT NOT NULL DEFAULT 'simulation'"),('automation_task_id','TEXT'),('action_done','INTEGER NOT NULL DEFAULT 0'),('action_total','INTEGER NOT NULL DEFAULT 0')]:
+  if 'browser' not in columns and self.db.execute('SELECT COUNT(*) FROM projects').fetchone()[0]:
+   backup_path=self.root/'.ai_manager_queue.before_edge.sqlite3'
+   if not backup_path.exists():
+    backup=sqlite3.connect(backup_path)
+    try:self.db.backup(backup)
+    finally:backup.close()
+  for key,definition in [('browser',"TEXT NOT NULL DEFAULT 'chrome'"),('browser_profile',"TEXT NOT NULL DEFAULT 'Default'"),('browser_profile_name',"TEXT NOT NULL DEFAULT 'Default'"),('execution_mode',"TEXT NOT NULL DEFAULT 'simulation'"),('automation_task_id','TEXT'),('action_done','INTEGER NOT NULL DEFAULT 0'),('action_total','INTEGER NOT NULL DEFAULT 0')]:
    if key not in columns:self.db.execute('ALTER TABLE projects ADD COLUMN '+key+' '+definition)
   self.db.commit()
   with self.lock,self.db:
@@ -44,6 +50,16 @@ class QueueManager:
    x=self.db.execute('SELECT * FROM projects WHERE id=?',(pid,)).fetchone()
    if not x: raise ValueError('Không tìm thấy dự án trong hàng đợi')
    return dict(x)
+ def set_browser(self,pid,browser,profile,name):
+  with self.lock,self.db:
+   p=self.get(pid)
+   if p['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi đổi trình duyệt')
+   self._set(pid,browser=browser,browser_profile=profile,browser_profile_name=name)
+   path=Path(p['folder'])/'project.json'
+   if path.exists():
+    data=json.loads(path.read_text(encoding='utf8'));data.update(browser=browser,browser_profile=profile,browser_profile_name=name)
+    temp=path.with_suffix('.tmp');temp.write_text(json.dumps(data,ensure_ascii=False),encoding='utf8');temp.replace(path)
+   self._log(pid,'Đã lưu trình duyệt/profile: '+browser+' / '+profile)
  def _running(self): return self.db.execute("SELECT id FROM projects WHERE status='running'").fetchone()
  def _account(self,p): return p['elapsed_time'] + max(0,time.time()-p['running_since']) if p['running_since'] else p['elapsed_time']
  def _launch(self,p):

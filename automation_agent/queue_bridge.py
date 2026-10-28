@@ -24,6 +24,7 @@ class QueueBridge:
       # Mirror a project-local checkpoint without touching project.json or scene data.
       path=Path(p['folder'])/'automation_checkpoint.json';tmp=path.with_suffix('.tmp')
       checkpoint={k:task.get(k) for k in ('current_project','current_stage','current_action','target_app','target_window','current_part','current_scene','retry_count','last_successful_action','last_successful_checkpoint','error','updated_at','next_action','status')}
+      checkpoint.update({k:task.get('context',{}).get(k) for k in ('browser','browser_profile','browser_profile_name')})
       tmp.write_text(json.dumps(checkpoint,ensure_ascii=False,indent=2),encoding='utf8');tmp.replace(path)
    except (ValueError,OSError,RuntimeError):continue
  def close(self):

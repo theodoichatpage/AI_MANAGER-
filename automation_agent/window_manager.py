@@ -11,7 +11,7 @@ class WindowChoiceRequired(RuntimeError):
 class WindowLostError(RuntimeError):
  pass
 
-APPS={'chrome':{'names':['chrome.exe']},'capcut':{'names':['capcut.exe']},'test':{'names':['python.exe','pythonw.exe']}}
+APPS={'edge':{'names':['msedge.exe']},'chrome':{'names':['chrome.exe']},'capcut':{'names':['capcut.exe']},'test':{'names':['python.exe','pythonw.exe']}}
 
 def require_windows():
  if sys.platform!='win32':raise RuntimeError('Windows Automation cần máy Windows; không mô phỏng thành công trên hệ điều hành khác.')
@@ -56,6 +56,9 @@ def validate_target(target,foreground=False):
  if target.get('pid') and pid!=int(target['pid']):raise RuntimeError('PID cửa sổ đã thay đổi')
  if target.get('process_started') and abs(p.create_time()-target['process_started'])>.01:raise RuntimeError('PID đã được tái sử dụng')
  if app=='test' and win32gui.GetWindowText(hwnd)!='AI MANAGER Automation Test':raise RuntimeError('Không phải cửa sổ test an toàn')
+ if app=='edge':
+  from .edge_controller import verify_binding
+  verify_binding(dict(target,pid=pid,process_started=p.create_time()))
  if foreground and win32gui.GetForegroundWindow()!=hwnd:raise RuntimeError('Cửa sổ đích không có focus; đã chặn nhập/click để bảo vệ ứng dụng khác')
  import ctypes
  if ctypes.windll.user32.IsHungAppWindow(hwnd):raise RuntimeError('Windows báo cửa sổ không phản hồi')
@@ -84,18 +87,18 @@ def close(target):
 
 def executable(app,settings=None):
  require_windows();settings=settings or {}
- if app not in ('chrome','capcut'):raise ValueError('Chỉ mở Chrome hoặc CapCut')
+ if app not in ('chrome','edge','capcut'):raise ValueError('Chỉ mở Chrome, Edge hoặc CapCut')
  configured=settings.get(app+'_path')
  candidates=[]
  if configured:candidates.append(Path(configured))
- if app=='chrome':
+ if app in ('chrome','edge'):
   import winreg
   for key in (winreg.HKEY_CURRENT_USER,winreg.HKEY_LOCAL_MACHINE):
    try:
-    with winreg.OpenKey(key,r'SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe') as reg:candidates.append(Path(winreg.QueryValue(reg,None)))
+    with winreg.OpenKey(key,'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\'+APPS[app]['names'][0]) as reg:candidates.append(Path(winreg.QueryValue(reg,None)))
    except OSError:pass
   for env in ('PROGRAMFILES','PROGRAMFILES(X86)','LOCALAPPDATA'):
-   if os.environ.get(env):candidates.append(Path(os.environ[env])/'Google/Chrome/Application/chrome.exe')
+   if os.environ.get(env):candidates.append(Path(os.environ[env])/('Microsoft/Edge/Application/msedge.exe' if app=='edge' else 'Google/Chrome/Application/chrome.exe'))
  else:
   local=Path(os.environ.get('LOCALAPPDATA',''))
   candidates.extend([local/'CapCut/Apps/CapCut.exe',local/'Programs/CapCut/CapCut.exe'])

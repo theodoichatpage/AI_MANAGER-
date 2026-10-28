@@ -1,13 +1,27 @@
 """One action per process: a hung UIA call cannot block STOP or the agent API."""
-import json, sys, time, subprocess
+import json, sys, time, subprocess, os
 from pathlib import Path
 from . import window_manager as wm
 from . import ui_automation as ui
 from .browser_controller import BrowserController
 
 def dispatch(a,context,home,settings):
+ os.environ['AI_MANAGER_AGENT_HOME']=str(home)
  name=a['action'];app=a.get('target_app') or context.get('target_app')
  target=dict(context,target_app=app)
+ if app=='edge':
+  from .edge_controller import EdgeController,verified_windows
+  if name=='LIST_EDGE_PROFILES':
+   from .edge_profiles import list_profiles
+   try:installed=bool(wm.executable('edge',settings))
+   except RuntimeError:installed=False
+   return {'profiles':list_profiles(),'installed':installed,'running':bool(wm.windows('edge'))}
+  if name=='LIST_WINDOWS':return {'windows':verified_windows(a.get('browser_profile'))}
+  if a.get('browser_profile') and target.get('browser_profile') and a['browser_profile']!=target['browser_profile']:raise RuntimeError('Edge Profile không khớp checkpoint/cửa sổ')
+  if name=='OPEN_APP':
+   if target.get('hwnd'):
+    wm.validate_target(target);return {'context':target,'already_running':True}
+   return EdgeController.open(a.get('browser_profile') or target.get('browser_profile'),settings)
  if a.get('hwnd') and name not in ('OPEN_APP','OPEN_TEST_WINDOW'):
   if target.get('hwnd')==int(a['hwnd']) and context.get('target_app')==app:
    wm.validate_target(target)
@@ -30,7 +44,15 @@ def dispatch(a,context,home,settings):
   wm.require_windows()
   if not wm.windows('test'):subprocess.Popen([sys.executable,'-m','automation_agent.test_window'],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
   return {'context':{'target_app':'test'}}
+ if app=='edge' and name=='RESTART_APP':
+  wm.close(target);return EdgeController.open(target.get('browser_profile'),settings)
  if name in ('FIND_WINDOW','WAIT_WINDOW'):
+  if app=='edge':
+   if not target.get('hwnd'):
+    rows=verified_windows(a.get('browser_profile') or target.get('browser_profile'))
+    if len(rows)!=1:raise RuntimeError('Chọn duy nhất cửa sổ Edge đã xác minh profile')
+    target.update(rows[0])
+   wm.validate_target(target);return {'context':target,'window':target}
   if a.get('hwnd'):return {'context':target,'window':target}
   deadline=time.monotonic()+float(a.get('timeout',30))-.1
   while True:
@@ -55,8 +77,8 @@ def dispatch(a,context,home,settings):
  if name=='SCROLL':return ui.scroll(target,a.get('selector'),a.get('direction','down'),a.get('amount',3))
  if name=='DRAG_DROP':return ui.drag_drop(target,a.get('selector'),a.get('destination'))
  if name in ('WAIT_ELEMENT','WAIT_ELEMENT_GONE'):return ui.wait_element(target,a.get('selector'),float(a.get('timeout',30))-.1,name=='WAIT_ELEMENT_GONE')
- if app!='chrome':raise ValueError('Action trình duyệt chỉ dành cho Chrome')
- browser=BrowserController(target)
+ if app not in ('chrome','edge'):raise ValueError('Action cần Chrome hoặc Edge')
+ browser=EdgeController(target) if app=='edge' else BrowserController(target)
  if name=='OPEN_URL':return browser.open_url(a.get('url'))
  if name=='READ_URL':return {'url':browser.read_url()}
  if name=='WAIT_PAGE':return browser.wait_page(a.get('url') or context.get('expected_url'),float(a.get('timeout',30))-.1)

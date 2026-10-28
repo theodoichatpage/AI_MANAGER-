@@ -28,7 +28,20 @@ class AutomationService:
     settings[app+'_path']=p
    self.home.mkdir(parents=True,exist_ok=True);path=self.home/'settings.json';temp=path.with_suffix('.tmp');temp.write_text(json.dumps(settings),encoding='utf8');temp.replace(path)
    self.client.stop(terminate=True);self.client.restart();return {'ok':True}
+  if cmd=='project_browser':
+   q=self.queue_getter();p=q.get(data['project']);browser=data.get('browser')
+   if browser not in ('chrome','edge'):raise ValueError('Chọn Chrome hoặc Edge')
+   profile=str(data.get('browser_profile') or 'Default')
+   if browser=='edge':
+    r=self.client.request('/inspect',{'action':'LIST_EDGE_PROFILES','target_app':'edge'},timeout=7)
+    rows=r.get('result',{}).get('profiles',[])
+    match=next((x for x in rows if x['directory']==profile),None)
+    if not r.get('success') or not match:raise ValueError('Profile Edge không tồn tại')
+    name=match['name']
+   else:name=profile
+   q.set_browser(p['id'],browser,profile,name);return {'ok':True}
   if not self.snapshot().get('online'):raise ValueError('Windows Agent chưa kết nối. Kiểm tra trạng thái và nhật ký khởi động.')
+  if cmd=='edge_profiles':return self.client.request('/inspect',{'action':'LIST_EDGE_PROFILES','target_app':'edge'},timeout=7)
   if cmd=='ping':return self.client.request('/state')
   if cmd=='resume':return self.client.request('/resume',{'task_id':data['task_id']})
   if cmd=='start':return self.client.request('/start',{})
@@ -36,13 +49,16 @@ class AutomationService:
    kind=data['kind'];action={'windows':'LIST_WINDOWS','processes':'LIST_PROCESSES','find':'LIST_WINDOWS','check':'CHECK_PROCESS'}[kind]
    body={'action':action}
    if kind in ('find','check'):body['target_app']=data.get('app','chrome')
+   if data.get('browser_profile'):body['browser_profile']=data['browser_profile']
    return self.client.request('/inspect',body,timeout=7)
   if cmd in ('test','submit'):
-   actions=workflow(data.get('kind'),data.get('app','chrome'),data.get('url','https://example.com'),data.get('hwnd') or None) if cmd=='test' else data.get('actions')
+   actions=workflow(data.get('kind'),data.get('app','chrome'),data.get('url','https://example.com'),data.get('hwnd') or None,data.get('browser_profile')) if cmd=='test' else data.get('actions')
    pid=data.get('project') or None
    if pid:
     q=self.queue_getter();p=q.get(pid)
     if p['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi gắn workflow')
+    app=data.get('app','chrome');profile=data.get('browser_profile') or 'Default'
+    if app in ('chrome','edge') and (p.get('browser','chrome')!=app or p.get('browser_profile','Default')!=profile):raise ValueError('Trình duyệt/profile không khớp dự án. Lưu lựa chọn cho dự án trước khi gắn workflow.')
    result=self.client.request('/submit',{'actions':actions,'project':pid,'held':bool(pid),'context':data.get('context')})
    if pid:
     self.queue_getter().attach_automation(pid,result['task_id']);self.ensure_bridge()

@@ -10,3 +10,7 @@ const html=vm.runInContext('automationHTML()',c);
 assert(html.includes('Điều khiển ứng dụng'));assert(html.includes('Google Chrome'));assert(html.includes('Chạy kiểm tra CapCut'));assert(html.includes('Cài đặt nâng cao'));
 const basic=html.split('Cài đặt nâng cao')[0];assert(!basic.includes('HWND'));assert(!basic.includes('PID:'));assert(!basic.includes('Chuỗi Action JSON'));
 console.log('UI cards, per-app selection, stale-window clearing, advanced separation PASS');
+assert(html.includes('Microsoft Edge'));assert(html.includes('Chọn Edge Profile'));assert(html.includes('Chạy kiểm tra Edge'));
+vm.runInContext("edgeProfile='Profile 2';setAppWindows('edge',[{hwnd:4,pid:4,process_started:1,process:'msedge.exe',title:'Edge',browser_profile:'Profile 1'},{hwnd:5,pid:5,process_started:2,process:'msedge.exe',title:'Edge 2',browser_profile:'Profile 2'}])",c);
+assert.equal(vm.runInContext('appUI.edge.selected.hwnd',c),5);
+console.log('Edge card and profile-window separation PASS');

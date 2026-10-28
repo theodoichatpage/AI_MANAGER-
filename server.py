@@ -9,7 +9,7 @@ from studio_monitor import StudioMonitor
 from extension_monitor import ExtensionMonitor
 from automation_agent.manager_service import AutomationService
 
-VERSION = '0.2.5'
+VERSION = '0.2.6'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase4-windows-agent-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -65,7 +65,7 @@ def create_project(name, script, test_key=None):
         folder=root/f'{n:03d}_{slug(name)}'
         try: folder.mkdir(); break
         except FileExistsError: n+=1
-    now=datetime.now(timezone.utc).isoformat(); project={'schema':'ai-manager-1','id':str(uuid.uuid4()),'name':name,'folder':str(folder),'created_at':now,'status':'Chưa bắt đầu','script':script,'parts':0,'scenes':0,'images':0,'errors':0}
+    now=datetime.now(timezone.utc).isoformat(); project={'schema':'ai-manager-1','id':str(uuid.uuid4()),'name':name,'folder':str(folder),'created_at':now,'status':'Chưa bắt đầu','script':script,'parts':0,'scenes':0,'images':0,'errors':0,'browser':'chrome','browser_profile':'Default','browser_profile_name':'Default'}
     if test_key: project['simulation_test_key']=test_key
     for d in ('analysis','scenes','prompts','images','logs'): (folder/d).mkdir()
     atomic(folder/'project.json',project); (folder/'logs'/'activity.log').write_text(f'{now} – Đã tạo dự án\n',encoding='utf-8'); return project
