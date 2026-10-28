@@ -12,3 +12,6 @@
 .app-card-title h2{font-size:21px}
 .edge-card .agent-error{grid-column:1/-1}
 @media(max-width:1250px){.app-card-grid{grid-template-columns:1fr}.app-control-card{grid-template-rows:auto 90px 164px minmax(200px,auto)}}
+
+.automation-toast{position:fixed;top:82px;right:22px;z-index:10000;width:min(360px,calc(100vw - 32px));max-height:210px;overflow:auto;display:flex;gap:12px;padding:13px 15px;border:1px solid #bdd7f7;border-radius:10px;background:#f0f7ff;color:#16528f;box-shadow:0 5px 24px #1234;font-size:14px;line-height:1.5}
+.automation-toast.error{background:#fff2f2;border-color:#f5bcbc;color:#ac2626}.automation-toast>span{flex:1}.automation-toast>button{border:0;background:transparent;color:inherit;font-size:21px;cursor:pointer;align-self:flex-start}.edge-diagnostic-link{border:0;background:transparent;padding:0 4px;color:#0877e9;text-decoration:underline;cursor:pointer;font-size:12px}

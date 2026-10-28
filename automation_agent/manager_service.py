@@ -41,6 +41,7 @@ class AutomationService:
    else:name=profile
    q.set_browser(p['id'],browser,profile,name);return {'ok':True}
   if not self.snapshot().get('online'):raise ValueError('Windows Agent chưa kết nối. Kiểm tra trạng thái và nhật ký khởi động.')
+  if cmd=='edge_diagnostics':return self.client.request('/inspect',{'action':'EDGE_DIAGNOSTICS','target_app':'edge','browser_profile':data.get('browser_profile')},timeout=23)
   if cmd=='edge_profiles':return self.client.request('/inspect',{'action':'LIST_EDGE_PROFILES','target_app':'edge'},timeout=7)
   if cmd=='ping':return self.client.request('/state')
   if cmd=='resume':return self.client.request('/resume',{'task_id':data['task_id']})

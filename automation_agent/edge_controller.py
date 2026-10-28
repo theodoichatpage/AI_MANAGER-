@@ -52,26 +52,41 @@ def native_profile_names(win):
    except Exception:break
  return names
 
-def prove_window(w,profile):
- # Read-only inspection of diagnostic page, no input to an unverified window.
+def inspect_window_profile(w,profile):
+ # No conversation/page text is exported. Only counts, native IDs and proof booleans.
  from pywinauto import Desktop
- win=Desktop(backend='uia').window(handle=w['hwnd'])
- if toolbar_profile_matches(native_profile_names(win),profile,list_profiles()):return True
- bars=win.descendants(control_type='Edit')
- diagnostic=False
- for bar in bars:
-  info=bar.element_info
-  if info.class_name=='OmniboxViewViews' or info.automation_id in ('addressEditBox','view_1020') or info.name in ('Address and search bar','Thanh địa chỉ và tìm kiếm'):
-   try:diagnostic=bar.get_value().rstrip('/')=='edge://version'
-   except Exception:continue
-   if diagnostic:break
- if not diagnostic:return False
- texts=[]
- for c in win.descendants(auto_id='profile_path'):
-  texts.extend(c.window_text().splitlines())
- for c in win.descendants(control_type='Text'):
-  texts.extend(c.window_text().splitlines())
- return matches_profile_path(texts,user_data_root()/profile)
+ report={'hwnd':w['hwnd'],'pid':w['pid'],'profile':profile,'verified':False,'address_control_found':False,'version_page':False,'profile_path_match':False}
+ try:
+  win=Desktop(backend='uia').window(handle=w['hwnd'])
+  native=native_profile_names(win)
+  report['native_profile_match']=toolbar_profile_matches(native,profile,list_profiles())
+  if report['native_profile_match']:report['verified']=True;return report
+  bars=win.descendants(control_type='Edit');report['edit_count']=len(bars)
+  report['native_edit_controls']=[{'class':b.element_info.class_name,'id':b.element_info.automation_id} for b in bars if b.element_info.class_name=='OmniboxViewViews' or b.element_info.automation_id in ('addressEditBox','view_1020') or b.element_info.name in ('Address and search bar','Thanh địa chỉ và tìm kiếm')]
+  for bar in bars:
+   info=bar.element_info
+   if info.class_name=='OmniboxViewViews' or info.automation_id in ('addressEditBox','view_1020') or info.name in ('Address and search bar','Thanh địa chỉ và tìm kiếm'):
+    report['address_control_found']=True
+    try:
+     value=bar.get_value().strip().rstrip('/')
+     report['version_page']=value=='edge://version'
+    except Exception as exc:report['address_error']=type(exc).__name__
+    if report['version_page']:break
+  if not report['version_page']:return report
+  controls=win.descendants(control_type='Text');report['text_count']=len(controls)
+  texts=[]
+  for c in win.descendants(auto_id='profile_path')+controls:texts.extend(c.window_text().splitlines())
+  report['profile_path_match']=matches_profile_path(texts,user_data_root()/profile)
+  report['verified']=report['profile_path_match']
+ except Exception as exc:report['inspection_error']=type(exc).__name__
+ return report
+
+def prove_window(w,profile):return inspect_window_profile(w,profile)['verified']
+
+def diagnostics(profile):
+ require_profile(profile)
+ rows=wm.windows('edge')
+ return {'profile':profile,'window_count':len(rows),'windows':[inspect_window_profile(w,profile) for w in rows[:10]],'truncated':len(rows)>10,'read_only':True}
 
 def matching_windows(rows,profile):
  matches=[]

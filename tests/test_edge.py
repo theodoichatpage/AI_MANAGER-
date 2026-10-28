@@ -79,3 +79,23 @@ class EdgeWindowScanTests(unittest.TestCase):
   from automation_agent import edge_controller as ec
   with patch.object(ec,'prove_window',side_effect=[RuntimeError('UIA unavailable'),True]):
    self.assertEqual(ec.matching_windows([{'hwnd':1},{'hwnd':2}],'Default'),[{'hwnd':2}])
+
+class EdgeDiagnosticTests(unittest.TestCase):
+ def test_diagnostic_reports_failure_without_exporting_page_content(self):
+  from unittest.mock import patch
+  from types import SimpleNamespace
+  from automation_agent import edge_controller as ec
+  class FakeWindow:
+   def descendants(self,**kw):return []
+  desktop=SimpleNamespace(window=lambda **kw:FakeWindow())
+  with patch.dict('sys.modules',{'pywinauto':SimpleNamespace(Desktop=lambda **kw:desktop)}),patch.object(ec,'native_profile_names',return_value=[]),patch.object(ec,'list_profiles',return_value=[{'directory':'Default','name':'Name'}]):
+   report=ec.inspect_window_profile({'hwnd':1,'pid':2},'Default')
+   self.assertFalse(report['verified']);self.assertFalse(report['address_control_found']);self.assertEqual(report['edit_count'],0)
+   self.assertNotIn('text',report);self.assertNotIn('url',report)
+ def test_uia_exception_is_exposed_as_type_not_silently_discarded(self):
+  from unittest.mock import patch
+  from types import SimpleNamespace
+  from automation_agent import edge_controller as ec
+  with patch.dict('sys.modules',{'pywinauto':SimpleNamespace(Desktop=lambda **kw:(_ for _ in ()).throw(RuntimeError('PRIVATE CONTENT')))}):
+   report=ec.inspect_window_profile({'hwnd':1,'pid':2},'Default')
+   self.assertEqual(report['inspection_error'],'RuntimeError');self.assertNotIn('PRIVATE CONTENT',json.dumps(report))

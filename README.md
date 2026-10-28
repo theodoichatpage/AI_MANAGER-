@@ -26,3 +26,7 @@ Automated checks: `python -m unittest discover -s tests -v`; JavaScript: `node -
 ## Microsoft Edge v0.2.7
 
 Đọc [EDGE_v0.2.7.md](EDGE_v0.2.7.md) để kiểm tra Edge và profile hiện có. Không tạo profile hoặc đọc cookie. Chrome/CapCut giữ luồng cũ. Chưa nghiệm thu Edge trên Windows thật.
+
+## v0.2.8
+
+Thông báo nổi tự ẩn sau 4 giây. Có Chẩn đoán Edge để đọc bằng chứng UIA trên Windows; chưa xác nhận sửa được lỗi nhận diện profile.

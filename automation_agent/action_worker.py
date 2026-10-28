@@ -11,6 +11,9 @@ def dispatch(a,context,home,settings):
  target=dict(context,target_app=app)
  if app=='edge':
   from .edge_controller import EdgeController,verified_windows
+  if name=='EDGE_DIAGNOSTICS':
+   from .edge_controller import diagnostics
+   return diagnostics(a.get('browser_profile'))
   if name=='LIST_EDGE_PROFILES':
    from .edge_profiles import list_profiles
    try:installed=bool(wm.executable('edge',settings))
