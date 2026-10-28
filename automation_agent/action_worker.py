@@ -9,10 +9,31 @@ def dispatch(a,context,home,settings):
  os.environ['AI_MANAGER_AGENT_HOME']=str(home)
  name=a['action'];app=a.get('target_app') or context.get('target_app')
  target=dict(context,target_app=app)
+ if target.get('studio_project_id'):
+  from .resource_lock import StudioResource
+  StudioResource(home).acquire(target,name)
  if name in ('STUDIO_READY','STUDIO_ANALYZE','STUDIO_SCENES','STUDIO_IMAGES'):
-  wm.validate_target(target)
+  from .studio_workflow import StudioReviewRequired
+  try:wm.validate_target(target)
+  except wm.WindowLostError:raise
+  except (RuntimeError,ValueError) as exc:raise StudioReviewRequired('Chưa xác minh đúng cửa sổ/profile; giữ checkpoint') from exc
   from .studio_workflow import StudioStep
-  return StudioStep(target).step(name)
+  from .resource_lock import StudioResource
+  resource=StudioResource(home);resource.acquire(target,name)
+  step=StudioStep(target)
+  try:
+   result=step.step(name)
+   if not result.get('waiting'):
+    current=step.api.request(step.sid)
+    if not current.get('activeJob') and not current.get('imageJobs'):resource.release(target)
+   return result
+  except Exception as exc:
+   from .studio_workflow import StudioReviewRequired
+   try:current=step.api.request(step.sid)
+   except Exception:raise StudioReviewRequired('Không đọc được Studio để đối soát; giữ khóa và checkpoint') from exc
+   if current.get('activeJob') or current.get('imageJobs') or any(v.get('state')=='intent' for v in step.j['commands'].values()):raise StudioReviewRequired('Còn tác vụ hoặc lệnh chưa rõ kết quả; giữ khóa và checkpoint') from exc
+   resource.release(target)
+   raise
  if app=='edge':
   from .edge_controller import EdgeController,verified_windows
   if name=='EDGE_DIAGNOSTICS':
@@ -99,5 +120,5 @@ def main():
  try:
   result=dispatch(data['action'],data.get('context',{}),data['home'],data.get('settings',{}))
   print(json.dumps({'success':True,'result':result},ensure_ascii=True),flush=True)
- except Exception as e:print(json.dumps({'success':False,'error':str(e),'error_code':'WINDOW_LOST' if isinstance(e,wm.WindowLostError) else 'STUDIO_REVIEW' if type(e).__name__=='StudioReviewRequired' else 'ACTION_ERROR'},ensure_ascii=True),flush=True)
+ except Exception as e:print(json.dumps({'success':False,'error':str(e),'error_code':'WINDOW_LOST' if isinstance(e,wm.WindowLostError) else 'STUDIO_REVIEW' if type(e).__name__=='StudioReviewRequired' or (data.get('context',{}).get('studio_project_id') and not str(data.get('action',{}).get('action','')).startswith('STUDIO_')) else 'ACTION_ERROR'},ensure_ascii=True),flush=True)
 if __name__=='__main__':main()

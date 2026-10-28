@@ -47,10 +47,11 @@ class AgentHandler(BaseHTTPRequestHandler):
    if self.path=='/release':
     with r.store.lock,r.store.db:
      t=r.store.get(data['task_id'])
-     if t['status'] not in ('held','paused','stopped'):raise ValueError('Task không thể bắt đầu lại')
+     if t['status'] not in ('held','paused','stopped') and not(t['status']=='needs_review' and t.get('context',{}).get('work_config') and str(t.get('current_action','')).startswith('STUDIO_')):raise ValueError('Task không thể bắt đầu lại; chỉ đối soát Studio read-before-send được Resume')
      t.update(status='waiting',in_flight=False);r.store.save(t)
     r.start();return self.reply(200,{'ok':True})
    if self.path=='/start':r.start();return self.reply(200,{'ok':True})
+   if self.path=='/pause':r.pause();return self.reply(200,{'ok':True})
    if self.path=='/stop':r.stop();return self.reply(200,{'ok':True})
    if self.path=='/resume':r.store.resume(data['task_id']);r.start();return self.reply(200,{'ok':True})
    self.reply(404,{'error':'Not found'})

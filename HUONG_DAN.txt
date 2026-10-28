@@ -1,10 +1,11 @@
-AI MANAGER v0.2.19 — Chọn công đoạn và tạo/lưu ảnh
-1. Đóng server Manager cũ, giải nén bản mới, mở MO_AI_MANAGER.bat.
-2. F5 tab Studio Preview để nhận bản mở đúng công đoạn. Không cần nạp lại Extension.
-3. Giữ Studio kết nối và chọn đúng Edge Profile trong Manager. Chờ đồng bộ: hồ sơ trùng cùng ID/nguồn/profile sẽ quy về hồ sơ có tiến trình. Thư mục cũ được giữ, không xóa.
-4. Chọn dự án Nhật Bản; bấm Rà soát Studio. Đã phân cảnh đủ thì bỏ tích 2, chỉ tích 3. Nếu thiếu phong cách ảnh, lưu phong cách ở tab Tạo ảnh của Studio trước.
-5. Lưu liên kết → Chạy quy trình. Studio mở tab Tạo ảnh; Manager giữ tab riêng. Theo dõi số ảnh tạo/lưu và lỗi. Ảnh được lưu trong images/ thuộc thư mục dự án.
-Công đoạn 1 Transcript/Viết lại vẫn chưa được tự động hóa. Phân tích/Phân cảnh và Tạo ảnh/Lưu ảnh được chọn riêng hoặc cùng nhau.
-Manager chỉ gửi một cảnh còn thiếu mỗi lần. Không chạy tạo ảnh thủ công đồng thời với Manager. Tác vụ có sẵn ngoài Manager sẽ bị chặn để tránh gửi trùng.
-Pause/STOP không gửi cảnh tiếp theo; lệnh đã gửi ChatGPT vẫn có thể hoàn tất. Resume đối soát trạng thái và ảnh đã lưu. Không tự F5 hoặc gửi lại lệnh chưa rõ kết quả.
-Bản này chưa nghiệm thu Windows/ChatGPT tạo ảnh thật; cần kiểm tra một dự án trước.
+AI MANAGER v0.2.20 — Bản kiểm tra điều phối nhiều dự án
+1. Đóng server cũ, giải nén bản mới, mở MO_AI_MANAGER.bat. Giữ thư mục dữ liệu cũ.
+2. Cài đặt: xác nhận Profile đang mở Studio để đồng bộ. Gán browser/profile cho từng dự án. Mỗi profile dùng cho chạy qua đêm phải có Studio đúng dự án và Extension/ChatGPT được ghép sẵn.
+3. Dự án: tích nhiều dòng → Đưa vào Điều phối. Chọn từng dự án ở cột trái, bấm Đọc trạng thái Studio nếu chưa có số liệu.
+4. Tích công việc, chọn phạm vi Part/Scene 1-based và chính sách lỗi riêng. Bấm Thêm/Cập nhật công việc cho TỪNG dự án. Tất cả chỉ được chuẩn bị, chưa chạy.
+5. Kéo thứ tự hoặc dùng ↑/↓; bấm Chạy hàng đợi đã chọn. Theo dõi Task/Subtask/Checkpoint và lỗi.
+Đã phân cảnh xong: chỉ chọn Tạo ảnh + Đồng bộ/Lưu. Chỉ sửa lỗi ảnh: chọn Tạo lại ảnh lỗi (+ Lưu nếu cần file local).
+Pause giữ vị trí; Tiếp tục đối soát lại Studio. Stop All ngừng action và không chuyển dự án. Restart không tự chạy.
+Khi còn tác vụ/lệnh chưa rõ kết quả, khóa Studio/ChatGPT được giữ. Resume workflow gốc để đối soát, không tạo workflow khác để ép gửi lại.
+GIỚI HẠN: Transcript, dựng video/xuất chưa có worker. Phân tích cấu trúc chỉ toàn kịch bản; phạm vi Part áp dụng Phân cảnh. Chỉ ảnh hỗ trợ rerun có backup, không tự reset phân tích/phân cảnh đã xong.
+Extension hiện chỉ ghép một session trong mỗi profile. Nhiều dự án cùng profile chưa tự đổi hội thoại: Manager sẽ chờ rồi tạm dừng nếu sai pairCode, cần ghép đúng và Tiếp tục. Chưa nghiệm thu unattended nhiều dự án thật trên Windows.

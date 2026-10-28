@@ -32,8 +32,14 @@ class AutomationService:
    sid=str(data.get('studio_project_id',''));url=validate_url(str(data.get('studio_url','')))
    metadata=json.loads((Path(p['folder'])/'project.json').read_text(encoding='utf8'))
    if metadata.get('simulation_test_key'):raise ValueError('Chọn dự án thật, không dùng project TEST cho Studio')
-   actions,context=studio_workflow(sid,url,browser,profile,p['folder'],metadata.get('script',''),data.get('context'),stages=data.get('stages',metadata.get('studio_stages',['analysis'])))
-   if context['studio_stages']==['images']:
+   actions,context=studio_workflow(sid,url,browser,profile,p['folder'],metadata.get('script',''),data.get('context'),stages=data.get('stages',metadata.get('studio_stages',['analysis'])),work_config=data.get('work_config'))
+   context['manager_project_id']=p['id'];context['project_name']=p['name']
+   if context.get('work_config'):
+    from .studio_workflow import StudioAPI
+    current=StudioAPI().request(sid)
+    if current.get('activeJob') or current.get('imageJobs'):raise ValueError('Studio đang có tác vụ; hoàn tất/đối soát trước khi tạo workflow mới')
+    context['planned_studio_updated_at']=current.get('updatedAt')
+   if context['studio_stages']==['images'] and not context.get('work_config'):
     from .studio_workflow import StudioAPI
     from .studio_images import rows
     current=StudioAPI().request(sid);scenes=rows(current)
@@ -47,7 +53,7 @@ class AutomationService:
     if not other_meta.get('studio_duplicate_of') and other_meta.get('studio_project_id')==sid:raise ValueError('Studio project ID này đã liên kết với dự án khác')
    q.bind_studio(p['id'],sid,url,browser,profile)
    q.set_browser(p['id'],browser,profile,profile_name)
-   metadata.update(browser=browser,browser_profile=profile,browser_profile_name=profile_name,studio_project_id=sid,studio_url=url,studio_stages=context['studio_stages'])
+   metadata.update(browser=browser,browser_profile=profile,browser_profile_name=profile_name,studio_project_id=sid,studio_url=url,studio_stages=context['studio_stages'],work_config=context.get('work_config'))
    from .studio_workflow import atomic
    atomic(Path(p['folder'])/'project.json',metadata)
    result=self.client.request('/submit',{'actions':actions,'context':context,'project':p['id'],'held':True})

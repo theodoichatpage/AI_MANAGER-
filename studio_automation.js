@@ -13,7 +13,7 @@ setInterval(()=>{if(typeof state!=='undefined')syncStudioCatalog()},5000);
 async function importStudioProject(){
  try{const p=await api('/api/studio-import',{studio_project_id:studioDraft.sid,studio_url:studioDraft.url,browser_profile:studioDraft.profile});await refresh();studioDraft.project=p.id;autoNotice='Đã tạo hoặc nạp hồ sơ dự án. Bấm Lưu liên kết để xác minh profile và đưa vào Queue.';render()}catch(e){autoError=e.message;render()}
 }
-let studioDraft={project:'',sid:'',url:'https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app/',browser:'edge',profile:'Default',stages:['analysis']};
+let studioDraft={project:'',sid:'',url:'https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app/',browser:'edge',profile:(typeof localStorage!=='undefined'?localStorage.getItem('ai-manager-catalog-profile'):null)||'Default',stages:['analysis']};
 function chooseStudioManagerProject(id){studioPlan=null;$('auto_studio_project')?.blur();studioDraft.project=id;const p=state.projects.find(p=>p.id===id);if(p){studioDraft.sid=p.studio_project_id||p.studio_import_id||'';studioDraft.url=p.studio_url||studioDraft.url;studioDraft.browser=p.browser||'edge';studioDraft.profile=p.browser_profile||'Default';studioDraft.stages=p.studio_stages||['analysis']}render()}
 async function attachStudioWorkflow(){
  const d=studioDraft,u=appUI[d.browser],context=u?.selected&&(!u.selected.browser_profile||u.selected.browser_profile===d.profile)?{...u.selected,target_app:d.browser}:undefined;

@@ -41,6 +41,7 @@ class StudioPresenceTest(unittest.TestCase):
         class Q:
             def list(self): return [{'id':'local-1','name':'Local','status':'waiting'}]
             def logs(self): return []
+            def batch(self): return []
         with patch.object(server,'projects',return_value=[{'id':'local-1','name':'Local'}]), patch.object(server.STUDIO,'snapshot',return_value={'configured':True,'data':{'project_id':'remote-1','project_name':'Studio'},'status':'connected'}), patch.object(server.PRESENCE,'snapshot',return_value={'studio_tab_open':False}):
             self.assertEqual(server.synchronized_state(Q())['projects'][0]['name'],'Local')
 

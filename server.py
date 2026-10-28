@@ -9,7 +9,7 @@ from studio_monitor import StudioMonitor
 from extension_monitor import ExtensionMonitor
 from automation_agent.manager_service import AutomationService
 
-VERSION = '0.2.19'
+VERSION = '0.2.20'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase4-windows-agent-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -86,11 +86,26 @@ def manager():
     return MANAGER
 
 def synchronized_state(q):
-    ps=projects(); visible={p['id'] for p in ps}; qs=[p for p in q.list() if p['id'] in visible]; studio=STUDIO.snapshot(); data=studio.get('data') or {}; presence=PRESENCE.snapshot(data.get('project_id') or '')
+    ps=projects(); visible={p['id'] for p in ps}; qs=[p for p in q.list() if p['id'] in visible]
+    running=next((row for row in qs if row.get('status')=='running' and row.get('execution_mode')=='automation'),None)
+    active=next((p for p in ps if running and p['id']==running['id']),None)
+    if active and active.get('studio_project_id'):
+        with STUDIO.lock: current_code=STUDIO.code
+        if current_code!=active['studio_project_id']:STUDIO.configure(active['studio_project_id'])
+    studio=STUDIO.snapshot();data=studio.get('data') or {};presence=PRESENCE.snapshot((active or {}).get('studio_project_id') or data.get('project_id') or '')
     for project in ps:
         item=next((r for r in qs if r['id']==project['id']),{})
         if item.get('execution_mode')=='automation':project.update(scenes=item.get('total_scenes',0),parts=item.get('total_parts',0))
         try:project['image_progress']=json.loads((Path(project['folder'])/'analysis'/'studio_image_progress.json').read_text(encoding='utf8'))
+        except (OSError,ValueError,KeyError):pass
+        try:
+            checkpoint={}
+            if AUTOMATION:
+                active_task=next((t for t in AUTOMATION.snapshot().get('tasks',[]) if t.get('id')==item.get('automation_task_id')),None)
+                if active_task:checkpoint=active_task.get('context',{})
+            if not checkpoint:checkpoint=json.loads((Path(project['folder'])/'automation_checkpoint.json').read_text(encoding='utf8'))
+            run_id=checkpoint.get('studio_run_id')
+            if run_id and re.fullmatch(r'[a-f0-9]{32}',run_id):project['work_ledger']=json.loads((Path(project['folder'])/'analysis'/('workflow_'+run_id+'.json')).read_text(encoding='utf8'))
         except (OSError,ValueError,KeyError):pass
         sid=project.get('studio_project_id')
         if sid:
@@ -120,7 +135,8 @@ def synchronized_state(q):
         settings=json.loads((BASE/'automation'/'settings.json').read_text(encoding='utf8'))
         application_paths={k:str(settings.get(k,'')) for k in ('chrome_path','capcut_path')}
     except (OSError,ValueError):pass
-    return {'application_paths':application_paths,'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot()}
+    batch=q.batch()
+    return {'studio_batch':batch,'application_paths':application_paths,'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot()}
 
 def render_index():
     page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
@@ -140,6 +156,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path=urlparse(self.path).path
         if path=='/theme.css': return self.send(200,(Path(__file__).parent/'theme.css').read_bytes(),'text/css; charset=utf-8')
+        if path=='/work_board.js':return self.send(200,(Path(__file__).parent/'work_board.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/ui_shell.js': return self.send(200,(Path(__file__).parent/'ui_shell.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/automation.css': return self.send(200,(Path(__file__).parent/'automation.css').read_bytes(),'text/css; charset=utf-8')
         if path=='/studio_automation.js':return self.send(200,(Path(__file__).parent/'studio_automation.js').read_bytes(),'application/javascript; charset=utf-8')
@@ -233,13 +250,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200,config())
                 if path=='/api/queue':
                     q=manager(); action=data.get('action'); pid=str(data.get('id',''))
-                    if action=='start_selected':
+                    if action=='order_batch':q.order_prepared(data.get('ids'))
+                    elif action=='start_batch':
+                        automation().ensure_bridge();q.start_batch(data.get('ids'))
+                    elif action=='start_selected':
                         automation().ensure_bridge();q.start_selected(pid)
                     elif action=='start':
                         automation().ensure_bridge();q.start_all()
                     elif action=='pause':
                         target=pid or next((p['id'] for p in q.list() if p['status']=='running'),'');p=q.get(target);q.pause(target)
-                        if p.get('execution_mode')=='automation': automation().client.stop()
+                        if p.get('execution_mode')=='automation': automation().client.request('/pause',{})
                     elif action=='resume':
                         automation().ensure_bridge();q.resume(pid or next((p['id'] for p in q.list() if p['status']=='paused'),''))
                     elif action=='stop_all': automation().stop_all()
