@@ -7,9 +7,10 @@ from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
 from extension_monitor import ExtensionMonitor
+from automation_agent.manager_service import AutomationService
 
-VERSION = '0.1.17'
-DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase3-identity-monitor-preview.zip'
+VERSION = '0.2.0'
+DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase4-windows-agent-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
@@ -70,6 +71,12 @@ def create_project(name, script, test_key=None):
     atomic(folder/'project.json',project); (folder/'logs'/'activity.log').write_text(f'{now} – Đã tạo dự án\n',encoding='utf-8'); return project
 
 MANAGER=None; WORKER=None; STUDIO=StudioMonitor(); EXTENSION=ExtensionMonitor(); STUDIO_STOP=threading.Event(); threading.Thread(target=STUDIO.run,args=(STUDIO_STOP,),daemon=True).start()
+AUTOMATION=None
+def automation():
+    global AUTOMATION
+    if AUTOMATION is None: AUTOMATION=AutomationService(BASE/'automation',manager)
+    return AUTOMATION
+
 def manager():
     global MANAGER,WORKER
     if MANAGER is None:
@@ -97,7 +104,7 @@ def synchronized_state(q):
     with STUDIO.lock: code=STUDIO.code
     ext=EXTENSION.snapshot(code)
     if ext['status']=='extension_lost' and presence.get('studio_tab_open') and presence.get('chat_connected'): ext['status']='legacy_or_unavailable'
-    return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'extension':ext}
+    return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'extension':ext,'automation':automation().snapshot()}
 
 def render_index():
     page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
@@ -118,7 +125,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404,{'error':'Không tìm thấy'})
     def do_GET(self):
         path=urlparse(self.path).path
+        if path=='/automation.js': return self.send(200,(Path(__file__).parent/'automation.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/': return self.send(200,render_index().encode(),'text/html; charset=utf-8')
+        if path.startswith('/api/automation/screenshot/'):
+            try:
+                if self.headers.get('Sec-Fetch-Site')=='cross-site':return self.send(403,{'error':'Forbidden'})
+                return self.send(200,automation().screenshot(path.rsplit('/',1)[-1]),'image/png')
+            except (ValueError,OSError):return self.send(404,{'error':'Không tìm thấy ảnh'})
         if path=='/api/state':
             with LOCK: return self.send(200,synchronized_state(manager()))
         if path=='/api/studio-presence': return self.send(200,PRESENCE.snapshot(),cors=True)
@@ -136,6 +149,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not EXTENSION.receive(code,data,expected_job=job): return self.send(403,{'error':'Phiên hoặc tác vụ không khớp'})
                 return self.send(200,{'commands':[],'mode':'read-only'})
             if self.headers.get('Origin') not in ('http://127.0.0.1:8765','http://localhost:8765'): raise ValueError('Nguồn truy cập không hợp lệ')
+            if path=='/api/automation': return self.send(200,automation().control(data))
             with LOCK:
                 if path=='/api/studio':
                     if data.get('action')=='disconnect': STUDIO.disconnect()
@@ -153,30 +167,46 @@ class Handler(BaseHTTPRequestHandler):
                     if MANAGER and any(p['status'] in ('running','paused') for p in MANAGER.list()): raise ValueError('Dừng hàng đợi trước khi đổi thư mục.')
                     root=Path(str(data.get('root','')).strip()).expanduser()
                     if not root.is_absolute(): raise ValueError('Đường dẫn phải là đường dẫn tuyệt đối.')
-                    root.mkdir(parents=True,exist_ok=True); atomic(CONFIG,{'root':str(root.resolve())})
+                    root.mkdir(parents=True,exist_ok=True)
+                    if AUTOMATION:AUTOMATION.reset_bridge()
+                    atomic(CONFIG,{'root':str(root.resolve())})
                     if WORKER: WORKER.close(); WORKER=None
                     if MANAGER: MANAGER.close(); MANAGER=None
                     return self.send(200,config())
                 if path=='/api/queue':
                     q=manager(); action=data.get('action'); pid=str(data.get('id',''))
-                    if action=='start': q.start_all()
-                    elif action=='pause': q.pause(pid or next((p['id'] for p in q.list() if p['status']=='running'),''))
-                    elif action=='resume': q.resume(pid or next((p['id'] for p in q.list() if p['status']=='paused'),''))
-                    elif action=='stop_all': q.stop_all()
-                    elif action=='stop': q.stop(pid)
-                    elif action=='retry': q.retry_errors(pid or None)
+                    if action=='start':
+                        automation().ensure_bridge();q.start_all()
+                    elif action=='pause':
+                        target=pid or next((p['id'] for p in q.list() if p['status']=='running'),'');p=q.get(target);q.pause(target)
+                        if p.get('execution_mode')=='automation': automation().client.stop()
+                    elif action=='resume':
+                        automation().ensure_bridge();q.resume(pid or next((p['id'] for p in q.list() if p['status']=='paused'),''))
+                    elif action=='stop_all': automation().stop_all()
+                    elif action=='stop':
+                        p=q.get(pid)
+                        if p.get('execution_mode')=='automation':automation().client.stop()
+                        q.stop(pid)
+                    elif action=='retry':
+                        automation().retry_projects(pid or None);q.retry_errors(pid or None)
                     elif action=='move': q.move(pid,int(data.get('direction',0)))
                     elif action=='simulate_complete': q.finish(pid)
                     elif action=='simulate_fail': q.fail(pid,'Lỗi được mô phỏng')
                     else: raise ValueError('Lệnh không hợp lệ')
                     return self.send(200,{'ok':True})
             self.send(404,{'error':'Không tìm thấy'})
-        except (ValueError,OSError,TypeError,json.JSONDecodeError) as e: self.send(400,{'error':str(e)})
+        except (ValueError,OSError,RuntimeError,TypeError,KeyError,json.JSONDecodeError) as e: self.send(400,{'error':str(e)})
 
 if __name__=='__main__':
     try: server=ThreadingHTTPServer(('127.0.0.1',8765),Handler)
     except OSError: print('Cong 8765 dang duoc su dung. Hay dong cua so AI MANAGER cu, sau do mo lai file nay.',flush=True); sys.exit(1)
     print(f'AI MANAGER v{VERSION}: http://127.0.0.1:8765',flush=True)
-    if '--no-browser' not in sys.argv: threading.Timer(.5,lambda:webbrowser.open('http://127.0.0.1:8765')).start()
-    server.serve_forever()
+    service=automation();service.ensure_bridge()
+    def open_dashboard():
+        deadline=time.monotonic()+15
+        while sys.platform=='win32' and not service.snapshot().get('online') and time.monotonic()<deadline:time.sleep(.2)
+        webbrowser.open('http://127.0.0.1:8765')
+    if '--no-browser' not in sys.argv: threading.Thread(target=open_dashboard,daemon=True).start()
+    try:server.serve_forever()
+    finally:service.close();server.server_close()
 

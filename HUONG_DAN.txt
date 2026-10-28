@@ -1,0 +1,24 @@
+AI MANAGER v0.2.0 - WINDOWS AUTOMATION AGENT
+
+1. Giai nen ZIP. Tat ca file nam trong mot thu muc AI_MANAGER_v0.2.0.
+2. Dong cua so AI MANAGER cu. Mo MO_AI_MANAGER.bat trong thu muc moi.
+May Windows can dang dang nhap, man hinh khong khoa de UI Automation hoat dong.
+3. Lan dau se cai thu vien Windows mien phi; can Internet. Giu cua so nay mo.
+4. Trinh duyet mo http://127.0.0.1:8765. Chon AUTOMATION TEST.
+5. Bam Kiem tra Agent. Sau do bam Chay workflow Chrome.
+6. Kiem tra task PASS va mo screenshot. Bam Chay workflow CapCut de test tiep.
+7. Bam Test nhap text trong cua so an toan. Khong nhap vao ung dung dang lam viec.
+8. Thu DUNG TAT CA khi task dang WAIT: khong co action tiep theo duoc chay.
+
+Neu khong tim thay CapCut: Automation Test -> Cai dat duong dan -> chon dung CapCut.exe.
+Neu co nhieu cua so Chrome: xem Danh sach cua so va dien HWND dung vao o HWND dich.
+Neu Windows chan focus/UIA: Task bao FAIL thay vi click/nhap vao cua so khac. Khong can cap quyen Administrator neu ung dung dich khong chay Administrator.
+
+Gan workflow vao project: chon project trong Automation Test -> Dua workflow vao Queue du an -> CHAY TAT CA tren thanh chinh. Project TEST cu van la mo phong; khong tu doi thanh automation.
+
+DUNG AGENT: dung queue + task, tat Agent. Khoi dong Agent khong tu chay lai task.
+Neu restart/crash: checkpoint va log van con. Task dang chay thanh paused; thao tac click/nhap co ket qua chua ro thanh needs_review. Khong tu gui lai.
+
+Ban nay CHUA duoc nghiem thu tren Windows/Chrome/CapCut that. Test tu dong tren Linux KHONG phai bang chung da chay tren Windows. Khong co dung video, export CapCut, API AI, hay tu F5 ChatGPT.
+
+Du lieu Agent: thu muc .ai_manager/automation trong thu muc tai khoan Windows. Du lieu project Phase 2 van giu nguyen.

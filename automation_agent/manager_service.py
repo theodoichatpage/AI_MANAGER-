@@ -1,0 +1,62 @@
+"""Thin integration layer. Dashboard handlers never execute Windows UI calls."""
+import json,re,threading
+from pathlib import Path
+from .agent_client import AgentClient
+from .queue_bridge import QueueBridge
+from .workflows import workflow
+
+class AutomationService:
+ def __init__(self,home,queue_getter):
+  self.home=Path(home);self.queue_getter=queue_getter;self.client=AgentClient(self.home);self.client.start_supervisor();self.bridge=None
+ def ensure_bridge(self):
+  if self.bridge is None:self.bridge=QueueBridge(self.queue_getter(),self.client)
+ def reset_bridge(self):
+  if self.bridge:self.bridge.close();self.bridge=None
+ def snapshot(self):return self.client.snapshot()
+ def control(self,data):
+  cmd=data.get('command')
+  if cmd=='start_agent':self.client.restart();return {'ok':True}
+  if cmd=='stop_agent':
+   self.queue_getter().stop_all();self.client.stop(terminate=True);return {'ok':True}
+  if cmd=='stop':self.stop_all();return {'ok':True}
+  if cmd=='settings':
+   if any(t['status']=='running' for t in self.snapshot().get('tasks',[])):raise ValueError('Dừng task trước khi đổi cài đặt Agent')
+   settings={}
+   for app in ('chrome','capcut'):
+    p=str(data.get(app+'_path','')).strip()
+    if p and Path(p).name.lower()!=app+'.exe':raise ValueError('Đường dẫn phải kết thúc bằng '+app+'.exe')
+    settings[app+'_path']=p
+   self.home.mkdir(parents=True,exist_ok=True);path=self.home/'settings.json';temp=path.with_suffix('.tmp');temp.write_text(json.dumps(settings),encoding='utf8');temp.replace(path)
+   self.client.stop(terminate=True);self.client.restart();return {'ok':True}
+  if not self.snapshot().get('online'):raise ValueError('Windows Agent chưa kết nối. Kiểm tra trạng thái và nhật ký khởi động.')
+  if cmd=='ping':return self.client.request('/state')
+  if cmd=='resume':return self.client.request('/resume',{'task_id':data['task_id']})
+  if cmd=='start':return self.client.request('/start',{})
+  if cmd in ('test','submit'):
+   actions=workflow(data.get('kind'),data.get('app','chrome'),data.get('url','https://example.com'),data.get('hwnd') or None) if cmd=='test' else data.get('actions')
+   pid=data.get('project') or None
+   if pid:
+    q=self.queue_getter();p=q.get(pid)
+    if p['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi gắn workflow')
+   result=self.client.request('/submit',{'actions':actions,'project':pid,'held':bool(pid)})
+   if pid:
+    self.queue_getter().attach_automation(pid,result['task_id']);self.ensure_bridge()
+   else:self.client.request('/start',{})
+   return result
+  raise ValueError('Lệnh Automation không hợp lệ')
+ def retry_projects(self,pid=None):
+  q=self.queue_getter();tasks={t['id']:t for t in self.snapshot().get('tasks',[])}
+  for p in q.list():
+   if p['status']=='failed' and p.get('execution_mode')=='automation' and (not pid or pid==p['id']):
+    t=tasks.get(p.get('automation_task_id'))
+    if not t or t['status']=='needs_review':raise ValueError('Task cần kiểm tra thủ công, không tự chạy lại thao tác chưa rõ kết quả')
+    self.client.request('/requeue',{'task_id':t['id']})
+ def stop_all(self):
+  self.queue_getter().stop_all()
+  if self.client.process and self.client.process.poll() is None:self.client.stop()
+ def screenshot(self,name):
+  if not re.fullmatch(r'[a-f0-9-]{36}\.png',name):raise ValueError('Tên ảnh không hợp lệ')
+  return (self.home/'screenshots'/name).read_bytes()
+ def close(self):
+  if self.bridge:self.bridge.close()
+  self.client.close()

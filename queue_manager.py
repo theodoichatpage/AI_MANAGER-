@@ -10,6 +10,16 @@ class QueueManager:
   self.db=sqlite3.connect(self.root/'.ai_manager_queue.sqlite3',check_same_thread=False); self.db.row_factory=sqlite3.Row
   self.db.execute('PRAGMA journal_mode=WAL'); self.db.execute('PRAGMA synchronous=FULL')
   self.db.executescript('''CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL, position INTEGER NOT NULL, status TEXT NOT NULL, current_stage TEXT NOT NULL DEFAULT 'Chờ', current_part INTEGER NOT NULL DEFAULT 0, current_scene INTEGER NOT NULL DEFAULT 0, total_parts INTEGER NOT NULL DEFAULT 0, total_scenes INTEGER NOT NULL DEFAULT 0, completed_scenes INTEGER NOT NULL DEFAULT 0, failed_scenes INTEGER NOT NULL DEFAULT 0, retry_count INTEGER NOT NULL DEFAULT 0, started_at TEXT, updated_at TEXT NOT NULL, elapsed_time REAL NOT NULL DEFAULT 0, running_since REAL, sim_done INTEGER NOT NULL DEFAULT 0, sim_total INTEGER NOT NULL DEFAULT 10); CREATE TABLE IF NOT EXISTS log (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, project_id TEXT, message TEXT NOT NULL); CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);''')
+  columns={r[1] for r in self.db.execute('PRAGMA table_info(projects)')}
+  if 'execution_mode' not in columns and self.db.execute('SELECT COUNT(*) FROM projects').fetchone()[0]:
+   backup_path=self.root/'.ai_manager_queue.before_phase4.sqlite3'
+   if not backup_path.exists():
+    backup=sqlite3.connect(backup_path)
+    try:self.db.backup(backup)
+    finally:backup.close()
+  for key,definition in [('execution_mode',"TEXT NOT NULL DEFAULT 'simulation'"),('automation_task_id','TEXT'),('action_done','INTEGER NOT NULL DEFAULT 0'),('action_total','INTEGER NOT NULL DEFAULT 0')]:
+   if key not in columns:self.db.execute('ALTER TABLE projects ADD COLUMN '+key+' '+definition)
+  self.db.commit()
   with self.lock,self.db:
    for row in self.db.execute("SELECT * FROM projects WHERE status='running'").fetchall(): self._set(row['id'],status='paused',current_stage='Tạm dừng – Chờ tiếp tục',elapsed_time=self._account(dict(row)),running_since=None); self._log(row['id'],'Khôi phục sau khi đóng: tạm dừng, chờ tiếp tục')
    self._enabled(False)
@@ -38,7 +48,7 @@ class QueueManager:
  def _account(self,p): return p['elapsed_time'] + max(0,time.time()-p['running_since']) if p['running_since'] else p['elapsed_time']
  def _launch(self,p):
   if self._running(): raise ValueError('Một dự án khác đang chạy')
-  self._set(p['id'],status='running',current_stage='Mô phỏng',started_at=p['started_at'] or now(),running_since=time.time()); self._log(p['id'],'Tiếp tục mô phỏng' if p['status']=='paused' else 'Bắt đầu mô phỏng')
+  self._set(p['id'],status='running',current_stage='Automation' if p.get('execution_mode')=='automation' else 'Mô phỏng',started_at=p['started_at'] or now(),running_since=time.time()); self._log(p['id'],'Tiếp tục mô phỏng' if p['status']=='paused' else 'Bắt đầu mô phỏng')
  def _next(self):
   if not self._enabled() or self._running(): return
   # A paused project blocks automatic advancement until explicitly resumed/stopped.
@@ -98,3 +108,20 @@ class QueueManager:
    if direction not in (-1,1) or j<0 or j>=len(items): raise ValueError('Không thể di chuyển')
    if items[idx]['status']!='waiting' or items[j]['status']!='waiting': raise ValueError('Chỉ đổi thứ tự giữa các dự án đang chờ')
    self._set(items[idx]['id'],position=items[j]['position']); self._set(items[j]['id'],position=items[idx]['position']); self._log(pid,'Đã thay đổi thứ tự hàng đợi')
+
+ def attach_automation(self,pid,tid):
+  with self.lock,self.db:
+   p=self.get(pid)
+   if p['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi gắn workflow')
+   self._set(pid,execution_mode='automation',automation_task_id=tid,status='waiting',current_stage='Chờ Automation',action_done=0,action_total=0)
+   self._log(pid,'Đã gắn workflow Windows Agent '+tid)
+ def automation_update(self,pid,done,total,stage,status,error=None):
+  with self.lock,self.db:
+   p=self.get(pid)
+   if p['status']!='running' or p['execution_mode']!='automation':return
+   updates={'action_done':done,'action_total':total,'current_stage':stage}
+   if status in ('completed','failed','needs_review'):
+    updates.update(status='completed' if status=='completed' else 'failed',elapsed_time=self._account(p),running_since=None)
+    self._log(pid,'Automation '+status+(': '+str(error) if error else ''))
+   self._set(pid,**updates)
+   if status in ('completed','failed','needs_review'):self._next()
