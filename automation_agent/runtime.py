@@ -38,14 +38,17 @@ class AgentRuntime:
      for retry in range(maximum+1):
       with self.lock:
        if self.cancel.is_set() or not self.store.mark_action(tid,idx,retry):break
-      self.log.write(self.store.get(tid),action['action'],message='Bắt đầu action' if retry==0 else 'Thử lại action')
+      if not task['context'].get('studio_waiting_action'):self.log.write(self.store.get(tid),action['action'],message='Bắt đầu action' if retry==0 else 'Thử lại action')
       result=self.executor.run(tid,action,task['context'],self.cancel,retry)
-      self.log.write(self.store.get(tid),action['action'],result)
+      if not result.get('result',{}).get('waiting'):self.log.write(self.store.get(tid),action['action'],result)
       if result['success'] or self.cancel.is_set():break
       if retry<maximum and self.cancel.wait(min(2**retry,8)):break
      if self.cancel.is_set():break
      if may_recover(action,result,task.get('recoveries',0)) and task['context'].get('target_app') in ('chrome','capcut'):
       self.recover(task);continue
+     if result['success'] and result.get('result',{}).get('waiting'):
+      self.store.pending_action(tid,idx,result);self.cancel.wait(4);continue
+     if result.get('error_code')=='STUDIO_REVIEW':result['status']='needs_review'
      if not result['success'] and action['action'] in UNSAFE:result['status']='needs_review'
      self.store.complete_action(tid,idx,result)
      if not result['success']:break

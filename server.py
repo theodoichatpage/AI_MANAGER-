@@ -2,14 +2,14 @@ import json, os, re, sys, tempfile, threading, time, unicodedata, uuid, webbrows
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 from queue_manager import QueueManager
 from simulation_worker import SimulationWorker
 from studio_monitor import StudioMonitor
 from extension_monitor import ExtensionMonitor
 from automation_agent.manager_service import AutomationService
 
-VERSION = '0.2.11'
+VERSION = '0.2.12'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase4-windows-agent-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -23,16 +23,16 @@ class StudioPresence:
         with self.lock:
             if data.get('event')=='close': self.tabs.pop((session,tab),None); return
             self.tabs[(session,tab)]={'session_id':session,'tab_id':tab,'chat_connected':bool(data.get('chatReady')),
-                'project_name':str(data.get('projectName','')).strip() or None,'at':time.time()}
-    def snapshot(self, session_id=None):
+                'project_name':str(data.get('projectName','')).strip() or None,'manager_run_id':str(data.get('managerRunId','')),'origin':str(data.get('origin','')),'projects':data.get('projects') if isinstance(data.get('projects'),list) else [],'at':time.time()}
+    def snapshot(self, session_id=None, run_id=None):
         now=time.time()
         with self.lock:
             self.tabs={k:v for k,v in self.tabs.items() if now-v['at']<=self.ttl}
-            matching=[v for v in self.tabs.values() if session_id is None or v['session_id']==session_id]
+            matching=[v for v in self.tabs.values() if (session_id is None or v['session_id']==session_id) and (run_id is None or v.get('manager_run_id')==run_id)]
             if not matching: return {'studio_tab_open':False,'chat_connected':False,'session_id':None,'project_name':None,'last_seen':None}
             latest=max(matching,key=lambda x:x['at'])
             return {'studio_tab_open':True,'chat_connected':any(v['chat_connected'] for v in matching),
-                'session_id':latest['session_id'],'project_name':latest.get('project_name'),'last_seen':latest['at']}
+                'session_id':latest['session_id'],'project_name':latest.get('project_name'),'last_seen':latest['at'],'manager_run_id':latest.get('manager_run_id'),'origin':latest.get('origin'),'projects':latest.get('projects',[])}
 PRESENCE=StudioPresence()
 
 def atomic(path, data):
@@ -87,6 +87,15 @@ def manager():
 
 def synchronized_state(q):
     ps=projects(); qs=q.list(); studio=STUDIO.snapshot(); data=studio.get('data') or {}; presence=PRESENCE.snapshot(data.get('project_id') or '')
+    for project in ps:
+        item=next((r for r in qs if r['id']==project['id']),{})
+        if item.get('execution_mode')=='automation':project.update(scenes=item.get('total_scenes',0),parts=item.get('total_parts',0))
+        sid=project.get('studio_project_id')
+        if sid:
+            live=PRESENCE.snapshot(sid);name=live.get('project_name')
+            if name and name!=project['name']:
+                project['name']=name;q.studio_rename(project['id'],name);item['name']=name
+                saved=json.loads((Path(project['folder'])/'project.json').read_text(encoding='utf8'));saved['name']=name;atomic(Path(project['folder'])/'project.json',saved)
     studio=dict(studio); studio['presence']=presence
     if presence['studio_tab_open']:
         data=dict(data); data['studio_tab_open']=True; data['chat_connected']=presence['chat_connected']; data['project_id']=presence['session_id'] or data.get('project_id')
@@ -104,7 +113,7 @@ def synchronized_state(q):
     with STUDIO.lock: code=STUDIO.code
     ext=EXTENSION.snapshot(code)
     if ext['status']=='extension_lost' and presence.get('studio_tab_open') and presence.get('chat_connected'): ext['status']='legacy_or_unavailable'
-    return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'extension':ext,'automation':automation().snapshot()}
+    return {'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot()}
 
 def render_index():
     page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
@@ -126,6 +135,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path=urlparse(self.path).path
         if path=='/automation.css': return self.send(200,(Path(__file__).parent/'automation.css').read_bytes(),'text/css; charset=utf-8')
+        if path=='/studio_automation.js':return self.send(200,(Path(__file__).parent/'studio_automation.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/automation.js': return self.send(200,(Path(__file__).parent/'automation.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/': return self.send(200,render_index().encode(),'text/html; charset=utf-8')
         if path.startswith('/api/automation/screenshot/'):
@@ -135,14 +145,19 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError,OSError):return self.send(404,{'error':'Không tìm thấy ảnh'})
         if path=='/api/state':
             with LOCK: return self.send(200,synchronized_state(manager()))
-        if path=='/api/studio-presence': return self.send(200,PRESENCE.snapshot(),cors=True)
+        if path=='/api/studio-presence':
+            query=parse_qs(urlparse(self.path).query);return self.send(200,PRESENCE.snapshot(query.get('sessionId',[None])[0],query.get('runId',[None])[0]),cors=True)
         self.send(404,{'error':'Không tìm thấy'})
     def do_POST(self):
         try:
             path=urlparse(self.path).path; length=int(self.headers.get('Content-Length','0'))
             if length>5_000_000: raise ValueError('Dữ liệu quá lớn')
             data=json.loads(self.rfile.read(length) or b'{}')
-            if path=='/api/studio-presence': PRESENCE.update(data); return self.send(200,{'ok':True,'presence':PRESENCE.snapshot()},cors=True)
+            if path=='/api/studio-presence':
+                if data.get('managerRunId'):
+                    origin=self.headers.get('Origin','')
+                    if origin!=data.get('origin') or not re.fullmatch(r'https://video-image-studio(?:-[a-z0-9-]+)?\.vercel\.app',origin):return self.send(403,{'error':'Studio origin không khớp'},cors=True)
+                PRESENCE.update(data); return self.send(200,{'ok':True},cors=True)
             if path=='/api/ext/heartbeat':
                 origin=self.headers.get('Origin','')
                 if origin and not origin.startswith('chrome-extension://'): return self.send(403,{'error':'Nguồn không hợp lệ'})
@@ -150,7 +165,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not EXTENSION.receive(code,data,expected_job=job): return self.send(403,{'error':'Phiên hoặc tác vụ không khớp'})
                 return self.send(200,{'commands':[],'mode':'read-only'})
             if self.headers.get('Origin') not in ('http://127.0.0.1:8765','http://localhost:8765'): raise ValueError('Nguồn truy cập không hợp lệ')
-            if path=='/api/automation': return self.send(200,automation().control(data))
+            if path=='/api/automation':
+                result=automation().control(data)
+                if data.get('command')=='studio_attach':STUDIO.configure(str(data.get('studio_project_id','')))
+                return self.send(200,result)
             with LOCK:
                 if path=='/api/studio':
                     if data.get('action')=='disconnect': STUDIO.disconnect()

@@ -38,3 +38,7 @@ Thông báo nổi tự ẩn sau 4 giây. Có Chẩn đoán Edge để đọc b�
 ## v0.2.11
 
 Sửa lỗi win32gui.SetProp: Agent không ghi thuộc tính lên cửa sổ. Thêm real-Windows API contract, Agent build identity và nút thử lại khi OPEN_APP lỗi. Xem [EDGE_v0.2.11.md](EDGE_v0.2.11.md). Kiểm thử API Windows và kiểm thử Edge thực tế là hai kết quả riêng.
+
+## v0.2.12 — Điều phối Studio
+
+Menu Điều phối Studio liên kết dự án bằng ID + browser/profile, mở đúng dự án Preview, phân tích cấu trúc và phân cảnh từng phần qua API hiện có. Lưu analysis/scenes/checkpoint, không reset phần hoàn tất, không tự phát lại POST không rõ kết quả. Chưa nghiệm thu chuỗi Studio/Extension/ChatGPT trên Windows. Xem STUDIO_v0.2.12.md.

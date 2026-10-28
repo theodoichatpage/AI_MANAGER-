@@ -1,7 +1,7 @@
 import json, sqlite3, threading, time, uuid
 from pathlib import Path
 
-ACTIONS={'EDGE_DIAGNOSTICS','LIST_EDGE_PROFILES','OPEN_APP','CLOSE_APP','RESTART_APP','LIST_PROCESSES','LIST_WINDOWS','CHECK_PROCESS','FIND_WINDOW','WAIT_WINDOW','FOCUS_WINDOW','RESTORE','MAXIMIZE','MINIMIZE','OPEN_URL','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','READ_URL','WAIT_PAGE','FIND_ELEMENT','READ_ELEMENT','CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','WAIT','WAIT_ELEMENT','WAIT_ELEMENT_GONE','SCREENSHOT','OPEN_TEST_WINDOW'}
+ACTIONS={'STUDIO_READY','STUDIO_ANALYZE','STUDIO_SCENES','EDGE_DIAGNOSTICS','LIST_EDGE_PROFILES','OPEN_APP','CLOSE_APP','RESTART_APP','LIST_PROCESSES','LIST_WINDOWS','CHECK_PROCESS','FIND_WINDOW','WAIT_WINDOW','FOCUS_WINDOW','RESTORE','MAXIMIZE','MINIMIZE','OPEN_URL','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','READ_URL','WAIT_PAGE','FIND_ELEMENT','READ_ELEMENT','CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','WAIT','WAIT_ELEMENT','WAIT_ELEMENT_GONE','SCREENSHOT','OPEN_TEST_WINDOW'}
 UNSAFE={'CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','CLOSE_APP','RESTART_APP','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','OPEN_URL'}
 
 class TaskStore:
@@ -60,6 +60,11 @@ class TaskStore:
     if t['next_action']==len(t['actions']):t['status']='completed'
    else:t['status']=result.get('status','failed');t['error']=result.get('error')
    self.save(t)
+ def pending_action(self,tid,index,result):
+  with self.lock,self.db:
+   t=self.get(tid)
+   if t['status']!='running' or t['next_action']!=index:return
+   t['context'].update(result.get('result',{}).get('context',{}));t['in_flight']=False;self.save(t)
  def stop_all(self):
   with self.lock,self.db:
    for t in self.list():

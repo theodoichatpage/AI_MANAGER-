@@ -10,6 +10,7 @@ class QueueManager:
   self.db=sqlite3.connect(self.root/'.ai_manager_queue.sqlite3',check_same_thread=False); self.db.row_factory=sqlite3.Row
   self.db.execute('PRAGMA journal_mode=WAL'); self.db.execute('PRAGMA synchronous=FULL')
   self.db.executescript('''CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL, position INTEGER NOT NULL, status TEXT NOT NULL, current_stage TEXT NOT NULL DEFAULT 'Chờ', current_part INTEGER NOT NULL DEFAULT 0, current_scene INTEGER NOT NULL DEFAULT 0, total_parts INTEGER NOT NULL DEFAULT 0, total_scenes INTEGER NOT NULL DEFAULT 0, completed_scenes INTEGER NOT NULL DEFAULT 0, failed_scenes INTEGER NOT NULL DEFAULT 0, retry_count INTEGER NOT NULL DEFAULT 0, started_at TEXT, updated_at TEXT NOT NULL, elapsed_time REAL NOT NULL DEFAULT 0, running_since REAL, sim_done INTEGER NOT NULL DEFAULT 0, sim_total INTEGER NOT NULL DEFAULT 10); CREATE TABLE IF NOT EXISTS log (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, project_id TEXT, message TEXT NOT NULL); CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);''')
+  self.db.execute('CREATE TABLE IF NOT EXISTS studio_links(project_id TEXT PRIMARY KEY, studio_project_id TEXT UNIQUE NOT NULL, origin TEXT NOT NULL, browser TEXT NOT NULL, profile TEXT NOT NULL)')
   columns={r[1] for r in self.db.execute('PRAGMA table_info(projects)')}
   if 'execution_mode' not in columns and self.db.execute('SELECT COUNT(*) FROM projects').fetchone()[0]:
    backup_path=self.root/'.ai_manager_queue.before_phase4.sqlite3'
@@ -125,6 +126,20 @@ class QueueManager:
    if items[idx]['status']!='waiting' or items[j]['status']!='waiting': raise ValueError('Chỉ đổi thứ tự giữa các dự án đang chờ')
    self._set(items[idx]['id'],position=items[j]['position']); self._set(items[j]['id'],position=items[idx]['position']); self._log(pid,'Đã thay đổi thứ tự hàng đợi')
 
+ def bind_studio(self,pid,sid,origin,browser,profile):
+  with self.lock,self.db:
+   if self.get(pid)['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi đổi liên kết Studio')
+   other=self.db.execute('SELECT project_id FROM studio_links WHERE studio_project_id=?',(sid,)).fetchone()
+   if other and other[0]!=pid:raise ValueError('Studio ID đã được gán cho dự án khác')
+   self.db.execute('INSERT OR REPLACE INTO studio_links VALUES(?,?,?,?,?)',(pid,sid,origin,browser,profile))
+ def studio_rename(self,pid,name):
+  with self.lock,self.db:
+   if self.get(pid)['name']!=name:self._set(pid,name=name)
+ def studio_progress(self,pid,total,done,scenes):
+  with self.lock,self.db:
+   p=self.get(pid)
+   if p['status']!='running':return
+   self._set(pid,total_parts=total,current_part=done,total_scenes=scenes,completed_scenes=scenes)
  def attach_automation(self,pid,tid):
   with self.lock,self.db:
    p=self.get(pid)
@@ -136,8 +151,8 @@ class QueueManager:
    p=self.get(pid)
    if p['status']!='running' or p['execution_mode']!='automation':return
    updates={'action_done':done,'action_total':total,'current_stage':stage}
-   if status in ('completed','failed','needs_review'):
+   if status in ('completed','failed','needs_review','timeout'):
     updates.update(status='completed' if status=='completed' else 'failed',elapsed_time=self._account(p),running_since=None)
     self._log(pid,'Automation '+status+(': '+str(error) if error else ''))
    self._set(pid,**updates)
-   if status in ('completed','failed','needs_review'):self._next()
+   if status in ('completed','failed','needs_review','timeout'):self._next()

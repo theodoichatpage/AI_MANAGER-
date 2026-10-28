@@ -41,6 +41,7 @@ class AgentHandler(BaseHTTPRequestHandler):
     with r.store.lock,r.store.db:
      t=r.store.get(data['task_id'])
      if t['status'] not in ('failed','paused','stopped'):raise ValueError('Task cần kiểm tra thủ công hoặc chưa dừng')
+     if t.get('context',{}).get('studio_project_id'):t['context']['studio_retry_epoch']=int(t['context'].get('studio_retry_epoch',0))+1
      t.update(status='held',in_flight=False);r.store.save(t)
     return self.reply(200,{'ok':True})
    if self.path=='/release':

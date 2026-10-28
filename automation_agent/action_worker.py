@@ -9,6 +9,10 @@ def dispatch(a,context,home,settings):
  os.environ['AI_MANAGER_AGENT_HOME']=str(home)
  name=a['action'];app=a.get('target_app') or context.get('target_app')
  target=dict(context,target_app=app)
+ if name in ('STUDIO_READY','STUDIO_ANALYZE','STUDIO_SCENES'):
+  wm.validate_target(target)
+  from .studio_workflow import StudioStep
+  return StudioStep(target).step(name)
  if app=='edge':
   from .edge_controller import EdgeController,verified_windows
   if name=='EDGE_DIAGNOSTICS':
@@ -95,5 +99,5 @@ def main():
  try:
   result=dispatch(data['action'],data.get('context',{}),data['home'],data.get('settings',{}))
   print(json.dumps({'success':True,'result':result},ensure_ascii=True),flush=True)
- except Exception as e:print(json.dumps({'success':False,'error':str(e),'error_code':'WINDOW_LOST' if isinstance(e,wm.WindowLostError) else 'ACTION_ERROR'},ensure_ascii=True),flush=True)
+ except Exception as e:print(json.dumps({'success':False,'error':str(e),'error_code':'WINDOW_LOST' if isinstance(e,wm.WindowLostError) else 'STUDIO_REVIEW' if type(e).__name__=='StudioReviewRequired' else 'ACTION_ERROR'},ensure_ascii=True),flush=True)
 if __name__=='__main__':main()

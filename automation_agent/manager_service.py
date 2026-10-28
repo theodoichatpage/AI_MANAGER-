@@ -15,6 +15,37 @@ class AutomationService:
  def snapshot(self):return self.client.snapshot()
  def control(self,data):
   cmd=data.get('command')
+  if cmd=='studio_attach':
+   from .studio_workflow import workflow as studio_workflow,validate_url
+   q=self.queue_getter();p=q.get(data['project'])
+   if p['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi gắn Studio')
+   browser=data.get('browser','edge');profile=data.get('browser_profile') or 'Default'
+   if browser=='chrome' and profile!='Default':raise ValueError('Bản này chỉ xác minh profile Edge; Chrome chỉ dùng cửa sổ đã chọn')
+   if not self.snapshot().get('online'):raise ValueError('Windows Agent chưa kết nối')
+   if browser=='edge':
+    report=self.client.request('/inspect',{'action':'LIST_EDGE_PROFILES','target_app':'edge'},timeout=7)
+    profiles=report.get('result',{}).get('profiles',[])
+    match=next((r for r in profiles if r['directory']==profile),None)
+    if not match:raise ValueError('Profile Edge không tồn tại')
+    profile_name=match['name']
+   else:profile_name='Default'
+   sid=str(data.get('studio_project_id',''));url=validate_url(str(data.get('studio_url','')))
+   metadata=json.loads((Path(p['folder'])/'project.json').read_text(encoding='utf8'))
+   if metadata.get('simulation_test_key'):raise ValueError('Chọn dự án thật, không dùng project TEST cho Studio')
+   actions,context=studio_workflow(sid,url,browser,profile,p['folder'],metadata.get('script',''),data.get('context'))
+   for other in q.list():
+    if other['id']==p['id']:continue
+    other_path=Path(other['folder'])/'project.json'
+    try:other_meta=json.loads(other_path.read_text(encoding='utf8'))
+    except (OSError,ValueError):continue
+    if other_meta.get('studio_project_id')==sid:raise ValueError('Studio project ID này đã liên kết với dự án khác')
+   q.bind_studio(p['id'],sid,url,browser,profile)
+   q.set_browser(p['id'],browser,profile,profile_name)
+   metadata.update(browser=browser,browser_profile=profile,browser_profile_name=profile_name,studio_project_id=sid,studio_url=url)
+   from .studio_workflow import atomic
+   atomic(Path(p['folder'])/'project.json',metadata)
+   result=self.client.request('/submit',{'actions':actions,'context':context,'project':p['id'],'held':True})
+   q.attach_automation(p['id'],result['task_id']);self.ensure_bridge();return result
   if cmd=='start_agent':self.client.restart();return {'ok':True}
   if cmd=='stop_agent':
    self.queue_getter().stop_all();self.client.stop(terminate=True);return {'ok':True}

@@ -18,8 +18,10 @@ class QueueBridge:
      if not task:continue
      if task['status'] in ('held','paused','stopped'):
       self.agent.request('/release',{'task_id':task['id']},timeout=1);continue
-     stage=task.get('current_action') or task['current_stage']
-     if task['status']=='running' or task['status'] in ('completed','failed','needs_review'):
+     stage=task.get('context',{}).get('studio_stage') or task.get('current_action') or task['current_stage']
+     if task.get('context',{}).get('studio_project_id'):
+      c=task['context'];self.queue.studio_progress(p['id'],c.get('studio_total_parts',0),c.get('studio_completed_parts',0),c.get('studio_total_scenes',0))
+     if task['status']=='running' or task['status'] in ('completed','failed','needs_review','timeout'):
       self.queue.automation_update(p['id'],task['next_action'],len(task['actions']),stage,task['status'],task.get('error'))
       # Mirror a project-local checkpoint without touching project.json or scene data.
       path=Path(p['folder'])/'automation_checkpoint.json';tmp=path.with_suffix('.tmp')
