@@ -31,3 +31,12 @@
 .sa-attention{margin-top:8px;padding:8px 10px;border-radius:6px;background:#fef3f2;color:#b42318}
 .sa-warn{margin-top:6px;padding:6px 10px;border-radius:6px;background:#fffaeb;color:#93370d}
 @media(max-width:800px){.np .np-grid{grid-template-columns:1fr}}
+/* Cài đặt gọn */
+.neo-setting-row{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(127,127,127,.2)}
+.neo-setting-row>div{flex:1;display:flex;flex-direction:column;gap:2px}
+.neo-setting-row small{opacity:.8}
+.neo-setting-mark{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+.neo-setting-row.ok .neo-setting-mark{background:#067647;color:#fff}
+.neo-setting-row.bad .neo-setting-mark{background:#b54708;color:#fff}
+.neo-advanced summary{cursor:pointer;font-weight:600}
+.neo-advanced h3{margin-top:18px}

@@ -52,7 +52,7 @@ function setStudioStage(stage,checked){studioDraft.stages=checked?[...new Set([.
 async function reviewStudioProject(){try{const r=await api('/api/studio-plan',{studio_project_id:studioDraft.sid});if(r.project_id!==studioDraft.sid)throw Error('Dự án thay đổi trong lúc rà soát');studioPlan=r;autoNotice='Đã đọc tiến độ thật từ Studio, chưa gửi lệnh xử lý.';render()}catch(e){autoError=e.message;render()}}
 
 // Dự án mới -> Triển khai: YouTube link (Studio gets transcript, rewrites, analyses) or a pasted script.
-let newDraft={open:true,name:'',youtube:'',script:'',rewrite:true,style:'',images:false,lanes:[{browser:'edge',profile:'Default'}],busy:false,error:'',done:''};
+let newDraft={open:true,name:'',youtube:'',script:'',rewrite:true,style:'',images:false,lanes:[{browser:'edge',profile:studioDraft.profile||'Default'}],busy:false,error:'',done:''};
 function npSet(key,value){newDraft[key]=value}
 function npLane(i,key,value){newDraft.lanes[i][key]=value;if(key==='browser'&&value==='chrome')newDraft.lanes[i].profile='Default';document.activeElement?.blur();render()}
 function npAddLane(){if(newDraft.lanes.length<4){const used=new Set(newDraft.lanes.map(l=>l.browser+':'+l.profile));const next=(edgeProfiles||[]).map(p=>p.directory).find(d=>!used.has('edge:'+d));newDraft.lanes.push(next?{browser:'edge',profile:next}:{browser:'chrome',profile:'Default'})}render()}
