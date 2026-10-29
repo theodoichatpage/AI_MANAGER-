@@ -25,7 +25,8 @@ def worker_info(raw):
         'extension_job':str(raw.get('extensionJob',''))[:64],'chat_tabs':num(raw.get('chatTabs')),'dispatcher':bool(raw.get('dispatcher'))}
 
 class StudioPresence:
-    def __init__(self, ttl=15): self.ttl=ttl; self.lock=threading.RLock(); self.tabs={}; self.commands={}
+    # Edge slows timers of background tabs to about once a minute; a closed tab still says 'close' at once.
+    def __init__(self, ttl=90): self.ttl=ttl; self.lock=threading.RLock(); self.tabs={}; self.commands={}
     def command(self, session_id, run_id, value):
         """A request for the Studio tab of one run (e.g. get transcript + rewrite), handed over with the next presence reply."""
         with self.lock:
@@ -86,7 +87,8 @@ def studio_deploy(data):
     browser=lanes[0]['browser']; profile=lanes[0].get('profile') or 'Default'
     if browser!='edge': raise ValueError('Dự án mới chạy trên Edge (trình duyệt chính); Chrome chỉ dùng làm tab ChatGPT phụ')
     if not automation().snapshot().get('online'): raise ValueError('Windows Agent chưa kết nối')
-    p=create_project(name or ('YouTube '+url.rsplit('/',1)[-1][:40] if url else ''),script); manager().add(p); manager().stop(p['id'])
+    vid=(re.search(r'(?:v=|youtu\.be/|shorts/|live/)([A-Za-z0-9_-]{6,})',url) or [None,''])[1] if url else ''
+    p=create_project(name or ('YouTube '+vid if url else ''),script); manager().add(p); manager().stop(p['id'])
     sid=uuid.uuid4().hex; api=StudioAPI(); api.create(sid)
     if script: api.request(sid,'/script',{'script':script})
     work={'tasks':tasks,'scopes':{},'error_policy':'continue','retry_limit':2,'lanes':lanes}
