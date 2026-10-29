@@ -137,7 +137,12 @@ class StudioStep:
    # A job the user started by hand is observed by the next step; an unknown kind still needs review.
    if job and job.get('type') not in ('script_structure','part_analysis','image_generation'):raise StudioReviewRequired('Studio đang có tác vụ không rõ loại trước khi Manager bắt đầu. Chờ hoàn tất rồi thử lại.')
    return {'context':{'studio_external_job':(job or {}).get('id'),'studio_ready':True,'studio_script_hash':hashlib.sha256(str(s.get('script','')).encode()).hexdigest()}}
-  if not self.ready():return self.wait('connection',120)
+  if not self.ready():
+   # Nothing is sent while disconnected. While a Studio job is still running (ChatGPT tab reloading or
+   # briefly hung), keep waiting for it like the job itself; otherwise give up after 120 s as before.
+   try:running=bool(self.api.request(self.sid).get('activeJob'))
+   except Exception:running=False
+   return self.wait('connection',1800 if running else 120)
   self.j['stages'].pop(self.stage_key('connection'),None)
   s=self.api.request(self.sid);parts=s.get('parts') or [];job=s.get('activeJob')
   actual={'studio_total_parts':len(parts),'studio_completed_parts':sum(p.get('status')=='complete' for p in parts),'studio_total_scenes':sum(len(p.get('scenes') or []) for p in parts),'studio_current_part':job.get('partId') if job else None,'studio_message':None,'studio_external_job':None}

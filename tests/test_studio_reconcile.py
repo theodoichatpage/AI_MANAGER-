@@ -99,6 +99,14 @@ class ManualStudioWorkTests(unittest.TestCase):
   self.assertTrue(self.step(api).step('STUDIO_SCENES')['waiting'])
   api.s.update(activeJob=None,batchAnalysis=True,analysisQueue=['p2']);api.s['parts'][0]['status']='complete';api.s['parts'][0]['scenes']=[{'prompt':'a'}]
   self.assertTrue(self.step(api).step('STUDIO_SCENES')['waiting']);self.assertEqual(api.posts,[])
+ def test_lost_chatgpt_waits_longer_while_studio_job_runs(self):
+  api=FakeAPI({'id':SID,'script':'S','parts':[{'id':'p1','status':'processing','scenes':[]}],'activeJob':{'id':'u','type':'part_analysis','partId':'p1'}})
+  st=StudioStep(self.c,api,lambda:dict(tab(),chat_connected=False),clock=lambda:self.now)
+  self.assertTrue(st.step('STUDIO_SCENES')['waiting']);self.now+=600
+  self.assertTrue(StudioStep(self.c,api,lambda:dict(tab(),chat_connected=False),clock=lambda:self.now).step('STUDIO_SCENES')['waiting'])
+  api.s['activeJob']=None;self.now+=1
+  with self.assertRaises(TimeoutError):StudioStep(self.c,api,lambda:dict(tab(),chat_connected=False),clock=lambda:self.now).step('STUDIO_SCENES')
+  self.assertEqual(api.posts,[])
  def test_unknown_job_still_needs_review(self):
   from automation_agent.studio_workflow import StudioReviewRequired
   api=FakeAPI({'id':SID,'parts':[],'script':'S','activeJob':{'id':'x','type':'something_else'}})
