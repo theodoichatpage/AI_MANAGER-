@@ -1,0 +1,9 @@
+AI MANAGER v0.2.15 — Kiểm tra nhập dự án Studio
+1. Đóng server Manager cũ. Giải nén, chạy MO_AI_MANAGER.bat.
+2. Mở đúng dự án Studio trong Edge, bật giám sát Manager; giữ tab Studio mở.
+3. Manager → Điều phối Studio → chọn dự án Studio và đúng Edge Profile.
+4. Bấm Nhập dự án Studio vào Manager. Tên dự án Manager được chọn tự động.
+5. Bấm lại để kiểm tra không tạo thêm hồ sơ trùng cùng ID/origin/profile.
+Hồ sơ mới có thư mục riêng và trạng thái Đã dừng. Nhập không chạy phân tích, không tạo ảnh.
+Profile lúc nhập là lựa chọn của bạn, chưa phải bằng chứng tab Studio thuộc profile đó.
+Lưu liên kết/Queue vẫn có giới hạn cũ: Studio ID đã gắn vào dự án khác có thể bị chặn. Bản này chỉ nghiệm thu việc nhập hồ sơ.

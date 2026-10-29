@@ -1,0 +1,542 @@
+[
+  {
+    "module": "pythoncom",
+    "name": "CoInitialize",
+    "references": [
+      {
+        "file": "edge_native.py",
+        "line": 53
+      }
+    ]
+  },
+  {
+    "module": "pythoncom",
+    "name": "CoUninitialize",
+    "references": [
+      {
+        "file": "edge_native.py",
+        "line": 62
+      }
+    ]
+  },
+  {
+    "module": "win32api",
+    "name": "GetModuleHandle",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 4
+      }
+    ]
+  },
+  {
+    "module": "win32api",
+    "name": "OpenProcess",
+    "references": [
+      {
+        "file": "watchdog.py",
+        "line": 14
+      }
+    ]
+  },
+  {
+    "module": "win32clipboard",
+    "name": "CloseClipboard",
+    "references": [
+      {
+        "file": "browser_controller.py",
+        "line": 26
+      }
+    ]
+  },
+  {
+    "module": "win32clipboard",
+    "name": "EmptyClipboard",
+    "references": [
+      {
+        "file": "browser_controller.py",
+        "line": 25
+      }
+    ]
+  },
+  {
+    "module": "win32clipboard",
+    "name": "OpenClipboard",
+    "references": [
+      {
+        "file": "browser_controller.py",
+        "line": 24
+      }
+    ]
+  },
+  {
+    "module": "win32clipboard",
+    "name": "SetClipboardData",
+    "references": [
+      {
+        "file": "browser_controller.py",
+        "line": 25
+      }
+    ]
+  },
+  {
+    "module": "win32com.propsys.propsys",
+    "name": "SHGetPropertyStoreForWindow",
+    "references": [
+      {
+        "file": "edge_native.py",
+        "line": 55
+      }
+    ]
+  },
+  {
+    "module": "win32com.propsys.pscon",
+    "name": "PKEY_AppUserModel_RelaunchCommand",
+    "references": [
+      {
+        "file": "edge_native.py",
+        "line": 59
+      }
+    ]
+  },
+  {
+    "module": "win32com.propsys.pscon",
+    "name": "PKEY_AppUserModel_RelaunchIconResource",
+    "references": [
+      {
+        "file": "edge_native.py",
+        "line": 59
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "CF_UNICODETEXT",
+    "references": [
+      {
+        "file": "browser_controller.py",
+        "line": 25
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "COLOR_WINDOW",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 5
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "ES_MULTILINE",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 8
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "PROCESS_ALL_ACCESS",
+    "references": [
+      {
+        "file": "watchdog.py",
+        "line": 14
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "SW_MAXIMIZE",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 76
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "SW_MINIMIZE",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 76
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "SW_RESTORE",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 69
+      },
+      {
+        "file": "window_manager.py",
+        "line": 76
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "SW_SHOW",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 10
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "WM_CLOSE",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 81
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "WM_DESTROY",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 5
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "WS_CHILD",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 9
+      },
+      {
+        "file": "test_window.py",
+        "line": 8
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "WS_EX_CLIENTEDGE",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 8
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "WS_OVERLAPPEDWINDOW",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 7
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "WS_TABSTOP",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 8
+      }
+    ]
+  },
+  {
+    "module": "win32con",
+    "name": "WS_VISIBLE",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 9
+      },
+      {
+        "file": "test_window.py",
+        "line": 8
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "CreateWindow",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 7
+      },
+      {
+        "file": "test_window.py",
+        "line": 9
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "CreateWindowEx",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 8
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "EnumWindows",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 41
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "GetForegroundWindow",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 62
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "GetProp",
+    "references": [
+      {
+        "file": "edge_controller.py",
+        "line": 30
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "GetWindowText",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 33
+      },
+      {
+        "file": "window_manager.py",
+        "line": 58
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "IsWindow",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 53
+      },
+      {
+        "file": "window_manager.py",
+        "line": 84
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "IsWindowVisible",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 32
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "PostMessage",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 81
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "PostQuitMessage",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 5
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "PumpMessages",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 10
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "RegisterClass",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 6
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "SetProp",
+    "references": [
+      {
+        "file": "edge_controller.py",
+        "line": 146
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "ShowWindow",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 10
+      },
+      {
+        "file": "window_manager.py",
+        "line": 69
+      },
+      {
+        "file": "window_manager.py",
+        "line": 76
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "UpdateWindow",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 10
+      }
+    ]
+  },
+  {
+    "module": "win32gui",
+    "name": "WNDCLASS",
+    "references": [
+      {
+        "file": "test_window.py",
+        "line": 5
+      }
+    ]
+  },
+  {
+    "module": "win32job",
+    "name": "AssignProcessToJobObject",
+    "references": [
+      {
+        "file": "watchdog.py",
+        "line": 15
+      }
+    ]
+  },
+  {
+    "module": "win32job",
+    "name": "CreateJobObject",
+    "references": [
+      {
+        "file": "watchdog.py",
+        "line": 8
+      }
+    ]
+  },
+  {
+    "module": "win32job",
+    "name": "JOB_OBJECT_LIMIT_BREAKAWAY_OK",
+    "references": [
+      {
+        "file": "watchdog.py",
+        "line": 9
+      }
+    ]
+  },
+  {
+    "module": "win32job",
+    "name": "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE",
+    "references": [
+      {
+        "file": "watchdog.py",
+        "line": 9
+      }
+    ]
+  },
+  {
+    "module": "win32job",
+    "name": "JobObjectExtendedLimitInformation",
+    "references": [
+      {
+        "file": "watchdog.py",
+        "line": 8
+      },
+      {
+        "file": "watchdog.py",
+        "line": 10
+      }
+    ]
+  },
+  {
+    "module": "win32job",
+    "name": "QueryInformationJobObject",
+    "references": [
+      {
+        "file": "watchdog.py",
+        "line": 8
+      }
+    ]
+  },
+  {
+    "module": "win32job",
+    "name": "SetInformationJobObject",
+    "references": [
+      {
+        "file": "watchdog.py",
+        "line": 10
+      }
+    ]
+  },
+  {
+    "module": "win32process",
+    "name": "GetWindowThreadProcessId",
+    "references": [
+      {
+        "file": "window_manager.py",
+        "line": 54
+      },
+      {
+        "file": "window_manager.py",
+        "line": 35
+      }
+    ]
+  }
+]

@@ -1,0 +1,8 @@
+AI MANAGER v0.2.18 — sửa thao tác và bố cục compact
+1. Đóng server Manager cũ, giải nén AI_MANAGER_v0.2.18.zip.
+2. Mở MO_AI_MANAGER.bat. Không xóa hoặc đổi thư mục dữ liệu đang dùng.
+3. Vào Điều phối Studio, chọn dự án. Thiết lập không tự thu gọn sau khi chọn hoặc khi cập nhật; mở/đóng bằng thanh tiêu đề.
+4. Nút Lưu liên kết cần Agent online, dự án và Studio ID. Nút Chạy cần workflow đã lưu và dự án Chờ/Đã dừng. Dự án lỗi có nút Chạy lại lỗi; tác vụ cần kiểm tra vẫn giữ guard backend.
+5. Điều khiển ứng dụng: Chrome / Edge / CapCut ba cột, ảnh chụp lấy từ Agent. Công cụ kỹ thuật mở riêng, trạng thái mở giữ khi polling.
+Giao diện compact kiểm tra ở 1920x1080 và 1366x768 CSS pixel. Nội dung chính nằm trong viewport; danh sách/nhật ký dài cuộn bên trong khung. Trình duyệt zoom lớn hoặc màn hình nhỏ dùng bố cục responsive có cuộn để không che nút.
+Không triển khai thêm công đoạn transcript, tạo ảnh hoặc dựng video trong bản này.

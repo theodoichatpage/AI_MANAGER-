@@ -10,6 +10,23 @@ class QueueManager:
   self.db=sqlite3.connect(self.root/'.ai_manager_queue.sqlite3',check_same_thread=False); self.db.row_factory=sqlite3.Row
   self.db.execute('PRAGMA journal_mode=WAL'); self.db.execute('PRAGMA synchronous=FULL')
   self.db.executescript('''CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL, position INTEGER NOT NULL, status TEXT NOT NULL, current_stage TEXT NOT NULL DEFAULT 'Chờ', current_part INTEGER NOT NULL DEFAULT 0, current_scene INTEGER NOT NULL DEFAULT 0, total_parts INTEGER NOT NULL DEFAULT 0, total_scenes INTEGER NOT NULL DEFAULT 0, completed_scenes INTEGER NOT NULL DEFAULT 0, failed_scenes INTEGER NOT NULL DEFAULT 0, retry_count INTEGER NOT NULL DEFAULT 0, started_at TEXT, updated_at TEXT NOT NULL, elapsed_time REAL NOT NULL DEFAULT 0, running_since REAL, sim_done INTEGER NOT NULL DEFAULT 0, sim_total INTEGER NOT NULL DEFAULT 10); CREATE TABLE IF NOT EXISTS log (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, project_id TEXT, message TEXT NOT NULL); CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);''')
+  self.db.execute('CREATE TABLE IF NOT EXISTS studio_links(project_id TEXT PRIMARY KEY, studio_project_id TEXT UNIQUE NOT NULL, origin TEXT NOT NULL, browser TEXT NOT NULL, profile TEXT NOT NULL)')
+  columns={r[1] for r in self.db.execute('PRAGMA table_info(projects)')}
+  if 'execution_mode' not in columns and self.db.execute('SELECT COUNT(*) FROM projects').fetchone()[0]:
+   backup_path=self.root/'.ai_manager_queue.before_phase4.sqlite3'
+   if not backup_path.exists():
+    backup=sqlite3.connect(backup_path)
+    try:self.db.backup(backup)
+    finally:backup.close()
+  if 'browser' not in columns and self.db.execute('SELECT COUNT(*) FROM projects').fetchone()[0]:
+   backup_path=self.root/'.ai_manager_queue.before_edge.sqlite3'
+   if not backup_path.exists():
+    backup=sqlite3.connect(backup_path)
+    try:self.db.backup(backup)
+    finally:backup.close()
+  for key,definition in [('browser',"TEXT NOT NULL DEFAULT 'chrome'"),('browser_profile',"TEXT NOT NULL DEFAULT 'Default'"),('browser_profile_name',"TEXT NOT NULL DEFAULT 'Default'"),('execution_mode',"TEXT NOT NULL DEFAULT 'simulation'"),('automation_task_id','TEXT'),('action_done','INTEGER NOT NULL DEFAULT 0'),('action_total','INTEGER NOT NULL DEFAULT 0')]:
+   if key not in columns:self.db.execute('ALTER TABLE projects ADD COLUMN '+key+' '+definition)
+  self.db.commit()
   with self.lock,self.db:
    for row in self.db.execute("SELECT * FROM projects WHERE status='running'").fetchall(): self._set(row['id'],status='paused',current_stage='Tạm dừng – Chờ tiếp tục',elapsed_time=self._account(dict(row)),running_since=None); self._log(row['id'],'Khôi phục sau khi đóng: tạm dừng, chờ tiếp tục')
    self._enabled(False)
@@ -34,17 +51,34 @@ class QueueManager:
    x=self.db.execute('SELECT * FROM projects WHERE id=?',(pid,)).fetchone()
    if not x: raise ValueError('Không tìm thấy dự án trong hàng đợi')
    return dict(x)
+ def set_browser(self,pid,browser,profile,name):
+  with self.lock,self.db:
+   p=self.get(pid)
+   if p['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi đổi trình duyệt')
+   self._set(pid,browser=browser,browser_profile=profile,browser_profile_name=name)
+   path=Path(p['folder'])/'project.json'
+   if path.exists():
+    data=json.loads(path.read_text(encoding='utf8'));data.update(browser=browser,browser_profile=profile,browser_profile_name=name)
+    temp=path.with_suffix('.tmp');temp.write_text(json.dumps(data,ensure_ascii=False),encoding='utf8');temp.replace(path)
+   self._log(pid,'Đã lưu trình duyệt/profile: '+browser+' / '+profile)
  def _running(self): return self.db.execute("SELECT id FROM projects WHERE status='running'").fetchone()
  def _account(self,p): return p['elapsed_time'] + max(0,time.time()-p['running_since']) if p['running_since'] else p['elapsed_time']
  def _launch(self,p):
   if self._running(): raise ValueError('Một dự án khác đang chạy')
-  self._set(p['id'],status='running',current_stage='Mô phỏng',started_at=p['started_at'] or now(),running_since=time.time()); self._log(p['id'],'Tiếp tục mô phỏng' if p['status']=='paused' else 'Bắt đầu mô phỏng')
+  self._set(p['id'],status='running',current_stage='Automation' if p.get('execution_mode')=='automation' else 'Mô phỏng',started_at=p['started_at'] or now(),running_since=time.time()); self._log(p['id'],'Tiếp tục mô phỏng' if p['status']=='paused' else 'Bắt đầu mô phỏng')
  def _next(self):
   if not self._enabled() or self._running(): return
   # A paused project blocks automatic advancement until explicitly resumed/stopped.
   if self.db.execute("SELECT 1 FROM projects WHERE status='paused'").fetchone(): return
   p=self.db.execute("SELECT * FROM projects WHERE status='waiting' ORDER BY position LIMIT 1").fetchone()
   if p: self._launch(dict(p))
+ def start_selected(self,pid):
+  with self.lock,self.db:
+   p=self.get(pid)
+   if p['execution_mode']!='automation' or not p['automation_task_id']:raise ValueError('Lưu liên kết Studio trước khi chạy')
+   if p['status'] not in ('waiting','stopped'):raise ValueError('Dự án không ở trạng thái chờ/đã dừng')
+   if any(x['id']!=pid and x['status'] in ('waiting','running','paused') for x in self.list()):raise ValueError('Dừng các dự án khác trong hàng đợi trước khi chạy riêng dự án này')
+   self._set(pid,status='waiting');self._enabled(True);self._next()
  def start_all(self):
   with self.lock,self.db:
    self._enabled(True)
@@ -98,3 +132,34 @@ class QueueManager:
    if direction not in (-1,1) or j<0 or j>=len(items): raise ValueError('Không thể di chuyển')
    if items[idx]['status']!='waiting' or items[j]['status']!='waiting': raise ValueError('Chỉ đổi thứ tự giữa các dự án đang chờ')
    self._set(items[idx]['id'],position=items[j]['position']); self._set(items[j]['id'],position=items[idx]['position']); self._log(pid,'Đã thay đổi thứ tự hàng đợi')
+
+ def bind_studio(self,pid,sid,origin,browser,profile):
+  with self.lock,self.db:
+   if self.get(pid)['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi đổi liên kết Studio')
+   other=self.db.execute('SELECT project_id FROM studio_links WHERE studio_project_id=?',(sid,)).fetchone()
+   if other and other[0]!=pid:raise ValueError('Studio ID đã được gán cho dự án khác')
+   self.db.execute('INSERT OR REPLACE INTO studio_links VALUES(?,?,?,?,?)',(pid,sid,origin,browser,profile))
+ def studio_rename(self,pid,name):
+  with self.lock,self.db:
+   if self.get(pid)['name']!=name:self._set(pid,name=name)
+ def studio_progress(self,pid,total,done,scenes):
+  with self.lock,self.db:
+   p=self.get(pid)
+   if p['status']!='running':return
+   self._set(pid,total_parts=total,current_part=done,total_scenes=scenes,completed_scenes=scenes)
+ def attach_automation(self,pid,tid):
+  with self.lock,self.db:
+   p=self.get(pid)
+   if p['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi gắn workflow')
+   self._set(pid,execution_mode='automation',automation_task_id=tid,status='waiting',current_stage='Chờ Automation',action_done=0,action_total=0)
+   self._log(pid,'Đã gắn workflow Windows Agent '+tid)
+ def automation_update(self,pid,done,total,stage,status,error=None):
+  with self.lock,self.db:
+   p=self.get(pid)
+   if p['status']!='running' or p['execution_mode']!='automation':return
+   updates={'action_done':done,'action_total':total,'current_stage':stage}
+   if status in ('completed','failed','needs_review','timeout'):
+    updates.update(status='completed' if status=='completed' else 'failed',elapsed_time=self._account(p),running_since=None)
+    self._log(pid,'Automation '+status+(': '+str(error) if error else ''))
+   self._set(pid,**updates)
+   if status in ('completed','failed','needs_review','timeout'):self._next()

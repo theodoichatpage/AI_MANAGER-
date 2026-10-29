@@ -1,0 +1,10 @@
+AI MANAGER v0.2.18
+Python: 107 tests; 105 PASS, 2 Windows-only SKIP trên Linux.
+Node app controls + Studio UI regression: PASS.
+Browser local HTTP thật: chọn/lọc, dialogs, navigation, toast/STOP, mobile: PASS.
+Fixture UI kết nối: mở/đóng thiết lập giữ sau polling, Lưu/Chạy gửi đúng 1 lệnh: PASS (mock request, không thực thi Windows).
+Desktop 1920x1080 và 1366x768: không cuộn document, nút test nằm trong thẻ. Danh sách/nhật ký dài cuộn nội bộ.
+Chưa nghiệm thu bản mới trên Windows/Edge/Studio/ChatGPT thật.
+Xem UI_v0.2.18.md.
+
+GitHub commit: c5a37dd7dffcecd984329f2cc7a2181d24336110

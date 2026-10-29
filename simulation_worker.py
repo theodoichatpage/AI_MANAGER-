@@ -6,7 +6,7 @@ class SimulationWorker:
  def _loop(self):
   while not self.stop_event.wait(self.interval):
    try:
-    p=next((x for x in self.manager.list() if x['status']=='running'),None)
+    p=next((x for x in self.manager.list() if x['status']=='running' and x.get('execution_mode','simulation')=='simulation'),None)
     if p:
      done=min(p['sim_done']+1,p['sim_total']); self.manager.progress(p['id'],done,p['sim_total'])
      if done==p['sim_total'] and self.manager.get(p['id'])['status']=='running': self.manager.finish(p['id'])
