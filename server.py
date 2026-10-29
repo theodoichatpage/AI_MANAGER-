@@ -9,7 +9,7 @@ from studio_monitor import StudioMonitor
 from extension_monitor import ExtensionMonitor
 from automation_agent.manager_service import AutomationService
 
-VERSION = '0.2.20'
+VERSION = '0.2.21'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase4-windows-agent-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -23,7 +23,7 @@ class StudioPresence:
         with self.lock:
             if data.get('event')=='close': self.tabs.pop((session,tab),None); return
             self.tabs[(session,tab)]={'session_id':session,'tab_id':tab,'chat_connected':bool(data.get('chatReady')),
-                'project_name':str(data.get('projectName','')).strip() or None,'manager_run_id':str(data.get('managerRunId','')),'origin':str(data.get('origin','')),'projects':data.get('projects') if isinstance(data.get('projects'),list) else [],'at':time.time()}
+                'project_name':str(data.get('projectName','')).strip() or None,'manager_run_id':str(data.get('managerRunId','')),'origin':str(data.get('origin','')),'projects':data.get('projects') if isinstance(data.get('projects'),list) else [],'project_state':project_state(data.get('projectState')),'at':time.time()}
     def snapshot(self, session_id=None, run_id=None):
         now=time.time()
         with self.lock:
@@ -32,8 +32,17 @@ class StudioPresence:
             if not matching: return {'studio_tab_open':False,'chat_connected':False,'session_id':None,'project_name':None,'last_seen':None}
             latest=max(matching,key=lambda x:x['at'])
             return {'studio_tab_open':True,'chat_connected':any(v['chat_connected'] for v in matching),
-                'session_id':latest['session_id'],'project_name':latest.get('project_name'),'last_seen':latest['at'],'manager_run_id':latest.get('manager_run_id'),'origin':latest.get('origin'),'projects':latest.get('projects',[])}
+                'session_id':latest['session_id'],'project_name':latest.get('project_name'),'last_seen':latest['at'],'manager_run_id':latest.get('manager_run_id'),'origin':latest.get('origin'),'projects':latest.get('projects',[]),'project_state':latest.get('project_state')}
 PRESENCE=StudioPresence()
+
+def project_state(raw):
+    """Studio-reported content state (counts only, never script text). None when Studio is older."""
+    if not isinstance(raw,dict): return None
+    count=lambda v: int(v) if isinstance(v,(int,float)) and not isinstance(v,bool) and 0<=v<=50_000_000 else 0
+    t=raw.get('transcript') if isinstance(raw.get('transcript'),dict) else {}
+    return {'script_draft_characters':count(raw.get('scriptDraftChars')),'script_server_characters':count(raw.get('serverScriptChars')),
+        'script_sync':str(raw.get('scriptSync',''))[:40] or None,'transcript_exists':bool(t.get('exists')),'transcript_characters':count(t.get('chars')),
+        'transcript_segments':count(t.get('segments')),'transcript_video_id':str(t.get('videoId',''))[:40] or None}
 
 def atomic(path, data):
     path.parent.mkdir(parents=True, exist_ok=True); fd, name = tempfile.mkstemp(dir=path.parent, prefix='.tmp-')

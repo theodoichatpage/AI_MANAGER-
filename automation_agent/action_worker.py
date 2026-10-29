@@ -12,7 +12,7 @@ def dispatch(a,context,home,settings):
  if target.get('studio_project_id'):
   from .resource_lock import StudioResource
   StudioResource(home).acquire(target,name)
- if name in ('STUDIO_READY','STUDIO_ANALYZE','STUDIO_SCENES','STUDIO_IMAGES'):
+ if name in ('STUDIO_READY','STUDIO_TRANSCRIPT','STUDIO_ANALYZE','STUDIO_SCENES','STUDIO_IMAGES'):
   from .studio_workflow import StudioReviewRequired
   try:wm.validate_target(target)
   except wm.WindowLostError:raise
@@ -120,5 +120,5 @@ def main():
  try:
   result=dispatch(data['action'],data.get('context',{}),data['home'],data.get('settings',{}))
   print(json.dumps({'success':True,'result':result},ensure_ascii=True),flush=True)
- except Exception as e:print(json.dumps({'success':False,'error':str(e),'error_code':'WINDOW_LOST' if isinstance(e,wm.WindowLostError) else 'STUDIO_REVIEW' if type(e).__name__=='StudioReviewRequired' or (data.get('context',{}).get('studio_project_id') and not str(data.get('action',{}).get('action','')).startswith('STUDIO_')) else 'ACTION_ERROR'},ensure_ascii=True),flush=True)
+ except Exception as e:print(json.dumps({'success':False,'error':str(e),'error_code':'WINDOW_LOST' if isinstance(e,wm.WindowLostError) else 'SCRIPT_MISSING' if type(e).__name__=='StudioScriptMissing' else 'STUDIO_REVIEW' if type(e).__name__=='StudioReviewRequired' or (data.get('context',{}).get('studio_project_id') and not str(data.get('action',{}).get('action','')).startswith('STUDIO_')) else 'ACTION_ERROR'},ensure_ascii=True),flush=True)
 if __name__=='__main__':main()

@@ -6,6 +6,8 @@ API='https://wtxgjsorpqjanxoevxuw.supabase.co/functions/v1/studio-api'
 ID=re.compile(r'[A-Za-z0-9-]{16,64}')
 
 class StudioReviewRequired(RuntimeError):pass
+class StudioScriptMissing(ValueError):pass
+SCRIPT_WAIT=600
 
 def atomic(path,value):
  path=Path(path);path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_suffix('.tmp')
@@ -43,7 +45,7 @@ def workflow(sid,url,browser,profile,folder,script,context=None,stages=None,work
  def a(name,**kw):return dict(action=name,target_app=browser,**({'browser_profile':profile} if browser=='edge' else {}),**kw)
  actions=[a('OPEN_APP',timeout=25),a('WAIT_WINDOW',timeout=20),a('FOCUS_WINDOW'),a('NEW_TAB'),a('OPEN_URL',url=launch),a('WAIT_PAGE',url=launch,timeout=30),a('STUDIO_READY')]
  if 'analysis' in stages:
-  if not work_config or 'analysis' in work_config['tasks']:actions.append(a('STUDIO_ANALYZE'))
+  if not work_config or 'analysis' in work_config['tasks']:actions+=[a('STUDIO_TRANSCRIPT'),a('STUDIO_ANALYZE')]
   if not work_config or 'scenes' in work_config['tasks']:actions.append(a('STUDIO_SCENES'))
  if 'images' in stages:actions.append(a('STUDIO_IMAGES'))
  return actions,target
@@ -65,14 +67,40 @@ class StudioStep:
   p=self.presence();self.c['studio_state']='connected' if p.get('studio_tab_open') else 'disconnected';self.c['chatgpt_state']='connected' if p.get('chat_connected') else 'disconnected'
   return p.get('studio_tab_open') and p.get('chat_connected') and p.get('session_id')==self.sid and p.get('manager_run_id')==self.c['studio_run_id'] and p.get('origin')==self.c['studio_origin']
  def wait(self,name,limit,context=None):
-  start=self.j['stages'].setdefault(name,self.clock());self.save()
+  # A retry epoch gets a fresh watchdog; an old attempt's start time must not time out the new one.
+  start=self.j['stages'].setdefault(self.stage_key(name),self.clock());self.save()
   if self.clock()-start>limit and self.ledger and name in ('connection','STUDIO_READY'):raise StudioReviewRequired('Mất Studio/ChatGPT quá thời gian. Tạm dừng và đối soát khi Resume.')
-  if self.clock()-start>limit:raise TimeoutError('Studio quá thời gian tại '+name+'; giữ checkpoint, không gửi lại prompt tự động')
+  if self.clock()-start>limit:
+   why={'WAITING_CHATGPT':' — Studio đã mở nhưng ChatGPT/Extension chưa kết nối','WAITING_STUDIO':' — chưa thấy tab Studio của lượt chạy này'}.get(self.c.get('studio_ready_wait'),'')
+   raise TimeoutError('Studio quá thời gian tại '+name+why+'; giữ checkpoint, không gửi lại prompt tự động')
   values=dict(context or {},studio_waiting_action=name)
   if self.ledger:
    values.update(workflow_id=self.c['studio_run_id'],last_successful_task=self.ledger.data.get('last_successful_task'),last_successful_subtask=self.ledger.data.get('last_successful_subtask'),task_id=self.ledger.data.get('current_task'),subtask_id=self.ledger.data.get('current_subtask'),work_status=self.ledger.data.get('status'),studio_state=self.c.get('studio_state'),chatgpt_state=self.c.get('chatgpt_state'),result_path=str(self.ledger.path))
   return {'waiting':True,'context':values}
  def command_key(self,key):return key+'#'+str(self.c.get('studio_retry_epoch',0))
+ def stage_key(self,name):return self.command_key(name) if self.c.get('studio_retry_epoch') else name
+ def script_wait(self,name,s,actual,facts):
+  """No script on the Studio server yet: re-read every poll and wait (bounded) instead of failing on a stale read."""
+  from .studio_reconcile import validate,SCRIPT_MISSING,SCRIPT_NOT_SYNCED
+  draft=facts['script_draft_character_count']
+  code=SCRIPT_NOT_SYNCED if draft else SCRIPT_MISSING
+  if draft and facts.get('script_sync')=='unconfirmed':message='Studio có kịch bản nhập tay ('+str(draft)+' ký tự) chưa xác nhận thuộc dự án này. Kiểm tra kịch bản trong Studio rồi bấm "Lưu kịch bản này cho AI MANAGER".'
+  elif draft:message='Studio có kịch bản nhập tay ('+str(draft)+' ký tự); đang chờ Studio lưu lên máy chủ.'
+  else:message=validate(facts,'STUDIO_ANALYZE')[1]
+  if self.ledger:self.ledger.update('analysis','structure','WAITING_STUDIO',error_code=code,reason=message)
+  key=self.command_key('script');start=self.j['stages'].setdefault(key,self.clock());self.save()
+  if self.clock()-start>SCRIPT_WAIT:raise StudioScriptMissing(SCRIPT_MISSING+': '+message)
+  return {'waiting':True,'context':dict(actual,studio_waiting_action=name,studio_stage='Chờ kịch bản',studio_error_code=code,studio_message=message,studio_reconcile=facts)}
+ def script_checkpoint(self,script):
+  """SAVE -> VERIFY -> CHECKPOINT the exact script Studio holds before analysis is requested."""
+  digest=hashlib.sha256(script.encode('utf8')).hexdigest()
+  if (self.j.get('script') or {}).get('sha256')==digest:return
+  path=self.folder/'analysis'/'studio_script.txt';path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_suffix('.tmp')
+  with tmp.open('w',encoding='utf8',newline='') as f:f.write(script);f.flush();os.fsync(f.fileno())
+  tmp.replace(path)
+  if hashlib.sha256(path.read_text(encoding='utf8').encode('utf8')).hexdigest()!=digest:raise StudioReviewRequired('Lưu kịch bản không khớp checksum; dừng để kiểm tra')
+  self.j['script']={'sha256':digest,'characters':len(script),'path':str(path),'at':self.clock()};self.j['stages'].pop(self.command_key('script'),None);self.save()
+  if self.ledger:self.ledger.update('analysis','script','COMPLETED',result_path=str(path),characters=len(script))
  def receipt(self,key,job):
   return next((v for k,v in self.j['commands'].items() if k.startswith(key+'#') and v.get('job_id')==job.get('id')), {})
  def send(self,key,route,body,session):
@@ -92,15 +120,26 @@ class StudioStep:
  def step(self,name):
   if name=='STUDIO_READY':
    if not self.ready():
-    if self.ledger:self.ledger.update('connection','studio','WAITING_CHATGPT' if self.presence().get('studio_tab_open') else 'WAITING_STUDIO')
-    return self.wait(name,120)
+    self.c['studio_ready_wait']='WAITING_CHATGPT' if self.c.get('studio_state')=='connected' else 'WAITING_STUDIO'
+    if self.ledger:self.ledger.update('connection','studio',self.c['studio_ready_wait'])
+    return self.wait(name,120,{'studio_stage':'Chờ ChatGPT/Extension' if self.c['studio_ready_wait']=='WAITING_CHATGPT' else 'Chờ tab Studio'})
    s=self.api.request(self.sid)
    if s.get('activeJob'):raise StudioReviewRequired('Studio đang có tác vụ trước khi Manager bắt đầu. Chờ hoàn tất rồi thử lại.')
    return {'context':{'studio_ready':True,'studio_script_hash':hashlib.sha256(str(s.get('script','')).encode()).hexdigest()}}
   if not self.ready():return self.wait('connection',120)
-  self.j['stages'].pop('connection',None)
+  self.j['stages'].pop(self.stage_key('connection'),None)
   s=self.api.request(self.sid);parts=s.get('parts') or [];job=s.get('activeJob')
   actual={'studio_total_parts':len(parts),'studio_completed_parts':sum(p.get('status')=='complete' for p in parts),'studio_total_scenes':sum(len(p.get('scenes') or []) for p in parts),'studio_current_part':job.get('partId') if job else None}
+  if name=='STUDIO_TRANSCRIPT':
+   # GET_TRANSCRIPT is decided by the real Studio state, never skipped by default.
+   from .studio_reconcile import reconcile
+   facts=reconcile(s,self.presence())
+   if facts['analysis_completed']:state,reason='SKIPPED','Studio đã phân tích cấu trúc; không cần transcript'
+   elif facts['transcript_exists']:state,reason='SKIPPED','Transcript đã có ('+str(facts['transcript_character_count'])+' ký tự); không lấy lại'
+   elif facts['script_content_exists'] or str(self.c.get('studio_script') or '').strip():state,reason='SKIPPED','Kịch bản đã có ('+str(facts['script_character_count'] or len(str(self.c.get('studio_script')).strip()))+' ký tự); dùng kịch bản, không cần transcript'
+   else:return self.script_wait(name,s,actual,facts)
+   if self.ledger and not self.ledger.get('transcript','transcript').get('status') in ('COMPLETED','SKIPPED'):self.ledger.update('transcript','transcript',state,reason=reason)
+   return {'context':dict(actual,studio_stage='Transcript',studio_transcript_state=reason,studio_error_code=None,studio_message=None,studio_reconcile=facts,studio_waiting_action=None)}
   if name=='STUDIO_ANALYZE':
    if parts:
     if self.ledger:self.ledger.update('analysis','structure','COMPLETED' if any(k.startswith('structure#') for k in self.j['commands']) else 'SKIPPED',reason='Studio đã có cấu trúc; không reset')
@@ -111,8 +150,12 @@ class StudioStep:
     if job.get('id')!=receipt.get('job_id'):raise StudioReviewRequired('Tác vụ Studio không thuộc lệnh Manager đã xác nhận')
    else:
     if s.get('status')=='error' and not self.c.get('studio_retry_epoch'):raise RuntimeError('Studio lỗi: '+str(s.get('lastError') or 'Phân tích thất bại'))
+    # Studio's server copy wins; the Manager project's own script is only a fallback.
     script=str(s.get('script') or self.c.get('studio_script') or '').strip()
-    if not script:raise ValueError('Dự án chưa có kịch bản')
+    if not script:
+     from .studio_reconcile import reconcile
+     return self.script_wait(name,s,actual,reconcile(s,self.presence()))
+    self.script_checkpoint(script)
     s=self.send('structure','/analysis',{'script':script,'confirmReset':False,'expectedWorkEpoch':s.get('workEpoch',0)},s)
    return self.wait(name,1800,dict(actual,studio_stage='Phân tích cấu trúc'))
   if name=='STUDIO_IMAGES':

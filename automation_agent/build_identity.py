@@ -3,7 +3,7 @@ import hashlib,json,os,subprocess,sys
 from pathlib import Path
 from functools import lru_cache
 from importlib.metadata import version,PackageNotFoundError
-VERSION='0.2.20'
+VERSION='0.2.21'
 
 def fingerprint():
  h=hashlib.sha256();root=Path(__file__).parent

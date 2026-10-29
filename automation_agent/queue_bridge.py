@@ -16,6 +16,8 @@ class QueueBridge:
       self.queue.pause(p['id']);continue
      task=next((t for t in state.get('tasks',[]) if t['id']==p.get('automation_task_id')),None)
      if not task:continue
+     # A snapshot older than this run (e.g. the failed task before Retry) must never be applied again.
+     if task['status'] in ('completed','failed','timeout') and task.get('updated_at') and float(task['updated_at'])<float(p.get('running_since') or 0):continue
      if task['status'] in ('held','paused','stopped'):
       self.agent.request('/release',{'task_id':task['id']},timeout=1);continue
      stage=task.get('context',{}).get('studio_stage') or task.get('current_action') or task.get('current_stage','Automation')

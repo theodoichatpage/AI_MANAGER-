@@ -1,9 +1,20 @@
-AI MANAGER v0.2.20 — bản kiểm tra, chưa PASS nghiệm thu toàn bộ workflow thật
-Python: 134 tests, 132 PASS, 2 Windows-only SKIP; 0 failures.
-Node regression app controls/Studio UI: PASS.
-Browser local HTTP và UI fixture: chọn 3 dự án, cấu hình riêng, batch payload, giao diện desktop/mobile: PASS. Không thực thi Windows/ChatGPT.
-Unit queue + worker API giả: A→B→C, scope, result/checkpoint, lock, retry/backoff, reconciliation, pause/stop, critical pause, browser recovery identity: PASS.
-Windows/Edge/Studio/Extension/ChatGPT thật với bản mới: CHƯA KIỂM TRA.
-Giới hạn và các mục chưa hỗ trợ: RELEASE_v0.2.20.md.
+AI MANAGER v0.2.21 — kiểm tra ngày 2026-10-29 trên Windows 10 Pro (máy người dùng)
 
-Commit: b4dcf5fc0b0a9402cfd444a80181cb222660a290
+Python (runtime-v02): 147 tests, 145 PASS, 1 SKIP, 2 ERROR có sẵn từ v0.2.20
+  (test_work_orchestration: WinError 32 khi xóa thư mục tạm có SQLite đang mở — lỗi dọn dẹp test trên Windows).
+  test_http_restart / test_startup_port không chạy khi Manager thật đang dùng cổng 8765 (hai test này gọi vào Manager thật).
+Test mới tests/test_studio_reconcile.py: 15 PASS.
+Studio preview (phase3-manager-presence f2d1d41): vite build PASS; manager-launch 6/6 PASS; Vercel deploy success.
+
+Thực tế Windows, project "1 Đời Nguyễn Du" (Edge Profile 1, Studio preview):
+PASS  Chạy lại lỗi: REFRESH → RECONCILE → VALIDATE → RESUME, ghi analysis/studio_reconcile.json, xóa lỗi cũ, không fail lại ngay.
+PASS  Tab Studio đã đóng → mở lại đúng URL/nonce cũ trong Edge (OPEN_APP → … → WAIT_PAGE).
+PASS  Studio bản mới báo bản nháp 34.740 ký tự, transcript 34.740 ký tự / 939 đoạn; Manager đọc được (trước đây = 0).
+PASS  Restart Manager: checkpoint giữ nguyên; tab Studio tự kết nối lại Manager mới.
+PASS  Chạy lại khi tab còn mở → tiếp tục tại STUDIO_READY, không mở thêm tab, watchdog mới.
+PASS  Pause / Resume / STOP ALL: giữ checkpoint bước 6; Studio không nhận lệnh nào.
+PASS  ChatGPT/Extension chưa kết nối → chờ 120 giây rồi dừng, không gửi gì, giữ checkpoint.
+CHƯA KIỂM  Lưu kịch bản → Phân tích → Phân cảnh → Tạo ảnh thật: ChatGPT Extension đang heartbeat_stopped,
+           và bản nháp cũ chưa xác nhận thuộc dự án (cần bấm "Lưu kịch bản này cho AI MANAGER").
+CHƯA KIỂM  Đóng/mở lại trình duyệt giữa chừng (browser reconnect), Part đã hoàn thành trên dữ liệu thật,
+           bước STUDIO_TRANSCRIPT trên task mới (task hiện có được tạo từ v0.2.20).

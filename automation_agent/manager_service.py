@@ -121,7 +121,30 @@ class AutomationService:
    if p['status']=='failed' and p.get('execution_mode')=='automation' and (not pid or pid==p['id']):
     t=tasks.get(p.get('automation_task_id'))
     if not t or t['status']=='needs_review':raise ValueError('Task cần kiểm tra thủ công, không tự chạy lại thao tác chưa rõ kết quả')
-    self.client.request('/requeue',{'task_id':t['id']})
+    body={'task_id':t['id']}
+    if t.get('context',{}).get('studio_project_id'):body.update(self.reconcile_studio(p,t))
+    self.client.request('/requeue',body,timeout=10)
+  try:
+   state=self.client.request('/state',timeout=3)
+   with self.client.lock:self.client.cache.update(tasks=state.get('tasks',self.client.cache.get('tasks',[])))
+  except Exception:pass
+ def reconcile_studio(self,project,task):
+  """REFRESH -> RECONCILE -> VALIDATE before RESUME. The stored error is never the source of truth."""
+  from .studio_reconcile import refresh,reconcile,validate,read_presence,is_script_error
+  from .studio_workflow import atomic
+  import time
+  c=task['context'];session,tab=refresh(c['studio_project_id']);facts=reconcile(session,tab)
+  try:run_tab=bool(read_presence(c['studio_project_id'],c.get('studio_run_id')).get('studio_tab_open'))
+  except Exception:run_tab=False
+  names=[a['action'] for a in task['actions']];index=task['next_action'];action=names[index] if index<len(names) else None
+  code,message=validate(facts,action)
+  # Only block when Studio's live tab proves nothing is there; otherwise the resumed step waits and re-reads.
+  blocked=bool(code) and facts['transcript_known']
+  report=dict(facts,task_id=task['id'],previous_error=task.get('error'),previous_action=action,run_tab_open=run_tab,error_code=code,message=message,
+   decision='blocked' if blocked else 'resolved' if is_script_error(task.get('error')) and facts['script_content_exists'] else 'resume',at=time.time())
+  atomic(Path(project['folder'])/'analysis'/'studio_reconcile.json',report)
+  if blocked:raise ValueError(code+': '+message)
+  return {'reconcile':facts,'run_tab_open':run_tab}
  def stop_all(self):
   self.queue_getter().stop_all()
   if self.client.process and self.client.process.poll() is None:self.client.stop()
