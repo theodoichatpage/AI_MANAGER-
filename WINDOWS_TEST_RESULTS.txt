@@ -25,6 +25,11 @@ PASS  Hội thoại dài → Extension tự mở hội thoại ChatGPT mới (Ph
 PASS  Hàng đợi không còn tự tạm dừng khi Agent chậm một nhịp; hoàn tất của Agent được ghi nhận.
 CHƯA ĐẠT  Tab ChatGPT đôi khi vẫn "not responding" khi đang viết (Phần 11 với 0.4.30); InPrivate không Extension thì không đứng.
            Phần 12–13 chạy êm với 0.4.30; cần thêm lượt chạy/Performance profile để kết luận.
-CHƯA KIỂM  Tạo ảnh: task này được tạo từ v0.2.20 chỉ gồm Phân tích/Phân cảnh.
+PASS  Tạo ảnh thử cảnh 1–10 (ChatGPT Plus, Extension 0.4.31–0.4.33): 10/10 ảnh lưu + xác minh checksum/định dạng,
+      10 ảnh khác nhau, 1672x941 (16:9), đúng thứ tự cảnh; Manager ghi hoàn tất (18:14).
+      Thời gian gửi → đã lưu khi chạy trơn: 62–200 s (cảnh 2,3,4,9,10; trung vị ~2,5 phút).
+      Sự cố: cảnh 1 ChatGPT bỏ qua lệnh (đã thêm tự nhắc 0.4.32); cảnh 5 kẹt bước gửi ~5 phút rồi tự gỡ;
+      cảnh 6 ảnh không về Studio tới khi cài 0.4.33 (mã job trong lệnh ảnh); cảnh 7 tab treo → watchdog tự tải lại, tự đồng bộ;
+      cảnh 8 ChatGPT hỏi chọn 1/2 ảnh → người dùng chọn tay (0.4.34 tự chọn ảnh 1, chưa kiểm chứng thật).
 CHƯA KIỂM  Đóng/mở lại trình duyệt giữa chừng (browser reconnect), Part đã hoàn thành trên dữ liệu thật,
            bước STUDIO_TRANSCRIPT trên task mới (task hiện có được tạo từ v0.2.20).
