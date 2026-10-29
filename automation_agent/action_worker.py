@@ -12,7 +12,7 @@ def dispatch(a,context,home,settings):
  if target.get('studio_project_id'):
   from .resource_lock import StudioResource
   StudioResource(home).acquire(target,name)
- if name in ('STUDIO_READY','STUDIO_TRANSCRIPT','STUDIO_ANALYZE','STUDIO_SCENES','STUDIO_IMAGES'):
+ if name in ('STUDIO_READY','STUDIO_TRANSCRIPT','STUDIO_ANALYZE','STUDIO_SCENES','STUDIO_IMAGES','STUDIO_LANES','STUDIO_PARALLEL'):
   from .studio_workflow import StudioReviewRequired
   try:wm.validate_target(target)
   except wm.WindowLostError:raise

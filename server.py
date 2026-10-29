@@ -9,21 +9,42 @@ from studio_monitor import StudioMonitor
 from extension_monitor import ExtensionMonitor
 from automation_agent.manager_service import AutomationService
 
-VERSION = '0.2.21'
+VERSION = '0.2.22'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase4-windows-agent-preview.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
 
+def worker_info(raw):
+    """One Studio tab's ChatGPT lane (browser profile): masked account, never the e-mail or page text."""
+    if not isinstance(raw,dict) or not re.fullmatch(r'[A-Za-z0-9_-]{6,64}',str(raw.get('laneId',''))): return None
+    acc=raw.get('account') if isinstance(raw.get('account'),dict) else {}
+    num=lambda v: int(v) if isinstance(v,(int,float)) and not isinstance(v,bool) and 0<=v<=1000 else 0
+    return {'lane_id':raw['laneId'],'lane_tab':bool(raw.get('lane')),'extension_version':str(raw.get('extensionVersion',''))[:20],
+        'account_key':re.sub(r'[^a-f0-9]','',str(acc.get('key','')))[:12] or None,'account_plan':str(acc.get('plan',''))[:40] or None,'account_label':str(acc.get('label',''))[:80] or None,
+        'extension_job':str(raw.get('extensionJob',''))[:64],'chat_tabs':num(raw.get('chatTabs')),'dispatcher':bool(raw.get('dispatcher'))}
+
 class StudioPresence:
-    def __init__(self, ttl=15): self.ttl=ttl; self.lock=threading.RLock(); self.tabs={}
+    def __init__(self, ttl=15): self.ttl=ttl; self.lock=threading.RLock(); self.tabs={}; self.commands={}
+    def command(self, session_id, run_id, value):
+        """A request for the Studio tab of one run (e.g. get transcript + rewrite), handed over with the next presence reply."""
+        with self.lock:
+            if value is None: self.commands.pop((session_id,run_id),None)
+            else: self.commands[(session_id,run_id)]=value
+    def pending(self, data):
+        with self.lock: return self.commands.get((str(data.get('sessionId','')),str(data.get('managerRunId',''))))
+    def workers(self, session_id):
+        """Live ChatGPT lanes for a project, one row per Studio tab (duplicates show two tabs in one browser)."""
+        now=time.time()
+        with self.lock:
+            return [dict(v['worker'],tab_id=v['tab_id'],chat_connected=v['chat_connected'],manager_run_id=v.get('manager_run_id'),seen=v['at']) for v in self.tabs.values() if v['session_id']==session_id and v.get('worker') and now-v['at']<=self.ttl]
     def update(self, data):
         session=str(data.get('sessionId','')).strip(); tab=str(data.get('tabId','')).strip()
         if not session or not tab: return
         with self.lock:
             if data.get('event')=='close': self.tabs.pop((session,tab),None); return
             self.tabs[(session,tab)]={'session_id':session,'tab_id':tab,'chat_connected':bool(data.get('chatReady')),
-                'project_name':str(data.get('projectName','')).strip() or None,'manager_run_id':str(data.get('managerRunId','')),'origin':str(data.get('origin','')),'projects':data.get('projects') if isinstance(data.get('projects'),list) else [],'project_state':project_state(data.get('projectState')),'at':time.time()}
+                'project_name':str(data.get('projectName','')).strip() or None,'manager_run_id':str(data.get('managerRunId','')),'origin':str(data.get('origin','')),'projects':data.get('projects') if isinstance(data.get('projects'),list) else [],'project_state':project_state(data.get('projectState')),'worker':worker_info(data.get('worker')),'at':time.time()}
     def snapshot(self, session_id=None, run_id=None):
         now=time.time()
         with self.lock:
@@ -32,7 +53,8 @@ class StudioPresence:
             if not matching: return {'studio_tab_open':False,'chat_connected':False,'session_id':None,'project_name':None,'last_seen':None}
             latest=max(matching,key=lambda x:x['at'])
             return {'studio_tab_open':True,'chat_connected':any(v['chat_connected'] for v in matching),
-                'session_id':latest['session_id'],'project_name':latest.get('project_name'),'last_seen':latest['at'],'manager_run_id':latest.get('manager_run_id'),'origin':latest.get('origin'),'projects':latest.get('projects',[]),'project_state':latest.get('project_state')}
+                'session_id':latest['session_id'],'project_name':latest.get('project_name'),'last_seen':latest['at'],'manager_run_id':latest.get('manager_run_id'),'origin':latest.get('origin'),'projects':latest.get('projects',[]),'project_state':latest.get('project_state'),
+                'workers':[dict(v['worker'],tab_id=v['tab_id'],chat_connected=v['chat_connected'],manager_run_id=v.get('manager_run_id'),seen=v['at']) for v in self.tabs.values() if v['session_id']==latest['session_id'] and v.get('worker')]}
 PRESENCE=StudioPresence()
 
 def project_state(raw):
@@ -42,7 +64,39 @@ def project_state(raw):
     t=raw.get('transcript') if isinstance(raw.get('transcript'),dict) else {}
     return {'script_draft_characters':count(raw.get('scriptDraftChars')),'script_server_characters':count(raw.get('serverScriptChars')),
         'script_sync':str(raw.get('scriptSync',''))[:40] or None,'transcript_exists':bool(t.get('exists')),'transcript_characters':count(t.get('chars')),
-        'transcript_segments':count(t.get('segments')),'transcript_video_id':str(t.get('videoId',''))[:40] or None}
+        'transcript_segments':count(t.get('segments')),'transcript_video_id':str(t.get('videoId',''))[:40] or None,'pipeline':pipeline_state(raw.get('pipeline'))}
+
+def pipeline_state(raw):
+    if not isinstance(raw,dict): return None
+    num=lambda v: int(v) if isinstance(v,(int,float)) and not isinstance(v,bool) and 0<=v<=100000 else 0
+    return {'id':str(raw.get('id',''))[:64],'stage':str(raw.get('stage',''))[:20],'done':num(raw.get('done')),'total':num(raw.get('total')),'attempts':num(raw.get('attempts')),'error':str(raw.get('error',''))[:500] or None}
+
+YOUTUBE=re.compile(r'https://(www\.|m\.)?(youtube\.com/(watch\?v=|shorts/|live/)|youtu\.be/)[A-Za-z0-9_-]{6,}[^\s]*')
+def studio_deploy(data):
+    """Dự án mới -> Triển khai: create the Manager project and its Studio project, attach the workflow, start it.
+    Source is a YouTube link (Studio gets the transcript and rewrites it) or a script typed in Manager."""
+    from automation_agent.studio_workflow import StudioAPI
+    name=str(data.get('name','')).strip()[:120]; url=str(data.get('youtube_url','')).strip(); script=str(data.get('script','')).strip()
+    if url and not YOUTUBE.fullmatch(url): raise ValueError('Link YouTube không hợp lệ')
+    if not url and not script: raise ValueError('Nhập link YouTube hoặc dán kịch bản')
+    if len(script)>2_000_000: raise ValueError('Kịch bản quá dài')
+    tasks=[k for k in ('analysis','scenes','images') if k in (data.get('tasks') or ['analysis','scenes'])]
+    if 'analysis' not in tasks: raise ValueError('Dự án mới cần bước Phân tích kịch bản')
+    lanes=data.get('lanes') or [{'browser':data.get('browser','edge'),'profile':data.get('browser_profile') or 'Default'}]
+    browser=lanes[0]['browser']; profile=lanes[0].get('profile') or 'Default'
+    if browser!='edge': raise ValueError('Dự án mới chạy trên Edge (trình duyệt chính); Chrome chỉ dùng làm tab ChatGPT phụ')
+    if not automation().snapshot().get('online'): raise ValueError('Windows Agent chưa kết nối')
+    p=create_project(name or ('YouTube '+url.rsplit('/',1)[-1][:40] if url else ''),script); manager().add(p); manager().stop(p['id'])
+    sid=uuid.uuid4().hex; api=StudioAPI(); api.create(sid)
+    if script: api.request(sid,'/script',{'script':script})
+    work={'tasks':tasks,'scopes':{},'error_policy':'continue','retry_limit':2,'lanes':lanes}
+    extra={'studio_youtube_url':url,'studio_rewrite':bool(data.get('rewrite',True)),'studio_language':'en' if data.get('language')=='en' else 'vi'} if url else {}
+    if url and str(data.get('rewrite_style','')).strip(): extra['studio_rewrite_style']=str(data['rewrite_style']).strip()[:20000]
+    studio_url=str(data.get('studio_url') or 'https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app/')
+    automation().control({'command':'studio_attach','project':p['id'],'studio_project_id':sid,'studio_url':studio_url,'browser':browser,'browser_profile':profile,'stages':['analysis']+(['images'] if 'images' in tasks else []),'work_config':work,'studio_extra':extra})
+    if data.get('start',True):
+        q=manager(); automation().ensure_bridge(); automation().resume_studio([p['id']]); q.start_selected(p['id'])
+    return {'project':p['id'],'studio_project_id':sid,'name':p['name']}
 
 def atomic(path, data):
     path.parent.mkdir(parents=True, exist_ok=True); fd, name = tempfile.mkstemp(dir=path.parent, prefix='.tmp-')
@@ -190,7 +244,15 @@ class Handler(BaseHTTPRequestHandler):
                 if data.get('managerRunId'):
                     origin=self.headers.get('Origin','')
                     if origin!=data.get('origin') or not re.fullmatch(r'https://video-image-studio(?:-[a-z0-9-]+)?\.vercel\.app',origin):return self.send(403,{'error':'Studio origin không khớp'},cors=True)
-                PRESENCE.update(data); return self.send(200,{'ok':True},cors=True)
+                PRESENCE.update(data); return self.send(200,{'ok':True,'command':PRESENCE.pending(data) if data.get('managerRunId') else None},cors=True)
+            if path=='/api/studio-command':
+                # Only the local Windows Agent (no browser Origin) may queue a request for a Studio tab.
+                if self.headers.get('Origin'): return self.send(403,{'error':'Nguồn không hợp lệ'})
+                sid=str(data.get('sessionId','')); run=str(data.get('runId',''))
+                if not re.fullmatch(r'[A-Za-z0-9-]{16,64}',sid) or not re.fullmatch(r'[a-f0-9]{32}',run): return self.send(400,{'error':'Mã dự án/lượt chạy không hợp lệ'})
+                cmd=data.get('command')
+                if cmd is not None and (not isinstance(cmd,dict) or cmd.get('type')!='transcript_pipeline' or len(json.dumps(cmd))>40000): return self.send(400,{'error':'Lệnh không hợp lệ'})
+                PRESENCE.command(sid,run,cmd); return self.send(200,{'ok':True})
             if path=='/api/ext/heartbeat':
                 origin=self.headers.get('Origin','')
                 if origin and not origin.startswith('chrome-extension://'): return self.send(403,{'error':'Nguồn không hợp lệ'})
@@ -246,6 +308,7 @@ class Handler(BaseHTTPRequestHandler):
                         q.add(p);q.stop(p['id'])
                     return self.send(200,p)
                 if path=='/api/project': p=create_project(str(data.get('name','')),str(data.get('script',''))); manager().add(p); return self.send(201,p)
+                if path=='/api/studio-deploy': return self.send(201,studio_deploy(data))
                 if path=='/api/root':
                     global MANAGER,WORKER
                     if MANAGER and any(p['status'] in ('running','paused') for p in MANAGER.list()): raise ValueError('Dừng hàng đợi trước khi đổi thư mục.')

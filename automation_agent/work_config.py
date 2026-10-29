@@ -1,5 +1,19 @@
 """Project-specific tasks and ordinal scopes."""
+import re
 KINDS=('analysis','scenes','images','retry_images','sync')
+def lanes(raw):
+ """ChatGPT lanes: the main browser first, then extra browser profiles (each with its own ChatGPT + Extension)."""
+ if raw is None:return []
+ if not isinstance(raw,list) or len(raw)>4:raise ValueError('Tối đa 4 tab ChatGPT song song')
+ out=[]
+ for row in raw:
+  if not isinstance(row,dict) or row.get('browser') not in ('edge','chrome'):raise ValueError('Mỗi tab ChatGPT cần trình duyệt Edge hoặc Chrome')
+  profile=str(row.get('profile') or 'Default')
+  if not re.fullmatch(r'(Default|Profile \d{1,3})',profile):raise ValueError('Hồ sơ trình duyệt không hợp lệ: '+profile)
+  key=(row['browser'],profile)
+  if key in [(x['browser'],x['profile']) for x in out]:raise ValueError('Hai tab ChatGPT không được dùng cùng một hồ sơ trình duyệt (Extension chỉ dùng 1 tab mỗi hồ sơ)')
+  out.append({'browser':row['browser'],'profile':profile})
+ return out
 def normalize(raw):
  if not isinstance(raw,dict):raise ValueError('Cấu hình phải là object')
  selected=raw.get('tasks',[])
@@ -18,7 +32,7 @@ def normalize(raw):
    if not isinstance(scope.get('items'),list) or not scope['items'] or any(type(x)!=int or not 1<=x<=100000 for x in scope['items']):raise ValueError('Nhập số thứ tự dương')
    scope['items']=sorted(set(scope['items']))
   scopes[kind]=scope
- return {'tasks':[k for k in KINDS if k in selected],'scopes':scopes,'error_policy':policy,'retry_limit':retry,'rerun':bool(raw.get('rerun',False))}
+ return {'tasks':[k for k in KINDS if k in selected],'scopes':scopes,'error_policy':policy,'retry_limit':retry,'rerun':bool(raw.get('rerun',False)),**({'lanes':lanes(raw['lanes'])} if raw.get('lanes') else {})}
 def in_scope(index,scope):
  mode=scope.get('mode','all')
  return scope['from']<=index<=scope['to'] if mode=='range' else index in scope['items'] if mode=='selected' else True

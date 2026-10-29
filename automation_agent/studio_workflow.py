@@ -15,6 +15,13 @@ def atomic(path,value):
  tmp.replace(path)
 
 class StudioAPI:
+ def create(self,sid):
+  """Create an empty Studio project on the server (AI MANAGER "Dự án mới"); an existing one is returned as is."""
+  if not ID.fullmatch(sid):raise ValueError('Studio project ID không hợp lệ')
+  req=urllib.request.Request(API+'?path=sessions',json.dumps({'id':sid}).encode(),{'Content-Type':'application/json'},method='POST')
+  with urllib.request.urlopen(req,timeout=10) as r:session=json.loads(r.read(5_000_001)).get('session')
+  if not isinstance(session,dict) or session.get('id')!=sid:raise RuntimeError('Studio không tạo được dự án')
+  return session
  def request(self,sid,route='',body=None):
   if not ID.fullmatch(sid):raise ValueError('Studio project ID không hợp lệ')
   url=API+'?'+urllib.parse.urlencode({'path':'sessions/'+sid+route})
@@ -30,7 +37,7 @@ def validate_url(url):
  if p.scheme!='https' or p.path not in ('','/') or p.username or p.password or p.port not in (None,443) or not re.fullmatch(r'video-image-studio(?:-[a-z0-9-]+)?\.vercel\.app',p.hostname or ''):raise ValueError('Chọn URL Studio Vercel HTTPS hợp lệ')
  return p._replace(query='',fragment='').geturl().rstrip('/')+'/'
 
-def workflow(sid,url,browser,profile,folder,script,context=None,stages=None,work_config=None):
+def workflow(sid,url,browser,profile,folder,script,context=None,stages=None,work_config=None,name=None):
  if not ID.fullmatch(sid):raise ValueError('Studio ID không hợp lệ')
  if browser not in ('chrome','edge'):raise ValueError('Chọn Chrome hoặc Edge')
  if work_config is not None:
@@ -41,13 +48,21 @@ def workflow(sid,url,browser,profile,folder,script,context=None,stages=None,work
  if not isinstance(stages,list) or not stages or any(x not in ('analysis','images') for x in stages):raise ValueError('Chọn Phân tích/Phân cảnh hoặc Tạo ảnh; transcript chưa hỗ trợ')
  base=validate_url(url);nonce=uuid.uuid4().hex
  target=dict(context or {},target_app=browser,browser=browser,browser_profile=profile,studio_project_id=sid,studio_run_id=nonce,studio_origin=base.rstrip('/'),studio_folder=str(folder),studio_script=script,studio_stages=stages,work_config=work_config)
- launch=base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':nonce,'managerStage':'analysis' if 'analysis' in stages else 'images'})
+ lanes=(work_config or {}).get('lanes') or []
+ if lanes and (lanes[0]['browser'],lanes[0]['profile'])!=(browser,profile if browser=='edge' else 'Default'):raise ValueError('Tab ChatGPT thứ nhất phải là trình duyệt/hồ sơ chính của dự án')
+ youtube=bool((context or {}).get('studio_youtube_url'))
+ # managerName lets a profile that does not list this project yet (new project, extra lane) open it by ID.
+ launch=base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':nonce,'managerStage':'transcript' if youtube and 'analysis' in stages else 'analysis' if 'analysis' in stages else 'images',**({'managerName':name} if name else {})})
  def a(name,**kw):return dict(action=name,target_app=browser,**({'browser_profile':profile} if browser=='edge' else {}),**kw)
  actions=[a('OPEN_APP',timeout=25),a('WAIT_WINDOW',timeout=20),a('FOCUS_WINDOW'),a('NEW_TAB'),a('OPEN_URL',url=launch),a('WAIT_PAGE',url=launch,timeout=30),a('STUDIO_READY')]
+ if len(lanes)>1:actions.append(a('STUDIO_LANES'))
  if 'analysis' in stages:
   if not work_config or 'analysis' in work_config['tasks']:actions+=[a('STUDIO_TRANSCRIPT'),a('STUDIO_ANALYZE')]
-  if not work_config or 'scenes' in work_config['tasks']:actions.append(a('STUDIO_SCENES'))
- if 'images' in stages:actions.append(a('STUDIO_IMAGES'))
+ parallel=len(lanes)>1 and any(k in work_config['tasks'] for k in ('scenes','images'))
+ if parallel:actions.append(a('STUDIO_PARALLEL'))
+ else:
+  if 'analysis' in stages and (not work_config or 'scenes' in work_config['tasks']):actions.append(a('STUDIO_SCENES'))
+  if 'images' in stages:actions.append(a('STUDIO_IMAGES'))
  return actions,target
 
 class StudioStep:
@@ -110,6 +125,27 @@ class StudioStep:
   if hashlib.sha256(path.read_text(encoding='utf8').encode('utf8')).hexdigest()!=digest:raise StudioReviewRequired('Lưu kịch bản không khớp checksum; dừng để kiểm tra')
   self.j['script']={'sha256':digest,'characters':len(script),'path':str(path),'at':self.clock()};self.j['stages'].pop(self.command_key('script'),None);self.save()
   if self.ledger:self.ledger.update('analysis','script','COMPLETED',result_path=str(path),characters=len(script))
+ def transcript_pipeline(self,name,actual,facts,pipeline):
+  """Ask the Studio tab to get the YouTube transcript (and rewrite it in the saved style), then watch its progress."""
+  cmd=self.j.get('transcript_command')
+  if not cmd or cmd.get('epoch')!=self.c.get('studio_retry_epoch',0):
+   cmd={'type':'transcript_pipeline','id':self.c['studio_run_id'][:20]+'-'+str(self.c.get('studio_retry_epoch',0)),'url':self.c['studio_youtube_url'],'language':self.c.get('studio_language','vi'),'rewrite':bool(self.c.get('studio_rewrite',True)),'epoch':self.c.get('studio_retry_epoch',0)}
+   if self.c.get('studio_rewrite_style'):cmd['style']=self.c['studio_rewrite_style']
+   self.j['transcript_command']=cmd;self.save()
+  self.post_command({k:v for k,v in cmd.items() if k!='epoch'})
+  mine=pipeline.get('id')==cmd['id']
+  if mine and pipeline.get('stage')=='error':raise RuntimeError('Lấy transcript/viết lại lỗi: '+str(pipeline.get('error') or 'không rõ')+'. Sửa trong tab Get Transcript của Studio rồi bấm Chạy lại lỗi.')
+  labels={'fetch':'Đang lấy transcript YouTube','partition':'Đang chia phần để viết lại','rewrite':'Đang viết lại kịch bản','done':'Đang lưu kịch bản'}
+  stage=labels.get(pipeline.get('stage'),'Đã gửi yêu cầu lấy transcript cho Studio') if mine else 'Đã gửi yêu cầu lấy transcript cho Studio'
+  if mine and pipeline.get('stage')=='rewrite':stage+=' '+str(pipeline.get('done',0))+'/'+str(pipeline.get('total',0))
+  if self.ledger:self.ledger.update('transcript','transcript','WAITING_RESULT',reason=stage)
+  # Watchdog follows progress: each rewritten part restarts the clock.
+  key='transcript:'+(str(pipeline.get('stage'))+':'+str(pipeline.get('done',0)) if mine else 'sent')
+  return self.wait(key,1200,dict(actual,studio_stage='Transcript',studio_message=stage,studio_reconcile=facts))
+ def post_command(self,command):
+  body=json.dumps({'sessionId':self.sid,'runId':self.c['studio_run_id'],'command':command}).encode()
+  try:urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8765/api/studio-command',body,{'Content-Type':'application/json'},method='POST'),timeout=3).read()
+  except OSError:pass
  def receipt(self,key,job):
   return next((v for k,v in self.j['commands'].items() if k.startswith(key+'#') and v.get('job_id')==job.get('id')), {})
  def send(self,key,route,body,session):
@@ -144,13 +180,24 @@ class StudioStep:
    except Exception:running=False
    return self.wait('connection',1800 if running else 120)
   self.j['stages'].pop(self.stage_key('connection'),None)
+  if name=='STUDIO_LANES':
+   from .studio_lanes import open_step
+   return open_step(self)
   s=self.api.request(self.sid);parts=s.get('parts') or [];job=s.get('activeJob')
+  if name=='STUDIO_PARALLEL':
+   if job and job.get('type')!='image_generation':return self.observe(job,{},'Studio đang chạy tác vụ do người dùng bấm')
+   from .studio_lanes import step as parallel
+   return parallel(self,s)
   actual={'studio_total_parts':len(parts),'studio_completed_parts':sum(p.get('status')=='complete' for p in parts),'studio_total_scenes':sum(len(p.get('scenes') or []) for p in parts),'studio_current_part':job.get('partId') if job else None,'studio_message':None,'studio_external_job':None}
   if name=='STUDIO_TRANSCRIPT':
    # GET_TRANSCRIPT is decided by the real Studio state, never skipped by default.
    from .studio_reconcile import reconcile
    facts=reconcile(s,self.presence())
+   pipeline=(self.presence().get('project_state') or {}).get('pipeline') or {}
+   if self.c.get('studio_youtube_url') and not facts['analysis_completed'] and not facts['script_content_exists']:
+    return self.transcript_pipeline(name,actual,facts,pipeline)
    if facts['analysis_completed']:state,reason='SKIPPED','Studio đã phân tích cấu trúc; không cần transcript'
+   elif self.j.get('transcript_command') and pipeline.get('id')==self.j['transcript_command']['id'] and pipeline.get('stage')=='done':state,reason='COMPLETED','Đã lấy transcript'+(' và viết lại theo phong cách' if self.c.get('studio_rewrite',True) else '')+' ('+str(facts['script_character_count'])+' ký tự)'
    elif facts['transcript_exists']:state,reason='SKIPPED','Transcript đã có ('+str(facts['transcript_character_count'])+' ký tự); không lấy lại'
    elif facts['script_content_exists'] or str(self.c.get('studio_script') or '').strip():state,reason='SKIPPED','Kịch bản đã có ('+str(facts['script_character_count'] or len(str(self.c.get('studio_script')).strip()))+' ký tự); dùng kịch bản, không cần transcript'
    else:return self.script_wait(name,s,actual,facts)

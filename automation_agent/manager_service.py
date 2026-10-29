@@ -32,7 +32,15 @@ class AutomationService:
    sid=str(data.get('studio_project_id',''));url=validate_url(str(data.get('studio_url','')))
    metadata=json.loads((Path(p['folder'])/'project.json').read_text(encoding='utf8'))
    if metadata.get('simulation_test_key'):raise ValueError('Chọn dự án thật, không dùng project TEST cho Studio')
-   actions,context=studio_workflow(sid,url,browser,profile,p['folder'],metadata.get('script',''),data.get('context'),stages=data.get('stages',metadata.get('studio_stages',['analysis'])),work_config=data.get('work_config'))
+   # "Dự án mới": YouTube link / rewrite request travel with the run context (never the e-mail or page text).
+   extra={k:v for k,v in (data.get('studio_extra') or {}).items() if k in ('studio_youtube_url','studio_rewrite','studio_rewrite_style','studio_language')}
+   base_context=dict(data.get('context') or {},**extra) if (data.get('context') or extra) else None
+   lanes=(data.get('work_config') or {}).get('lanes') or []
+   if browser=='edge' and lanes:
+    known={r['directory'] for r in profiles}
+    missing=[x['profile'] for x in lanes if x['browser']=='edge' and x['profile'] not in known]
+    if missing:raise ValueError('Không có hồ sơ Edge: '+', '.join(missing))
+   actions,context=studio_workflow(sid,url,browser,profile,p['folder'],metadata.get('script',''),base_context,stages=data.get('stages',metadata.get('studio_stages',['analysis'])),work_config=data.get('work_config'),name=p['name'])
    context['manager_project_id']=p['id'];context['project_name']=p['name']
    if context.get('work_config'):
     from .studio_workflow import StudioAPI
