@@ -2,6 +2,14 @@
 import threading
 import time
 
+def clean(value,depth=0):
+ """Extension self-diagnostics (capture error, watchdog state): short strings, numbers and flags only."""
+ if isinstance(value,bool) or value is None:return value
+ if isinstance(value,(int,float)):return value
+ if isinstance(value,str):return value[:300]
+ if isinstance(value,dict) and depth<2:return {str(k)[:40]:clean(v,depth+1) for k,v in list(value.items())[:20]}
+ return None
+
 class ExtensionMonitor:
  def __init__(self):
   self.lock=threading.Lock(); self.data=None
@@ -19,7 +27,8 @@ class ExtensionMonitor:
     'activeJobId':job or None,'chatTabId':data.get('chatTabId') if isinstance(data.get('chatTabId'),int) else None,
     'conversationUrl':data.get('conversationUrl') if isinstance(data.get('conversationUrl'),str) and data.get('conversationUrl','').startswith('https://chatgpt.com/c/') else None,
     'lastHeartbeatAt':stamp,
-    'version':data.get('version') if isinstance(data.get('version'),str) else None}
+    'version':data.get('version') if isinstance(data.get('version'),str) else None,
+    'diagnostic':clean(data.get('diagnostic'))}
   return True
  def snapshot(self,expected,now=None):
   now=time.time() if now is None else now

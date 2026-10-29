@@ -216,3 +216,11 @@ class PresenceStateTests(unittest.TestCase):
   p.update({'sessionId':SID,'tabId':'t1'});self.assertIsNone(p.snapshot(SID)['project_state'])
 
 if __name__=='__main__':unittest.main()
+
+class ExtensionDiagnosticTests(unittest.TestCase):
+ def test_diagnostic_kept_short_and_flat(self):
+  from extension_monitor import ExtensionMonitor
+  m=ExtensionMonitor()
+  self.assertTrue(m.receive('pair',{'pairCode':'pair','identityVersion':1,'lastHeartbeatAt':1000,'diagnostic':{'sync':'x'*999,'capture':{'ok':False,'error':'Chưa tìm thấy ảnh','at':5},'watch':{'reloads':2,'gaveUp':True},'bad':{'a':{'b':{'c':1}}}}},now=1.0))
+  d=m.snapshot('pair',now=2.0)['diagnostic']
+  self.assertEqual(len(d['sync']),300);self.assertEqual(d['capture']['error'],'Chưa tìm thấy ảnh');self.assertEqual(d['watch']['reloads'],2);self.assertIsNone(d['bad']['a'])
