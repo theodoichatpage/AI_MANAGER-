@@ -1,8 +1,11 @@
-AI MANAGER v0.2.18 — sửa thao tác và bố cục compact
-1. Đóng server Manager cũ, giải nén AI_MANAGER_v0.2.18.zip.
-2. Mở MO_AI_MANAGER.bat. Không xóa hoặc đổi thư mục dữ liệu đang dùng.
-3. Vào Điều phối Studio, chọn dự án. Thiết lập không tự thu gọn sau khi chọn hoặc khi cập nhật; mở/đóng bằng thanh tiêu đề.
-4. Nút Lưu liên kết cần Agent online, dự án và Studio ID. Nút Chạy cần workflow đã lưu và dự án Chờ/Đã dừng. Dự án lỗi có nút Chạy lại lỗi; tác vụ cần kiểm tra vẫn giữ guard backend.
-5. Điều khiển ứng dụng: Chrome / Edge / CapCut ba cột, ảnh chụp lấy từ Agent. Công cụ kỹ thuật mở riêng, trạng thái mở giữ khi polling.
-Giao diện compact kiểm tra ở 1920x1080 và 1366x768 CSS pixel. Nội dung chính nằm trong viewport; danh sách/nhật ký dài cuộn bên trong khung. Trình duyệt zoom lớn hoặc màn hình nhỏ dùng bố cục responsive có cuộn để không che nút.
-Không triển khai thêm công đoạn transcript, tạo ảnh hoặc dựng video trong bản này.
+AI MANAGER v0.2.20 — Bản kiểm tra điều phối nhiều dự án
+1. Đóng server cũ, giải nén bản mới, mở MO_AI_MANAGER.bat. Giữ thư mục dữ liệu cũ.
+2. Cài đặt: xác nhận Profile đang mở Studio để đồng bộ. Gán browser/profile cho từng dự án. Mỗi profile dùng cho chạy qua đêm phải có Studio đúng dự án và Extension/ChatGPT được ghép sẵn.
+3. Dự án: tích nhiều dòng → Đưa vào Điều phối. Chọn từng dự án ở cột trái, bấm Đọc trạng thái Studio nếu chưa có số liệu.
+4. Tích công việc, chọn phạm vi Part/Scene 1-based và chính sách lỗi riêng. Bấm Thêm/Cập nhật công việc cho TỪNG dự án. Tất cả chỉ được chuẩn bị, chưa chạy.
+5. Kéo thứ tự hoặc dùng ↑/↓; bấm Chạy hàng đợi đã chọn. Theo dõi Task/Subtask/Checkpoint và lỗi.
+Đã phân cảnh xong: chỉ chọn Tạo ảnh + Đồng bộ/Lưu. Chỉ sửa lỗi ảnh: chọn Tạo lại ảnh lỗi (+ Lưu nếu cần file local).
+Pause giữ vị trí; Tiếp tục đối soát lại Studio. Stop All ngừng action và không chuyển dự án. Restart không tự chạy.
+Khi còn tác vụ/lệnh chưa rõ kết quả, khóa Studio/ChatGPT được giữ. Resume workflow gốc để đối soát, không tạo workflow khác để ép gửi lại.
+GIỚI HẠN: Transcript, dựng video/xuất chưa có worker. Phân tích cấu trúc chỉ toàn kịch bản; phạm vi Part áp dụng Phân cảnh. Chỉ ảnh hỗ trợ rerun có backup, không tự reset phân tích/phân cảnh đã xong.
+Extension hiện chỉ ghép một session trong mỗi profile. Nhiều dự án cùng profile chưa tự đổi hội thoại: Manager sẽ chờ rồi tạm dừng nếu sai pairCode, cần ghép đúng và Tiếp tục. Chưa nghiệm thu unattended nhiều dự án thật trên Windows.

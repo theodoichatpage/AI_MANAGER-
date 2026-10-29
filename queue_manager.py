@@ -65,7 +65,7 @@ class QueueManager:
  def _account(self,p): return p['elapsed_time'] + max(0,time.time()-p['running_since']) if p['running_since'] else p['elapsed_time']
  def _launch(self,p):
   if self._running(): raise ValueError('Một dự án khác đang chạy')
-  self._set(p['id'],status='running',current_stage='Automation' if p.get('execution_mode')=='automation' else 'Mô phỏng',started_at=p['started_at'] or now(),running_since=time.time()); self._log(p['id'],'Tiếp tục mô phỏng' if p['status']=='paused' else 'Bắt đầu mô phỏng')
+  self._set(p['id'],status='running',current_stage='Automation' if p.get('execution_mode')=='automation' else 'Mô phỏng',started_at=p['started_at'] or now(),running_since=time.time()); self._log(p['id'],('Tiếp tục Studio workflow' if p['status']=='paused' else 'Bắt đầu Studio workflow') if p.get('execution_mode')=='automation' else ('Tiếp tục mô phỏng' if p['status']=='paused' else 'Bắt đầu mô phỏng'))
  def _next(self):
   if not self._enabled() or self._running(): return
   # A paused project blocks automatic advancement until explicitly resumed/stopped.
@@ -79,6 +79,30 @@ class QueueManager:
    if p['status'] not in ('waiting','stopped'):raise ValueError('Dự án không ở trạng thái chờ/đã dừng')
    if any(x['id']!=pid and x['status'] in ('waiting','running','paused') for x in self.list()):raise ValueError('Dừng các dự án khác trong hàng đợi trước khi chạy riêng dự án này')
    self._set(pid,status='waiting');self._enabled(True);self._next()
+ def order_prepared(self,ids):
+  with self.lock,self.db:
+   if not isinstance(ids,list) or not ids or len(ids)!=len(set(ids)):raise ValueError('Thứ tự dự án không hợp lệ')
+   if any(p['status'] in ('running','paused') for p in self.list()):raise ValueError('Không đổi thứ tự khi đang chạy/tạm dừng')
+   for pid in ids:self.get(pid)
+   for pos,pid in enumerate(ids,1):self._set(pid,position=pos)
+   for pos,p in enumerate([p for p in self.list() if p['id'] not in ids],len(ids)+1):self._set(p['id'],position=pos)
+ def batch(self):
+  with self.lock:
+   row=self.db.execute("SELECT value FROM settings WHERE key='studio_batch'").fetchone()
+   return json.loads(row[0]) if row else []
+ def start_batch(self,ids):
+  with self.lock,self.db:
+   if not isinstance(ids,list) or not ids or len(ids)!=len(set(ids)):raise ValueError('Chọn danh sách dự án không trùng')
+   if any(p['status'] in ('running','paused') for p in self.list()):raise ValueError('Dừng hoặc tiếp tục dự án hiện tại trước')
+   selected=[self.get(pid) for pid in ids]
+   invalid=[p['name'] for p in selected if p['execution_mode']!='automation' or not p['automation_task_id'] or p['status'] not in ('waiting','stopped')]
+   if invalid:raise ValueError('Chưa chuẩn bị workflow hoặc trạng thái không hợp lệ: '+', '.join(invalid))
+   self._enabled(False)
+   for p in self.list():
+    if p['id'] not in ids and p['status']=='waiting':self._set(p['id'],status='stopped')
+   for pos,p in enumerate(selected,1):self._set(p['id'],position=pos,status='waiting')
+   for pos,p in enumerate([p for p in self.list() if p['id'] not in ids],len(ids)+1):self._set(p['id'],position=pos)
+   self.db.execute("INSERT OR REPLACE INTO settings VALUES('studio_batch',?)",(json.dumps(ids),));self._enabled(True);self._next()
  def start_all(self):
   with self.lock,self.db:
    self._enabled(True)
