@@ -22,6 +22,8 @@ Nguyên nhân thật:
 - Mỗi lần retry có watchdog mới (không bị hết giờ do thời điểm của lần chạy trước).
 - Hết giờ STUDIO_READY nói rõ: thiếu ChatGPT/Extension hay thiếu tab Studio.
 - Presence nhận `projectState` từ Studio (chỉ số ký tự, không nhận nội dung kịch bản).
+- Thao tác thủ công trong Studio (Phân tích cấu trúc, Phân cảnh một phần, Phân cảnh toàn bộ) được Manager theo dõi chỉ đọc (`external_jobs`), không gửi lệnh chen vào; xong thì tiếp tục từ trạng thái thật.
+- Tiếp tục / Chạy (dự án paused, stopped, failed) cũng REFRESH → RECONCILE → VALIDATE như Chạy lại lỗi. Tiếp tục không tăng retry epoch (không gửi lại phần lỗi); thời gian tạm dừng không làm hết giờ watchdog.
 
 ## Cần bản Studio preview mới
 
@@ -32,4 +34,3 @@ báo trạng thái kịch bản/transcript; tab do Manager mở tự lưu kịch
 
 - Manager chưa tự lấy transcript YouTube (Studio chưa có kênh lệnh từ Manager); bước Transcript chờ người dùng thao tác trong Studio.
 - Task cũ tạo từ v0.2.20 không có bước STUDIO_TRANSCRIPT; gắn lại workflow để có bước này.
-- Resume sau Pause chưa chạy đối soát mạng (chỉ "Chạy lại lỗi"); các bước Studio vẫn đọc lại API trước khi gửi.

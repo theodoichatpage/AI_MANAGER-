@@ -1,9 +1,9 @@
 AI MANAGER v0.2.21 — kiểm tra ngày 2026-10-29 trên Windows 10 Pro (máy người dùng)
 
-Python (runtime-v02): 147 tests, 145 PASS, 1 SKIP, 2 ERROR có sẵn từ v0.2.20
+Python (runtime-v02): 151 tests, 149 PASS, 1 SKIP, 2 ERROR có sẵn từ v0.2.20
   (test_work_orchestration: WinError 32 khi xóa thư mục tạm có SQLite đang mở — lỗi dọn dẹp test trên Windows).
   test_http_restart / test_startup_port không chạy khi Manager thật đang dùng cổng 8765 (hai test này gọi vào Manager thật).
-Test mới tests/test_studio_reconcile.py: 15 PASS.
+Test mới tests/test_studio_reconcile.py: 19 PASS.
 Studio preview (phase3-manager-presence f2d1d41): vite build PASS; manager-launch 6/6 PASS; Vercel deploy success.
 
 Thực tế Windows, project "1 Đời Nguyễn Du" (Edge Profile 1, Studio preview):
@@ -14,7 +14,10 @@ PASS  Restart Manager: checkpoint giữ nguyên; tab Studio tự kết nối l�
 PASS  Chạy lại khi tab còn mở → tiếp tục tại STUDIO_READY, không mở thêm tab, watchdog mới.
 PASS  Pause / Resume / STOP ALL: giữ checkpoint bước 6; Studio không nhận lệnh nào.
 PASS  ChatGPT/Extension chưa kết nối → chờ 120 giây rồi dừng, không gửi gì, giữ checkpoint.
-CHƯA KIỂM  Lưu kịch bản → Phân tích → Phân cảnh → Tạo ảnh thật: ChatGPT Extension đang heartbeat_stopped,
-           và bản nháp cũ chưa xác nhận thuộc dự án (cần bấm "Lưu kịch bản này cho AI MANAGER").
+PASS  Người dùng tự lưu kịch bản + bấm Phân tích trong Studio: Manager đối soát (34.740 ký tự trên server),
+      theo dõi job thủ công chỉ đọc, không gửi trùng.
+PASS  Restart Manager khi đang theo dõi → paused, không tự chạy; Tiếp tục → đối soát mới rồi theo dõi tiếp.
+PASS  Cấu trúc xong (13 phần) → Manager bỏ qua phân tích, lưu studio_structure.json, tự gửi Phân cảnh Phần 1.
+ĐANG CHẠY  Phân cảnh 13 phần (kết quả cuối chưa có lúc commit). Tạo ảnh: task này được tạo từ v0.2.20 chỉ gồm Phân tích/Phân cảnh.
 CHƯA KIỂM  Đóng/mở lại trình duyệt giữa chừng (browser reconnect), Part đã hoàn thành trên dữ liệu thật,
            bước STUDIO_TRANSCRIPT trên task mới (task hiện có được tạo từ v0.2.20).
