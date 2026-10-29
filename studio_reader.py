@@ -38,10 +38,7 @@ def summarize_session(session):
 
 def read_session(session_id,timeout=8):
     if not re.fullmatch(r'[A-Za-z0-9-]{16,64}',session_id): raise ValueError('Mã phiên không hợp lệ')
-    url=ENDPOINT+'?'+urllib.parse.urlencode({'path':'sessions/'+session_id})
-    with urllib.request.urlopen(urllib.request.Request(url,method='GET'),timeout=timeout) as response:
-        payload=response.read(5_000_001)
-    if len(payload)>5_000_000: raise ValueError('Dữ liệu quá lớn')
-    session=json.loads(payload).get('session')
+    from automation_agent import studio_cache
+    session=studio_cache.session(session_id,timeout=timeout)
     if not isinstance(session,dict): raise ValueError('Không tìm thấy phiên Studio')
     return summarize_session(session)

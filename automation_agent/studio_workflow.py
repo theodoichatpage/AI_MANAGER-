@@ -24,11 +24,15 @@ class StudioAPI:
   return session
  def request(self,sid,route='',body=None):
   if not ID.fullmatch(sid):raise ValueError('Studio project ID không hợp lệ')
-  url=API+'?'+urllib.parse.urlencode({'path':'sessions/'+sid+route})
-  req=urllib.request.Request(url,None if body is None else json.dumps(body).encode(),{'Content-Type':'application/json'},method='GET' if body is None else 'POST')
-  with urllib.request.urlopen(req,timeout=10) as r:raw=r.read(5_000_001)
-  if len(raw)>5_000_000:raise ValueError('Studio response quá lớn')
-  data=json.loads(raw);session=data.get('session')
+  from . import studio_cache
+  # Plain reads go through the version-stamp cache; commands always reach the server.
+  if body is None and not route:session=studio_cache.session(sid)
+  else:
+   data=studio_cache.call('sessions/'+sid+route,body);session=data.get('session')
+   if route.startswith('/lanes/'):
+    if isinstance(session,dict):studio_cache.remember(session)
+    return data
+   studio_cache.remember(session)
   if not isinstance(session,dict) or session.get('id')!=sid:raise RuntimeError('Studio trả sai project ID; đã chặn')
   return session
 
