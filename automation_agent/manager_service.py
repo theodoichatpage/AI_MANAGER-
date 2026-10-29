@@ -121,9 +121,23 @@ class AutomationService:
    if p['status']=='failed' and p.get('execution_mode')=='automation' and (not pid or pid==p['id']):
     t=tasks.get(p.get('automation_task_id'))
     if not t or t['status']=='needs_review':raise ValueError('Task cần kiểm tra thủ công, không tự chạy lại thao tác chưa rõ kết quả')
-    body={'task_id':t['id']}
+    body={'task_id':t['id'],'retry':True}
     if t.get('context',{}).get('studio_project_id'):body.update(self.reconcile_studio(p,t))
     self.client.request('/requeue',body,timeout=10)
+  self.refresh_tasks()
+ def resume_studio(self,pids):
+  """Resume/Start of a paused, stopped or failed Studio run: REFRESH -> RECONCILE -> VALIDATE first.
+  Not a retry: errored parts are not re-sent, only the watchdog starts fresh."""
+  q=self.queue_getter();tasks={t['id']:t for t in self.snapshot().get('tasks',[])}
+  for pid in [x for x in pids if x]:
+   try:p=q.get(pid)
+   except ValueError:continue
+   t=tasks.get(p.get('automation_task_id'))
+   if p.get('execution_mode')!='automation' or not t or not t.get('context',{}).get('studio_project_id') or t['status'] not in ('paused','stopped','failed'):continue
+   body={'task_id':t['id'],'retry':False};body.update(self.reconcile_studio(p,t))
+   self.client.request('/requeue',body,timeout=10)
+  self.refresh_tasks()
+ def refresh_tasks(self):
   try:
    state=self.client.request('/state',timeout=3)
    with self.client.lock:self.client.cache.update(tasks=state.get('tasks',self.client.cache.get('tasks',[])))

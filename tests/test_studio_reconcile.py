@@ -80,6 +80,30 @@ class ScriptReconcileTests(unittest.TestCase):
   actions,_=workflow(SID,'https://video-image-studio.vercel.app','edge','Default',self.tmp.name,'',stages=['images'])
   self.assertNotIn('STUDIO_TRANSCRIPT',[a['action'] for a in actions])
 
+class ManualStudioWorkTests(unittest.TestCase):
+ """The user runs analysis by hand in Studio: Manager observes, never sends, then continues."""
+ def setUp(self):
+  self.tmp=tempfile.TemporaryDirectory();self.now=1000.0
+  self.c={'studio_project_id':SID,'studio_run_id':'run','studio_origin':'https://video-image-studio.vercel.app','studio_folder':self.tmp.name,'studio_script':''}
+ def tearDown(self):self.tmp.cleanup()
+ def step(self,api):return StudioStep(self.c,api,lambda:tab(),clock=lambda:self.now)
+ def test_user_structure_job_is_observed_then_manager_continues_with_parts(self):
+  api=FakeAPI({'id':SID,'parts':[],'script':'S','activeJob':{'id':'userjob','type':'script_structure','status':'waiting'}})
+  self.assertTrue(self.step(api).step('STUDIO_READY')['context']['studio_ready'])
+  r=self.step(api).step('STUDIO_ANALYZE');self.assertTrue(r['waiting']);self.assertEqual(r['context']['studio_external_job'],'userjob');self.assertEqual(api.posts,[])
+  api.s.update(activeJob=None,parts=[{'id':'p1','status':'complete','scenes':[{'prompt':'a'}]},{'id':'p2','status':'ready','scenes':[]}])
+  r=self.step(api).step('STUDIO_ANALYZE');self.assertNotIn('waiting',r);self.assertIsNone(r['context']['studio_message'])
+  self.step(api).step('STUDIO_SCENES');self.assertEqual([p[0] for p in api.posts],['/parts/p2/analysis'])
+ def test_user_part_job_and_studio_batch_are_observed(self):
+  api=FakeAPI({'id':SID,'script':'S','parts':[{'id':'p1','status':'processing','scenes':[]},{'id':'p2','status':'ready','scenes':[]}],'activeJob':{'id':'u2','type':'part_analysis','partId':'p1'}})
+  self.assertTrue(self.step(api).step('STUDIO_SCENES')['waiting'])
+  api.s.update(activeJob=None,batchAnalysis=True,analysisQueue=['p2']);api.s['parts'][0]['status']='complete';api.s['parts'][0]['scenes']=[{'prompt':'a'}]
+  self.assertTrue(self.step(api).step('STUDIO_SCENES')['waiting']);self.assertEqual(api.posts,[])
+ def test_unknown_job_still_needs_review(self):
+  from automation_agent.studio_workflow import StudioReviewRequired
+  api=FakeAPI({'id':SID,'parts':[],'script':'S','activeJob':{'id':'x','type':'something_else'}})
+  with self.assertRaises(StudioReviewRequired):self.step(api).step('STUDIO_READY')
+
 class ResumeTests(unittest.TestCase):
  def task(self,error='Dự án chưa có kịch bản'):
   names=['OPEN_APP','WAIT_WINDOW','FOCUS_WINDOW','NEW_TAB','OPEN_URL','WAIT_PAGE','STUDIO_READY','STUDIO_ANALYZE','STUDIO_SCENES']
@@ -99,6 +123,13 @@ class ResumeTests(unittest.TestCase):
  def test_running_studio_job_keeps_checkpoint(self):
   t=self.task();f=reconcile({'parts':[],'script':'abc','activeJob':{'type':'script_structure'}},tab())
   self.assertEqual(prepare_resume(t,f,True),7)
+ def test_paused_time_does_not_expire_watchdog_after_resume(self):
+  with tempfile.TemporaryDirectory() as d:
+   c={'studio_project_id':SID,'studio_run_id':'run','studio_origin':'https://video-image-studio.vercel.app','studio_folder':d}
+   api=FakeAPI({'id':SID,'parts':[],'script':'S','activeJob':{'id':'u','type':'script_structure'}})
+   StudioStep(c,api,lambda:tab(),clock=lambda:1000).step('STUDIO_ANALYZE')
+   c['studio_resumed_at']=5000
+   self.assertTrue(StudioStep(c,api,lambda:tab(),clock=lambda:5100).step('STUDIO_ANALYZE')['waiting'])
  def test_script_error_detection(self):
   self.assertTrue(is_script_error('Dự án chưa có kịch bản'));self.assertTrue(is_script_error('SCRIPT_MISSING: x'));self.assertFalse(is_script_error('Studio lỗi'))
 

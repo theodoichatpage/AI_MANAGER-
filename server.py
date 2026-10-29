@@ -261,16 +261,16 @@ class Handler(BaseHTTPRequestHandler):
                     q=manager(); action=data.get('action'); pid=str(data.get('id',''))
                     if action=='order_batch':q.order_prepared(data.get('ids'))
                     elif action=='start_batch':
-                        automation().ensure_bridge();q.start_batch(data.get('ids'))
+                        automation().ensure_bridge();automation().resume_studio(data.get('ids') or []);q.start_batch(data.get('ids'))
                     elif action=='start_selected':
-                        automation().ensure_bridge();q.start_selected(pid)
+                        automation().ensure_bridge();automation().resume_studio([pid]);q.start_selected(pid)
                     elif action=='start':
                         automation().ensure_bridge();q.start_all()
                     elif action=='pause':
                         target=pid or next((p['id'] for p in q.list() if p['status']=='running'),'');p=q.get(target);q.pause(target)
                         if p.get('execution_mode')=='automation': automation().client.request('/pause',{})
                     elif action=='resume':
-                        automation().ensure_bridge();q.resume(pid or next((p['id'] for p in q.list() if p['status']=='paused'),''))
+                        target=pid or next((p['id'] for p in q.list() if p['status']=='paused'),'');automation().ensure_bridge();automation().resume_studio([target]);q.resume(target)
                     elif action=='stop_all': automation().stop_all()
                     elif action=='stop':
                         p=q.get(pid)

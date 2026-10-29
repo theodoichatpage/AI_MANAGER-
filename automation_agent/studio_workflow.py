@@ -69,6 +69,8 @@ class StudioStep:
  def wait(self,name,limit,context=None):
   # A retry epoch gets a fresh watchdog; an old attempt's start time must not time out the new one.
   start=self.j['stages'].setdefault(self.stage_key(name),self.clock());self.save()
+  # Time spent paused/stopped before a reconciled resume does not count against the watchdog.
+  start=max(start,float(self.c.get('studio_resumed_at') or 0))
   if self.clock()-start>limit and self.ledger and name in ('connection','STUDIO_READY'):raise StudioReviewRequired('Mất Studio/ChatGPT quá thời gian. Tạm dừng và đối soát khi Resume.')
   if self.clock()-start>limit:
    why={'WAITING_CHATGPT':' — Studio đã mở nhưng ChatGPT/Extension chưa kết nối','WAITING_STUDIO':' — chưa thấy tab Studio của lượt chạy này'}.get(self.c.get('studio_ready_wait'),'')
@@ -79,6 +81,13 @@ class StudioStep:
   return {'waiting':True,'context':values}
  def command_key(self,key):return key+'#'+str(self.c.get('studio_retry_epoch',0))
  def stage_key(self,name):return self.command_key(name) if self.c.get('studio_retry_epoch') else name
+ def observe(self,job,actual,stage,ledger_key=None):
+  """A job the user started in Studio: watch it read-only until it ends. Never sent, adopted or replayed by Manager."""
+  seen=self.j.setdefault('external_jobs',{})
+  if job['id'] not in seen:seen[job['id']]={'type':job.get('type'),'part':job.get('partId'),'first_seen':self.clock()};self.save()
+  message='Tác vụ do người dùng chạy trong Studio; Manager chỉ theo dõi, không gửi lệnh.'
+  if self.ledger and ledger_key and self.ledger.get(*ledger_key).get('status') not in ('COMPLETED','SKIPPED'):self.ledger.update(*ledger_key,'WAITING_RESULT',reason=message,external_job=job['id'])
+  return self.wait('external:'+str(job['id']),1800,dict(actual,studio_stage=stage,studio_external_job=job['id'],studio_message=message,studio_error_code=None))
  def script_wait(self,name,s,actual,facts):
   """No script on the Studio server yet: re-read every poll and wait (bounded) instead of failing on a stale read."""
   from .studio_reconcile import validate,SCRIPT_MISSING,SCRIPT_NOT_SYNCED
@@ -124,12 +133,14 @@ class StudioStep:
     if self.ledger:self.ledger.update('connection','studio',self.c['studio_ready_wait'])
     return self.wait(name,120,{'studio_stage':'Chờ ChatGPT/Extension' if self.c['studio_ready_wait']=='WAITING_CHATGPT' else 'Chờ tab Studio'})
    s=self.api.request(self.sid)
-   if s.get('activeJob'):raise StudioReviewRequired('Studio đang có tác vụ trước khi Manager bắt đầu. Chờ hoàn tất rồi thử lại.')
-   return {'context':{'studio_ready':True,'studio_script_hash':hashlib.sha256(str(s.get('script','')).encode()).hexdigest()}}
+   job=s.get('activeJob')
+   # A job the user started by hand is observed by the next step; an unknown kind still needs review.
+   if job and job.get('type') not in ('script_structure','part_analysis','image_generation'):raise StudioReviewRequired('Studio đang có tác vụ không rõ loại trước khi Manager bắt đầu. Chờ hoàn tất rồi thử lại.')
+   return {'context':{'studio_external_job':(job or {}).get('id'),'studio_ready':True,'studio_script_hash':hashlib.sha256(str(s.get('script','')).encode()).hexdigest()}}
   if not self.ready():return self.wait('connection',120)
   self.j['stages'].pop(self.stage_key('connection'),None)
   s=self.api.request(self.sid);parts=s.get('parts') or [];job=s.get('activeJob')
-  actual={'studio_total_parts':len(parts),'studio_completed_parts':sum(p.get('status')=='complete' for p in parts),'studio_total_scenes':sum(len(p.get('scenes') or []) for p in parts),'studio_current_part':job.get('partId') if job else None}
+  actual={'studio_total_parts':len(parts),'studio_completed_parts':sum(p.get('status')=='complete' for p in parts),'studio_total_scenes':sum(len(p.get('scenes') or []) for p in parts),'studio_current_part':job.get('partId') if job else None,'studio_message':None,'studio_external_job':None}
   if name=='STUDIO_TRANSCRIPT':
    # GET_TRANSCRIPT is decided by the real Studio state, never skipped by default.
    from .studio_reconcile import reconcile
@@ -147,7 +158,9 @@ class StudioStep:
     return {'context':dict(actual,studio_stage='Phân cảnh',studio_waiting_action=None)}
    if job:
     receipt=self.receipt('structure',job)
-    if job.get('id')!=receipt.get('job_id'):raise StudioReviewRequired('Tác vụ Studio không thuộc lệnh Manager đã xác nhận')
+    if job.get('id')!=receipt.get('job_id'):
+     if job.get('type')!='script_structure':raise StudioReviewRequired('Tác vụ Studio không thuộc lệnh Manager đã xác nhận')
+     return self.observe(job,actual,'Studio đang phân tích cấu trúc (người dùng chạy)',('analysis','structure'))
    else:
     if s.get('status')=='error' and not self.c.get('studio_retry_epoch'):raise RuntimeError('Studio lỗi: '+str(s.get('lastError') or 'Phân tích thất bại'))
     # Studio's server copy wins; the Manager project's own script is only a fallback.
@@ -189,7 +202,13 @@ class StudioStep:
   part=next(p for p in parts if p.get('status')!='complete');key='part:'+str(part['id'])
   if job:
    receipt=self.receipt(key,job)
-   if job.get('type')!='part_analysis' or job.get('partId')!=part['id'] or job.get('id')!=receipt.get('job_id'):raise StudioReviewRequired('Studio có tác vụ khác; không điều khiển nhầm')
+   if job.get('id')!=receipt.get('job_id'):
+    if job.get('type')!='part_analysis':raise StudioReviewRequired('Studio có tác vụ khác; không điều khiển nhầm')
+    return self.observe(job,actual,'Studio đang phân cảnh phần do người dùng chạy',('scenes','part:'+str(job.get('partId'))) if job.get('partId') else None)
+   if job.get('type')!='part_analysis' or job.get('partId')!=part['id']:raise StudioReviewRequired('Studio có tác vụ khác; không điều khiển nhầm')
+  elif s.get('batchAnalysis') or s.get('analysisQueue'):
+   # Studio's own "Phân cảnh toàn bộ" queue is between parts: wait, never interleave Manager commands.
+   return self.wait('external:batch',1800,dict(actual,studio_stage='Studio đang phân cảnh toàn bộ (người dùng chạy)',studio_message='Hàng đợi phân cảnh của Studio đang chạy; Manager chỉ theo dõi.'))
   else:
    if part.get('status') in ('error','stopped') and not self.c.get('studio_retry_epoch'):
     if self.ledger:self.ledger.update('scenes','part:'+str(part['id']),'ERROR',error='Studio báo lỗi hoặc đã dừng')

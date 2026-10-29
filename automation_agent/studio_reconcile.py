@@ -79,7 +79,7 @@ def prepare_resume(task,facts,run_tab_open):
  if 'OPEN_APP' in names and index==names.index('OPEN_APP'):
   for key in WINDOW_KEYS:task['context'].pop(key,None)
  task['next_action']=index
- task['context'].update(studio_reconcile=facts,studio_error_code=None)
+ task['context'].update(studio_reconcile=facts,studio_error_code=None,studio_resumed_at=time.time())
  if is_script_error(task.get('error')) and facts['script_content_exists']:task['context']['studio_resolved_error']=SCRIPT_MISSING
  task['error']=None
  return index
