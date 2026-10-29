@@ -1,10 +1,14 @@
 """Coordinator: existing project queue owns scheduling of attached agent workflows."""
-import threading,json
+import threading,json,time
 from pathlib import Path
 
+# One slow /state poll (1 s timeout) marked the agent offline and paused the project while the agent
+# kept working; only a sustained loss pauses the queue.
+OFFLINE_PAUSE_AFTER=30
+
 class QueueBridge:
- def __init__(self,queue,agent):
-  self.queue=queue;self.agent=agent;self.stop_event=threading.Event();self.thread=threading.Thread(target=self.loop,daemon=True);self.thread.start()
+ def __init__(self,queue,agent,clock=time.monotonic):
+  self.queue=queue;self.agent=agent;self.clock=clock;self.offline_since=None;self.stop_event=threading.Event();self.thread=threading.Thread(target=self.loop,daemon=True);self.thread.start()
  def loop(self):
   while not self.stop_event.wait(.5):
    try:
@@ -13,11 +17,15 @@ class QueueBridge:
      if not p:continue
      state=self.agent.snapshot()
      if not state.get('online'):
-      self.queue.pause(p['id']);continue
+      if self.offline_since is None:self.offline_since=self.clock()
+      if self.clock()-self.offline_since>=OFFLINE_PAUSE_AFTER:self.queue.pause(p['id']);self.offline_since=None
+      continue
+     self.offline_since=None
      task=next((t for t in state.get('tasks',[]) if t['id']==p.get('automation_task_id')),None)
      if not task:continue
-     # A snapshot older than this run (e.g. the failed task before Retry) must never be applied again.
-     if task['status'] in ('completed','failed','timeout') and task.get('updated_at') and float(task['updated_at'])<float(p.get('running_since') or 0):continue
+     # A failure older than this run (e.g. the failed task before Retry) must never be applied again.
+     # A completion is always real, even if it happened while the queue showed the project paused.
+     if task['status'] in ('failed','timeout') and task.get('updated_at') and float(task['updated_at'])<float(p.get('running_since') or 0):continue
      if task['status'] in ('held','paused','stopped'):
       self.agent.request('/release',{'task_id':task['id']},timeout=1);continue
      stage=task.get('context',{}).get('studio_stage') or task.get('current_action') or task.get('current_stage','Automation')

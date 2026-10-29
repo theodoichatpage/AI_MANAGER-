@@ -27,9 +27,12 @@ Nguyên nhân thật:
 
 - Task Studio ở `needs_review` (ví dụ mất kết nối Studio/ChatGPT khi Studio còn job) được Tiếp tục/Chạy lại sau đối soát nếu nhật ký chứng minh mọi lệnh đã được Studio xác nhận (không có lệnh `intent` chưa rõ kết quả). Tab Studio đã đóng thì mở lại đúng URL/nonce cũ trước, không gửi lệnh nào.
 
+- Khi ChatGPT mất kết nối tạm thời mà Studio còn job, Manager chờ theo thời hạn job (30 phút) thay vì dừng sau 120 giây; không gửi gì trong lúc mất kết nối.
+- Hàng đợi chỉ tạm dừng dự án khi Agent mất kết nối liên tục ≥ 30 giây (một lần chậm không còn làm dự án "Tạm dừng" trong khi Agent vẫn chạy); kết quả hoàn tất của Agent luôn được ghi nhận.
+
 ## Cần bản Studio preview mới
 
-`VIDEO_IMAGE_STUDIO` nhánh `phase3-manager-presence` commit f2d1d41 (chưa merge main):
+`VIDEO_IMAGE_STUDIO` nhánh `phase3-manager-presence` (chưa merge main), Extension 0.4.30 (4358ce6):
 báo trạng thái kịch bản/transcript; tab do Manager mở tự lưu kịch bản gõ trong đúng dự án; bản nháp dùng chung chưa rõ dự án → hiện nút "Lưu kịch bản này cho AI MANAGER", không tự lưu.
 
 ## Giới hạn

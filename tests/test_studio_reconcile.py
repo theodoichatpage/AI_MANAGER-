@@ -174,6 +174,37 @@ class BridgeStaleSnapshotTests(unittest.TestCase):
   finally:b.close()
   self.assertEqual(updates,[])
 
+class BridgeOfflineAndCompletionTests(unittest.TestCase):
+ def make(self,tasks,online):
+  from automation_agent import queue_bridge
+  calls=[]
+  class Q:
+   lock=threading.RLock()
+   def list(self):return [{'id':'p','status':'running','execution_mode':'automation','automation_task_id':'t','running_since':200.0,'folder':tempfile.gettempdir()}]
+   def pause(self,pid):calls.append('pause')
+   def automation_update(self,*a):calls.append(('update',a[4]))
+   def studio_progress(self,*a):pass
+  class A:
+   def snapshot(self):return {'online':online[0],'tasks':tasks}
+  now=[0.0]
+  b=queue_bridge.QueueBridge.__new__(queue_bridge.QueueBridge)
+  b.queue=Q();b.agent=A();b.clock=lambda:now[0];b.offline_since=None;b.stop_event=threading.Event()
+  return b,calls,now
+ def run_once(self,b):
+  import types
+  b.stop_event=types.SimpleNamespace(wait=lambda s,n=[0]:(n.__setitem__(0,n[0]+1),n[0]>1)[1])
+  b.loop()
+ def test_short_agent_hiccup_does_not_pause(self):
+  online=[False];b,calls,now=self.make([],online)
+  self.run_once(b);now[0]=10;self.run_once(b);self.assertEqual(calls,[])
+  now[0]=31;self.run_once(b);self.assertEqual(calls,['pause'])
+ def test_completion_after_queue_pause_is_recorded(self):
+  b,calls,now=self.make([{'id':'t','status':'completed','updated_at':100.0,'context':{},'next_action':9,'actions':[1]*9}],[True])
+  self.run_once(b);self.assertIn(('update','completed'),calls)
+ def test_old_failure_still_ignored(self):
+  b,calls,now=self.make([{'id':'t','status':'failed','error':'old','updated_at':100.0,'context':{},'next_action':7,'actions':[1]*9}],[True])
+  self.run_once(b);self.assertEqual(calls,[])
+
 class PresenceStateTests(unittest.TestCase):
  def test_presence_keeps_counts_only(self):
   from server import StudioPresence
