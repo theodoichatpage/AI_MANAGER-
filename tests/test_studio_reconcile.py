@@ -123,6 +123,21 @@ class ResumeTests(unittest.TestCase):
  def test_running_studio_job_keeps_checkpoint(self):
   t=self.task();f=reconcile({'parts':[],'script':'abc','activeJob':{'type':'script_structure'}},tab())
   self.assertEqual(prepare_resume(t,f,True),7)
+ def test_running_job_with_closed_tab_reopens_tab_without_sending(self):
+  t=self.task();f=reconcile({'parts':[],'script':'abc','activeJob':{'type':'part_analysis'}},{})
+  self.assertEqual(prepare_resume(t,f,False),0);self.assertNotIn('hwnd',t['context'])
+ def test_needs_review_resumable_only_without_unknown_post(self):
+  import json as _json
+  from automation_agent.manager_service import AutomationService
+  with tempfile.TemporaryDirectory() as d:
+   c={'studio_project_id':SID,'studio_run_id':'run','studio_folder':d}
+   task={'context':c,'current_action':'STUDIO_SCENES'}
+   p=Path(d,'analysis','manager_run.json');p.parent.mkdir(parents=True)
+   p.write_text(_json.dumps({'commands':{'part:a#0':{'state':'accepted','job_id':'j'}}}),encoding='utf8')
+   self.assertTrue(AutomationService.review_resolvable(None,task))
+   p.write_text(_json.dumps({'commands':{'part:b#0':{'state':'intent'}}}),encoding='utf8')
+   self.assertFalse(AutomationService.review_resolvable(None,task))
+   self.assertFalse(AutomationService.review_resolvable(None,dict(task,current_action='CLICK')))
  def test_paused_time_does_not_expire_watchdog_after_resume(self):
   with tempfile.TemporaryDirectory() as d:
    c={'studio_project_id':SID,'studio_run_id':'run','studio_origin':'https://video-image-studio.vercel.app','studio_folder':d}

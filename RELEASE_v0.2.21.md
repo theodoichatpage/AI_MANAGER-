@@ -25,6 +25,8 @@ Nguyên nhân thật:
 - Thao tác thủ công trong Studio (Phân tích cấu trúc, Phân cảnh một phần, Phân cảnh toàn bộ) được Manager theo dõi chỉ đọc (`external_jobs`), không gửi lệnh chen vào; xong thì tiếp tục từ trạng thái thật.
 - Tiếp tục / Chạy (dự án paused, stopped, failed) cũng REFRESH → RECONCILE → VALIDATE như Chạy lại lỗi. Tiếp tục không tăng retry epoch (không gửi lại phần lỗi); thời gian tạm dừng không làm hết giờ watchdog.
 
+- Task Studio ở `needs_review` (ví dụ mất kết nối Studio/ChatGPT khi Studio còn job) được Tiếp tục/Chạy lại sau đối soát nếu nhật ký chứng minh mọi lệnh đã được Studio xác nhận (không có lệnh `intent` chưa rõ kết quả). Tab Studio đã đóng thì mở lại đúng URL/nonce cũ trước, không gửi lệnh nào.
+
 ## Cần bản Studio preview mới
 
 `VIDEO_IMAGE_STUDIO` nhánh `phase3-manager-presence` commit f2d1d41 (chưa merge main):

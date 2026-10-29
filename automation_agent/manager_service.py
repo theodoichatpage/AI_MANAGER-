@@ -120,7 +120,7 @@ class AutomationService:
   for p in q.list():
    if p['status']=='failed' and p.get('execution_mode')=='automation' and (not pid or pid==p['id']):
     t=tasks.get(p.get('automation_task_id'))
-    if not t or t['status']=='needs_review':raise ValueError('Task cần kiểm tra thủ công, không tự chạy lại thao tác chưa rõ kết quả')
+    if not t or t['status']=='needs_review' and not self.review_resolvable(t):raise ValueError('Task cần kiểm tra thủ công, không tự chạy lại thao tác chưa rõ kết quả')
     body={'task_id':t['id'],'retry':True}
     if t.get('context',{}).get('studio_project_id'):body.update(self.reconcile_studio(p,t))
     self.client.request('/requeue',body,timeout=10)
@@ -133,10 +133,21 @@ class AutomationService:
    try:p=q.get(pid)
    except ValueError:continue
    t=tasks.get(p.get('automation_task_id'))
-   if p.get('execution_mode')!='automation' or not t or not t.get('context',{}).get('studio_project_id') or t['status'] not in ('paused','stopped','failed'):continue
+   if p.get('execution_mode')!='automation' or not t or not t.get('context',{}).get('studio_project_id'):continue
+   if t['status'] not in ('paused','stopped','failed') and not(t['status']=='needs_review' and self.review_resolvable(t)):continue
    body={'task_id':t['id'],'retry':False};body.update(self.reconcile_studio(p,t))
    self.client.request('/requeue',body,timeout=10)
   self.refresh_tasks()
+ def review_resolvable(self,task):
+  """A Studio task in needs_review may be reconciled and resumed only when its journal proves every
+  command Manager sent was confirmed by Studio (no POST with an unknown outcome)."""
+  c=task.get('context',{})
+  if not c.get('studio_project_id') or not str(task.get('current_action','')).startswith('STUDIO_'):return False
+  path=Path(c['studio_folder'])/'analysis'/('manager_'+c['studio_run_id']+'.json')
+  try:journal=json.loads(path.read_text(encoding='utf8'))
+  except FileNotFoundError:return True
+  except (OSError,ValueError):return False
+  return not any(v.get('state')=='intent' for v in journal.get('commands',{}).values())
  def refresh_tasks(self):
   try:
    state=self.client.request('/state',timeout=3)
@@ -158,7 +169,7 @@ class AutomationService:
    decision='blocked' if blocked else 'resolved' if is_script_error(task.get('error')) and facts['script_content_exists'] else 'resume',at=time.time())
   atomic(Path(project['folder'])/'analysis'/'studio_reconcile.json',report)
   if blocked:raise ValueError(code+': '+message)
-  return {'reconcile':facts,'run_tab_open':run_tab}
+  return {'reconcile':facts,'run_tab_open':run_tab,'journal_clear':self.review_resolvable(task)}
  def stop_all(self):
   self.queue_getter().stop_all()
   if self.client.process and self.client.process.poll() is None:self.client.stop()

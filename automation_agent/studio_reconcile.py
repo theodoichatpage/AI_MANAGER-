@@ -66,11 +66,13 @@ def is_script_error(error):
 WINDOW_KEYS=('hwnd','pid','process_started','profile_proof','binding_schema','focus_verified_at')
 
 def resume_point(task,facts,run_tab_open):
- """Where RESUME starts. With no Studio job running, the run re-validates from STUDIO_READY;
- if the Studio tab for this run nonce is gone, the same launch URL is opened again first."""
+ """Where RESUME starts. If the Studio tab for this run nonce is gone, the same launch URL is
+ opened again first (it sends nothing to Studio, so this is safe while a Studio job runs);
+ otherwise a running Studio job keeps its checkpoint and an idle run re-validates from STUDIO_READY."""
  names=[a['action'] for a in task['actions']];index=task['next_action']
- if facts.get('active_job') or 'STUDIO_READY' not in names or index<=names.index('STUDIO_READY'):return index
+ if 'STUDIO_READY' not in names or index<=names.index('STUDIO_READY'):return index
  if not run_tab_open and 'OPEN_APP' in names:return names.index('OPEN_APP')
+ if facts.get('active_job'):return index
  return names.index('STUDIO_READY')
 
 def prepare_resume(task,facts,run_tab_open):
