@@ -56,7 +56,7 @@ def workflow(sid,url,browser,profile,folder,script,context=None,stages=None,work
  if lanes and (lanes[0]['browser'],lanes[0]['profile'])!=(browser,profile if browser=='edge' else 'Default'):raise ValueError('Tab ChatGPT thứ nhất phải là trình duyệt/hồ sơ chính của dự án')
  youtube=bool((context or {}).get('studio_youtube_url'))
  # managerName lets a profile that does not list this project yet (new project, extra lane) open it by ID.
- launch=base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':nonce,'managerStage':'transcript' if youtube and 'analysis' in stages else 'analysis' if 'analysis' in stages else 'images',**({'managerName':name} if name else {})})
+ launch=base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':nonce,'managerStage':'transcript' if youtube and 'analysis' in stages else 'analysis' if 'analysis' in stages else 'images',**({'managerName':name} if name else {}),**({'managerLaneId':__import__('re').sub(r'[^A-Za-z0-9_-]','_',browser+'_'+(profile if browser=='edge' else 'Default'))} if lanes else {})})
  def a(name,**kw):return dict(action=name,target_app=browser,**({'browser_profile':profile} if browser=='edge' else {}),**kw)
  actions=[a('OPEN_APP',timeout=25),a('WAIT_WINDOW',timeout=20),a('FOCUS_WINDOW'),a('NEW_TAB'),a('OPEN_URL',url=launch),a('WAIT_PAGE',url=launch,timeout=30),a('STUDIO_READY')]
  if len(lanes)>1:actions.append(a('STUDIO_LANES'))

@@ -46,8 +46,12 @@ def warnings(workers):
   if len(labels)>1:notes.append(str(len(labels))+' tab ChatGPT dùng chung tài khoản '+labels[0]+': phân cảnh nhanh hơn, nhưng tạo ảnh dùng chung một hạn mức.')
  return notes
 
-def lane_url(base,sid,run,name):
- return base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':run,'managerStage':'analysis','managerLane':'1','managerName':name or 'Dự án AI MANAGER'})
+def lane_id(browser,profile):
+ """Stable lane name per browser profile (cloned profiles copy Studio's storage, so Studio's own id is not unique)."""
+ return re.sub(r'[^A-Za-z0-9_-]','_',browser+'_'+profile)
+
+def lane_url(base,sid,run,name,lane=None):
+ return base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':run,'managerStage':'analysis','managerLane':'1','managerName':name or 'Dự án AI MANAGER',**({'managerLaneId':lane_id(lane['browser'],lane['profile'])} if lane else {})})
 
 def open_lane(lane,url,launch=None):
  """Open ChatGPT + this project's Studio tab in another browser profile. Never closes anything."""
@@ -64,7 +68,7 @@ def open_step(w,launch=None):
  for lane in extra:
   key=lane['browser']+':'+lane['profile']
   if key not in st['opened']:
-   open_lane(lane,lane_url(w.c['studio_origin']+'/',w.sid,w.c['studio_run_id'],w.c.get('project_name')),launch);st['opened'][key]=w.clock();w.save()
+   open_lane(lane,lane_url(w.c['studio_origin']+'/',w.sid,w.c['studio_run_id'],w.c.get('project_name'),lane),launch);st['opened'][key]=w.clock();w.save()
  pres=w.presence();workers=pres.get('workers') or []
  live=live_lanes(workers)
  notes=warnings(workers)
