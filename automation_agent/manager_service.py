@@ -172,7 +172,8 @@ class AutomationService:
   names=[a['action'] for a in task['actions']];index=task['next_action'];action=names[index] if index<len(names) else None
   code,message=validate(facts,action)
   # Only block when Studio's live tab proves nothing is there; otherwise the resumed step waits and re-reads.
-  blocked=bool(code) and facts['transcript_known']
+  # A project made from a YouTube link gets its script from the transcript pipeline itself.
+  blocked=bool(code) and facts['transcript_known'] and not c.get('studio_youtube_url')
   report=dict(facts,task_id=task['id'],previous_error=task.get('error'),previous_action=action,run_tab_open=run_tab,error_code=code,message=message,
    decision='blocked' if blocked else 'resolved' if is_script_error(task.get('error')) and facts['script_content_exists'] else 'resume',at=time.time())
   atomic(Path(project['folder'])/'analysis'/'studio_reconcile.json',report)
