@@ -52,7 +52,7 @@ class AgentHandler(BaseHTTPRequestHandler):
    if self.path=='/release':
     with r.store.lock,r.store.db:
      t=r.store.get(data['task_id'])
-     if t['status'] not in ('held','paused','stopped') and not(t['status']=='needs_review' and t.get('context',{}).get('work_config') and str(t.get('current_action','')).startswith('STUDIO_')):raise ValueError('Task không thể bắt đầu lại; chỉ đối soát Studio read-before-send được Resume')
+     if t['status'] not in ('held','paused','stopped') and not(t['status']=='needs_review' and t.get('context',{}).get('work_config')):raise ValueError('Task không thể bắt đầu lại; chỉ đối soát Studio read-before-send được Resume')
      t.update(status='waiting',in_flight=False);r.store.save(t)
     r.start();return self.reply(200,{'ok':True})
    if self.path=='/start':r.start();return self.reply(200,{'ok':True})

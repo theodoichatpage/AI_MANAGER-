@@ -150,8 +150,10 @@ class AutomationService:
   """A Studio task in needs_review may be reconciled and resumed only when its journal proves every
   command Manager sent was confirmed by Studio (no POST with an unknown outcome)."""
   c=task.get('context',{})
-  if not c.get('studio_project_id') or not str(task.get('current_action','')).startswith('STUDIO_'):return False
+  if not c.get('studio_project_id'):return False
   path=Path(c['studio_folder'])/'analysis'/('manager_'+c['studio_run_id']+'.json')
+  # Stopped before any Studio step (e.g. opening Edge, a stale lock): nothing was sent, safe to resume.
+  if not str(task.get('current_action','')).startswith('STUDIO_'):return not path.exists()
   try:journal=json.loads(path.read_text(encoding='utf8'))
   except FileNotFoundError:return True
   except (OSError,ValueError):return False
