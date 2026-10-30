@@ -69,6 +69,7 @@ def step(worker,session):
  else:
   if scene.get('imageStatus') in ('error','stopped') and not worker.c.get('studio_retry_epoch'):raise RuntimeError('Scene ảnh lỗi/đã dừng; dùng Chạy lại lỗi sau khi kiểm tra Studio')
   style=str(session.get('stylePrompt') or '').strip()
-  if not style:raise ValueError('Studio chưa lưu prompt phong cách ảnh. Nhập và lưu trong tab Tạo ảnh trước')
+  # The run's Studio tab saves the style kept in its browser into the project; wait for it (10 minutes).
+  if not style:return worker.wait('style',600,dict(counts,studio_message='Đang chờ tab Studio gửi prompt phong cách ảnh chung. Nếu ô phong cách trống, nhập trong tab Tạo ảnh của Studio.'))
   worker.send('image:'+key,'/images',{'sceneKeys':[key],'stylePrompt':style,'ratio':worker.c.get('studio_ratio','16:9'),'expectedWorkEpoch':session.get('workEpoch',0)},session)
  return worker.wait('image:'+key,1800,dict(counts,studio_current_scene=key))

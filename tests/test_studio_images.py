@@ -33,8 +33,8 @@ class ImageTests(unittest.TestCase):
   folder=Path(self.tmp.name)/'images';p=save_image(folder,SID,'p:0',{'url':'unused'},fetch=lambda u:self.data);self.assertTrue(p.endswith('.jpg'));self.assertEqual(save_image(folder,SID,'p:0',{},fetch=lambda u:(_ for _ in ()).throw(Exception())),p)
  def test_missing_style_or_prompt_never_posts(self):
   self.api.s['stylePrompt']=''
-  with self.assertRaisesRegex(ValueError,'phong cách'):self.step()
-  self.assertEqual(self.api.posts,[])
+  # Missing style: wait for the run's Studio tab to save it, never post an image job meanwhile.
+  r=self.step();self.assertIn('phong cách',r['context']['studio_message']);self.assertEqual(self.api.posts,[])
   self.api.s['parts'][0]['scenes'][0]['prompt']=''
   with self.assertRaisesRegex(ValueError,'prompt'):self.step()
  def test_external_job_blocks(self):

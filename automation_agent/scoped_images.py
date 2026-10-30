@@ -98,7 +98,7 @@ def step(w,s):
     continue
    if state!='RETRYING':return pending(unit,'RETRYING',retry_count=retry+1,retry_at=now+min(5*2**retry,30))
   if not scene.get('prompt'):raise ValueError('Scene chưa có prompt; chạy Phân cảnh trước')
-  if not str(s.get('stylePrompt') or '').strip():raise ValueError('Studio chưa lưu phong cách ảnh')
+  if not str(s.get('stylePrompt') or '').strip():return w.wait('style',600,dict(counts,studio_message='Đang chờ tab Studio gửi prompt phong cách ảnh chung. Nếu ô phong cách trống, nhập trong tab Tạo ảnh của Studio.'))
   if rerun and not latest:atomic(w.folder/'analysis'/'backups'/(w.c['studio_run_id']+'_'+str(unit['ordinal'])+'.json'),scene)
   w.send('scoped-image:'+key+':attempt:'+str(retry),'/images',{'sceneKeys':[key],'stylePrompt':s['stylePrompt'],'ratio':w.c.get('studio_ratio','16:9'),'expectedWorkEpoch':s.get('workEpoch',0)},s)
   return pending(unit,'WAITING_RESULT',retry_count=retry,error=None)

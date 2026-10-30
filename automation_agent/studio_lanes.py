@@ -161,7 +161,7 @@ def step(w,s,post=None):
  parts_left=[p for p in parts if p.get('status')!='complete' and not failed('part:'+str(p['id']))] if 'scenes' in tasks else []
  style=str(s.get('stylePrompt') or '').strip()
  image_todo=[(o,k) for o,k,sc in images if not (sc.get('imageStatus')=='complete' and sc.get('imageResults')) and sc.get('prompt') and not open_item('image:'+k) and not failed('image:'+k)]
- if image_todo and not style:attention.append('Studio chưa lưu prompt phong cách ảnh; chưa tạo ảnh. Lưu trong tab Tạo ảnh của Studio.');image_todo=[]
+ if image_todo and not style:attention.append('Đang chờ tab Studio gửi prompt phong cách ảnh chung; chưa tạo ảnh. Nếu ô phong cách trống, nhập trong tab Tạo ảnh của Studio.');image_todo=[]
  # 5. Give work to free lanes, main lane first. With 3+ lanes the last one prefers images.
  order=list(live);image_lane=order[-1] if images and len(order)>=3 and parts_left else None
  sent=0
