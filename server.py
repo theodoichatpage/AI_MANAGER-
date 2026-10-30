@@ -248,7 +248,10 @@ class Handler(BaseHTTPRequestHandler):
                 if data.get('managerRunId'):
                     origin=self.headers.get('Origin','')
                     if origin!=data.get('origin') or not re.fullmatch(r'https://video-image-studio(?:-[a-z0-9-]+)?\.vercel\.app',origin):return self.send(403,{'error':'Studio origin không khớp'},cors=True)
-                PRESENCE.update(data); return self.send(200,{'ok':True,'command':PRESENCE.pending(data) if data.get('managerRunId') else None},cors=True)
+                PRESENCE.update(data)
+                # Only the run's main Studio tab gets requests; extra ChatGPT lanes only take lane jobs.
+                lane_tab=isinstance(data.get('worker'),dict) and bool(data['worker'].get('lane'))
+                return self.send(200,{'ok':True,'command':PRESENCE.pending(data) if data.get('managerRunId') and not lane_tab else None},cors=True)
             if path=='/api/studio-command':
                 # Only the local Windows Agent (no browser Origin) may queue a request for a Studio tab.
                 if self.headers.get('Origin'): return self.send(403,{'error':'Nguồn không hợp lệ'})
