@@ -46,7 +46,8 @@ class AgentClient:
      self.restarts.append(now)
      if self.job:self.job.close()
      self.spawn();self.closing.wait(.5)
-    state=self.request('/state',timeout=1)
+    # A busy Agent (sending lane work) may answer slowly; only a really silent one is restarted.
+    state=self.request('/state',timeout=3)
     expected=identity();actual=state.get('agent_identity') or {}
     if actual.get('version')!=expected['version'] or actual.get('source_sha256')!=expected['source_sha256'] or actual.get('source_root')!=expected['source_root']:
      raise RuntimeError('Agent khác phiên bản/source Manager; đã chặn kết nối và sẽ khởi động lại Agent.')
@@ -55,7 +56,7 @@ class AgentClient:
    except Exception as e:
     failures+=1
     with self.lock:self.cache.update(online=False,error=str(e))
-    if failures>=3 and self.process and self.process.poll() is None:
+    if failures>=5 and self.process and self.process.poll() is None:
      if self.job:self.job.close();self.job=None
      self.process.terminate();self.process.wait(3);failures=0
    self.closing.wait(1)

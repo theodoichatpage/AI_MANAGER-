@@ -60,17 +60,26 @@ def open_lane(lane,url,launch=None):
  exe=wm.executable(lane['browser'])
  subprocess.Popen([exe,'--profile-directory='+lane['profile'],'--new-window','https://chatgpt.com/',url],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_BREAKAWAY_FROM_JOB',0))
 
+REOPEN_GAP=600
+def ensure_lanes(w,live,launch=None):
+ """Open each extra lane that is not connected; again at most every 10 minutes (Edge was closed, tab lost)."""
+ st=w.j.setdefault('lanes',{'items':{},'cooldown':{},'seen':{},'opened':{}});st.setdefault('opened',{})
+ for lane in ((w.c.get('work_config') or {}).get('lanes') or [])[1:]:
+  key=lane['browser']+':'+lane['profile']
+  if lane_id(lane['browser'],lane['profile']) in live:continue
+  if w.clock()-float(st['opened'].get(key) or 0)<REOPEN_GAP:continue
+  try:open_lane(lane,lane_url(w.c['studio_origin']+'/',w.sid,w.c['studio_run_id'],w.c.get('project_name'),lane),launch)
+  except Exception:continue
+  st['opened'][key]=w.clock();w.save()
+
 def open_step(w,launch=None):
- """STUDIO_LANES: open every extra lane once, then wait (bounded) until they connect."""
+ """STUDIO_LANES: open every extra lane, then wait (bounded) until they connect."""
  extra=(w.c.get('work_config') or {}).get('lanes',[])[1:]
  st=w.j.setdefault('lanes',{'items':{},'cooldown':{},'seen':{},'opened':{}})
  st.setdefault('opened',{})
- for lane in extra:
-  key=lane['browser']+':'+lane['profile']
-  if key not in st['opened']:
-   open_lane(lane,lane_url(w.c['studio_origin']+'/',w.sid,w.c['studio_run_id'],w.c.get('project_name'),lane),launch);st['opened'][key]=w.clock();w.save()
  pres=w.presence();workers=pres.get('workers') or []
  live=live_lanes(workers)
+ ensure_lanes(w,live,launch)
  notes=warnings(workers)
  ctx={'studio_stage':'Mở '+str(len(extra)+1)+' tab ChatGPT','studio_lanes_live':len(live),'studio_lanes_wanted':len(extra)+1,'studio_warnings':notes}
  if len(live)>=len(extra)+1:return {'context':dict(ctx,studio_waiting_action=None)}
@@ -111,6 +120,7 @@ def step(w,s,post=None):
  now=w.clock();st=w.j.setdefault('lanes',{'items':{},'cooldown':{},'seen':{},'opened':{}})
  items=st['items'];pres=w.presence();workers=pres.get('workers') or [];live=live_lanes(workers)
  for lane in live:st['seen'][lane]=now
+ ensure_lanes(w,live)
  parts=scoped_parts(w,s.get('parts') or []);lane_jobs=s.get('laneJobs') or [];busy={j.get('lane'):j for j in lane_jobs}
  attention=[]
  # 1. Results the server recorded per lane (errors, completions, releases).
@@ -208,6 +218,7 @@ def rewrite_round(w,s,post=None):
  st=w.j.setdefault('lanes',{'items':{},'cooldown':{},'seen':{},'opened':{}});items=st['items']
  live=live_lanes(w.presence().get('workers') or [])
  for lane in live:st['seen'][lane]=now
+ ensure_lanes(w,live)
  sections=(s.get('rewrite') or {}).get('sections') or [];lane_jobs=s.get('laneJobs') or [];busy={j.get('lane'):j for j in lane_jobs}
  for lane,r in (s.get('laneLast') or {}).items():
   if r.get('type')!='transcript_rewrite':continue
