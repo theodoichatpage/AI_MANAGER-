@@ -153,4 +153,10 @@ class Rewrite(unittest.TestCase):
     if any(j['lane']==lane for j in s['laneJobs']):finish(lane)
    r=rewrite_round(w,s,post=post)
   self.assertEqual(r['studio_rewrite_done'],4);self.assertEqual(r['studio_rewrite_total'],4)
+class StaleExtensionJob(unittest.TestCase):
+ def test_old_remembered_job_does_not_block_a_free_lane(self):
+  studio_lanes.save_image=lambda *a,**k:'x'
+  st=FakeStudio(parts=2);ws=[worker('laneA'),worker('laneB')];ws[0]['extension_job']='transcript-old';ws[1]['extension_job']='oldjob'
+  w=W(st,ws);w.round()
+  self.assertEqual(len(st.s['laneJobs']),2,'both lanes get a part although their extensions remember old job ids')
 if __name__=='__main__':unittest.main()

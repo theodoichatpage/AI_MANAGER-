@@ -166,7 +166,8 @@ def step(w,s,post=None):
  order=list(live);image_lane=order[-1] if images and len(order)>=3 and parts_left else None
  sent=0
  for lane in order:
-  if lane in busy or (live[lane].get('extension_job') and live[lane]['extension_job'] not in {j.get('id') for j in lane_jobs}):continue
+  # The server's lane jobs say who is busy; the job id an extension remembers can be an old, finished one.
+  if lane in busy:continue
   cool=float(st['cooldown'].get(lane) or 0)>now
   pick=None
   if lane==image_lane and image_todo and not cool:pick=('image',image_todo.pop(0))
