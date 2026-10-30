@@ -107,6 +107,17 @@ def image_scope(w,s):
  allowed={p['id'] for p in scoped_parts(w,s.get('parts') or [])}
  return [(i,key,scene) for i,(key,scene) in enumerate(rows(s),1) if key.rsplit(':',1)[0] in allowed and in_scope(i,scope)]
 
+def backup_image(folder,key,run):
+ """Move the picture saved earlier for this scene (and its record) to images/backups/<run>/."""
+ import hashlib,json,shutil
+ record=folder/(hashlib.sha256(key.encode()).hexdigest()+'.json')
+ if not record.exists():return
+ dest=folder/'backups'/re.sub(r'[^A-Za-z0-9_-]','_',str(run))[:64];dest.mkdir(parents=True,exist_ok=True)
+ try:name=json.loads(record.read_text(encoding='utf8')).get('file')
+ except (OSError,ValueError):name=None
+ if name and (folder/name).parent==folder and (folder/name).exists():shutil.move(str(folder/name),str(dest/name))
+ shutil.move(str(record),str(dest/record.name))
+
 def save_part(w,part):
  pid=str(part['id']);name=pid if re.fullmatch(r'[A-Za-z0-9_-]{1,120}',pid) else 'part_'+__import__('hashlib').sha256(pid.encode()).hexdigest()
  path=w.folder/'scenes'/(name+'.json');atomic(path,part)
@@ -146,9 +157,15 @@ def step(w,s,post=None):
  for p in parts:
   if p.get('status')=='complete' and p.get('scenes') and saved.get('part:'+str(p['id']))!=len(p['scenes']):save_part(w,p);saved['part:'+str(p['id'])]=len(p['scenes'])
  images=image_scope(w,s) if 'images' in tasks else []
+ # "Chạy lại": scenes that already have a picture are made again; only a picture made in this run counts,
+ # and the old file is moved to images/backups/<run> before the new one is saved (nothing is deleted).
+ redo=bool(cfg.get('rerun'))
+ mark=lambda key:('redo:' if redo else '')+'image:'+key
+ made=lambda key,sc:bool(sc.get('imageStatus')=='complete' and sc.get('imageResults')) and (not redo or (items.get('image:'+key) or {}).get('state')=='completed')
  for ordinal,key,scene in images:
-  if scene.get('imageStatus')=='complete' and scene.get('imageResults') and not saved.get('image:'+key):
-   path=save_image(w.folder/'images',w.sid,key,scene['imageResults'][0],ordinal);saved['image:'+key]=path
+  if made(key,scene) and not saved.get(mark(key)):
+   if redo:backup_image(w.folder/'images',key,w.c.get('studio_run_id') or 'run')
+   path=save_image(w.folder/'images',w.sid,key,scene['imageResults'][0],ordinal);saved[mark(key)]=path
    if w.ledger:w.ledger.update('images',key,'COMPLETED',result_path=path,scene=ordinal)
    break
  w.save()
@@ -160,7 +177,7 @@ def step(w,s,post=None):
  part_todo=[p for p in parts if p.get('status')!='complete' and not open_item('part:'+str(p['id'])) and not failed('part:'+str(p['id']))] if 'scenes' in tasks else []
  parts_left=[p for p in parts if p.get('status')!='complete' and not failed('part:'+str(p['id']))] if 'scenes' in tasks else []
  style=str(s.get('stylePrompt') or '').strip()
- image_todo=[(o,k) for o,k,sc in images if not (sc.get('imageStatus')=='complete' and sc.get('imageResults')) and sc.get('prompt') and not open_item('image:'+k) and not failed('image:'+k)]
+ image_todo=[(o,k) for o,k,sc in images if not made(k,sc) and sc.get('prompt') and not open_item('image:'+k) and not failed('image:'+k)]
  if image_todo and not style:attention.append('Đang chờ tab Studio gửi prompt phong cách ảnh chung; chưa tạo ảnh. Nếu ô phong cách trống, nhập trong tab Tạo ảnh của Studio.');image_todo=[]
  # 5. Give work to free lanes, main lane first. With 3+ lanes the last one prefers images.
  order=list(live);image_lane=order[-1] if images and len(order)>=3 and parts_left else None
@@ -177,7 +194,7 @@ def step(w,s,post=None):
   if pick[0]=='part':
    part=pick[1];key='part:'+str(part['id']);route='/lanes/'+lane+'/parts/'+urllib.parse.quote(str(part['id']),safe='');body={'expectedWorkEpoch':s.get('workEpoch',0)}
   else:
-   ordinal,skey=pick[1];key='image:'+skey;route='/lanes/'+lane+'/images';body={'sceneKey':skey,'stylePrompt':style,'ratio':w.c.get('studio_ratio','16:9'),'expectedWorkEpoch':s.get('workEpoch',0)}
+   ordinal,skey=pick[1];key='image:'+skey;route='/lanes/'+lane+'/images';body={'sceneKey':skey,'stylePrompt':style,'ratio':w.c.get('studio_ratio','16:9'),'expectedWorkEpoch':s.get('workEpoch',0),**({'force':True} if redo else {})}
   item=items.setdefault(key,{'tries':0})
   item.update(state='intent',lane=lane,at=now,tries=item.get('tries',0)+1);w.save()
   try:result=post(route,body)
@@ -192,7 +209,7 @@ def step(w,s,post=None):
    else:w.ledger.update('images',pick[1][1],'WAITING_RESULT',lane=lane,scene=pick[1][0])
  # 6. Report and decide.
  lanes_view=[{'lane':lane,'label':live[lane].get('account_label') or lane,'plan':live[lane].get('account_plan'),'job':(busy.get(lane) or {}).get('partId') or (busy.get(lane) or {}).get('sceneKey'),'kind':(busy.get(lane) or {}).get('type'),'cooldown':float(st['cooldown'].get(lane) or 0)>now} for lane in order]
- done_parts=sum(p.get('status')=='complete' for p in parts);done_images=sum(1 for _,k,_ in images if saved.get('image:'+k))
+ done_parts=sum(p.get('status')=='complete' for p in parts);done_images=sum(1 for _,k,_ in images if saved.get(mark(k)))
  failed_items=[k for k in items if failed(k)]
  ctx={'studio_stage':'Chạy song song '+str(len(order))+' tab ChatGPT','studio_total_parts':len(parts),'studio_completed_parts':done_parts,
   'studio_total_scenes':sum(len(p.get('scenes') or []) for p in parts),'studio_scope_total':len(images),'studio_images_saved':done_images,
@@ -201,7 +218,7 @@ def step(w,s,post=None):
  atomic(w.folder/'analysis'/'studio_lanes.json',dict(ctx,items=items,updated_at=now))
  in_flight=any(open_item(k) for k in items)
  scenes_done='scenes' not in tasks or not parts_left
- images_done=not images or all(saved.get('image:'+k) or failed('image:'+k) for _,k,_ in images)
+ images_done=not images or all(saved.get(mark(k)) or failed('image:'+k) for _,k,_ in images)
  if scenes_done and images_done and not in_flight:
   if failed_items and cfg.get('error_policy')=='stop':raise RuntimeError('Dừng: '+str(len(failed_items))+' mục lỗi sau '+str(limit)+' lần thử ('+', '.join(failed_items[:5])+')')
   return {'context':dict(ctx,studio_stage='Hoàn tất chạy song song'+(' · '+str(len(failed_items))+' mục lỗi' if failed_items else ''),studio_waiting_action=None)}

@@ -109,6 +109,26 @@ class Lanes(unittest.TestCase):
   self.assertIn('nghỉ tạo ảnh',r['context']['studio_attention'][0])
   w.now+=901;st.finish('laneB');w.round();self.assertIsNotNone(st.job('laneA'))
 
+ def test_rerun_remakes_existing_pictures_and_saves_only_new_ones(self):
+  st=FakeStudio(parts=1,scenes=2);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'complete','imageResults':[{'url':'https://x/old'}]} for _ in range(2)])
+  w=W(st,[worker('laneA'),worker('laneB')],tasks=('images',));w.c['work_config']['rerun']=True
+  sent=[];old=st.post
+  def post(route,body):sent.append(body);return old(route,body)
+  st.post=post;w.round()
+  self.assertEqual(len(st.s['laneJobs']),2,'already-made pictures are made again');self.assertTrue(all(b.get('force') for b in sent))
+  self.assertEqual(self.saved,[],'the old pictures are not saved as results of this run')
+  st.finish('laneA');st.finish('laneB')
+  for _ in range(3):r=w.round()
+  self.assertNotIn('waiting',r);self.assertEqual(r['context']['studio_images_saved'],2);self.assertEqual(len(self.saved),2)
+ def test_backup_moves_old_picture_and_record(self):
+  import hashlib,json
+  from automation_agent.studio_lanes import backup_image
+  with tempfile.TemporaryDirectory() as tmp:
+   folder=Path(tmp);key='p1:0';rec=folder/(hashlib.sha256(key.encode()).hexdigest()+'.json')
+   (folder/'a.png').write_bytes(b'x');rec.write_text(json.dumps({'file':'a.png'}))
+   backup_image(folder,key,'run1')
+   self.assertFalse((folder/'a.png').exists());self.assertTrue((folder/'backups'/'run1'/'a.png').exists());self.assertTrue((folder/'backups'/'run1'/rec.name).exists())
+   backup_image(folder,key,'run1')
  def test_no_style_no_images(self):
   st=FakeStudio(parts=1);st.s['stylePrompt']='';st.part('p1').update(status='complete',scenes=[{'prompt':'x'}])
   w=W(st,[worker('laneA')],tasks=('images',));r=w.round()
