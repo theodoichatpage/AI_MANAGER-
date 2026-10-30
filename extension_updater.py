@@ -55,18 +55,38 @@ def install(files,target=TARGET):
    try:(target/rel).unlink()
    except OSError:pass
 
+BRIDGE_NAME='VIDEO IMAGE STUDIO — ChatGPT Bridge'
+def edge_install_folders(base=None):
+ """Folders the Edge profiles actually load this extension from (people often load a downloaded copy).
+ Only folders whose manifest is our bridge are returned, so nothing else is ever overwritten."""
+ ud=Path(base or Path(os.environ.get('LOCALAPPDATA',''))/'Microsoft'/'Edge'/'User Data');found=[]
+ for prefs in list(ud.glob('*/Secure Preferences'))+list(ud.glob('*/Preferences')):
+  try:settings=json.loads(prefs.read_text(encoding='utf8')).get('extensions',{}).get('settings',{})
+  except (OSError,ValueError):continue
+  for row in settings.values():
+   path=Path(str((row or {}).get('path') or ''))
+   if not path.is_absolute() or not (path/'manifest.json').is_file():continue
+   try:name=json.loads((path/'manifest.json').read_text(encoding='utf8')).get('name')
+   except (OSError,ValueError):continue
+   if name==BRIDGE_NAME and path not in found:found.append(path)
+ return found
+
 class ExtensionUpdater:
- def __init__(self,target=TARGET,fetch=_get):
-  self.target=Path(target);self.fetch=fetch;self.lock=threading.Lock()
+ def __init__(self,target=TARGET,fetch=_get,extra=edge_install_folders):
+  self.target=Path(target);self.fetch=fetch;self.extra=extra;self.lock=threading.Lock()
   self.state={'path':str(self.target),'installed':installed(self.target),'latest':None,'checked_at':None,'error':None,'updated_at':None}
  def snapshot(self):
   with self.lock:return dict(self.state,installed=installed(self.target))
  def check(self):
   try:
    version,name=latest(self.fetch)
-   if installed(self.target)!=version:
-    install(unpack(self.fetch(RAW+'public/resources/'+name,MAX_ZIP),version),self.target)
+   targets=[self.target]+[p for p in self.extra() if p!=self.target]
+   stale=[t for t in targets if installed(t)!=version]
+   if stale:
+    files=unpack(self.fetch(RAW+'public/resources/'+name,MAX_ZIP),version)
+    for t in stale:install(files,t)
     with self.lock:self.state['updated_at']=time.time()
+   with self.lock:self.state['folders']=[str(t) for t in targets]
    with self.lock:self.state.update(latest=version,error=None,checked_at=time.time())
   except Exception as exc:
    with self.lock:self.state.update(error=str(exc)[:300],checked_at=time.time())
