@@ -2,6 +2,12 @@ import json, os, subprocess, sys, tempfile, time, unittest, urllib.request
 from pathlib import Path
 class ProcessTest(unittest.TestCase):
  def test_process_restart(self):
+  # This test drives a server on the fixed port 8765. If the real AI MANAGER is running there, every
+  # request (change project folder, start/stop queue) would hit it, so skip instead.
+  try:
+   urllib.request.urlopen('http://127.0.0.1:8765/api/state',timeout=1).close()
+   self.skipTest('AI MANAGER đang chạy ở cổng 8765; không chạy thử để tránh đổi dữ liệu thật')
+  except OSError:pass
   with tempfile.TemporaryDirectory() as td:
    env=dict(os.environ,AI_MANAGER_HOME=td+'/config'); port='http://127.0.0.1:8765'; p=None
    def start():
