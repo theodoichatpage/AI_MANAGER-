@@ -129,12 +129,14 @@ class StudioStep:
   if hashlib.sha256(path.read_text(encoding='utf8').encode('utf8')).hexdigest()!=digest:raise StudioReviewRequired('Lưu kịch bản không khớp checksum; dừng để kiểm tra')
   self.j['script']={'sha256':digest,'characters':len(script),'path':str(path),'at':self.clock()};self.j['stages'].pop(self.command_key('script'),None);self.save()
   if self.ledger:self.ledger.update('analysis','script','COMPLETED',result_path=str(path),characters=len(script))
- def transcript_pipeline(self,name,actual,facts,pipeline):
+ def transcript_pipeline(self,name,actual,facts,pipeline,s=None):
   """Ask the Studio tab to get the YouTube transcript (and rewrite it in the saved style), then watch its progress."""
   cmd=self.j.get('transcript_command')
   if not cmd or cmd.get('epoch')!=self.c.get('studio_retry_epoch',0):
    cmd={'type':'transcript_pipeline','id':self.c['studio_run_id'][:20]+'-'+str(self.c.get('studio_retry_epoch',0)),'url':self.c['studio_youtube_url'],'language':self.c.get('studio_language','vi'),'rewrite':bool(self.c.get('studio_rewrite',True)),'epoch':self.c.get('studio_retry_epoch',0)}
    if self.c.get('studio_rewrite_style'):cmd['style']=self.c['studio_rewrite_style']
+   # Several ChatGPT tabs: Studio uploads the sections and Manager hands them out to the tabs.
+   if len((self.c.get('work_config') or {}).get('lanes') or [])>1:cmd['parallel']=True
    self.j['transcript_command']=cmd;self.save()
   self.post_command({k:v for k,v in cmd.items() if k!='epoch'})
   mine=pipeline.get('id')==cmd['id']
@@ -142,10 +144,15 @@ class StudioStep:
   labels={'fetch':'Đang lấy transcript YouTube','partition':'Đang chia phần để viết lại','rewrite':'Đang viết lại kịch bản','done':'Đang lưu kịch bản'}
   stage=labels.get(pipeline.get('stage'),'Đã gửi yêu cầu lấy transcript cho Studio') if mine else 'Đã gửi yêu cầu lấy transcript cho Studio'
   if mine and pipeline.get('stage')=='rewrite':stage+=' '+str(pipeline.get('done',0))+'/'+str(pipeline.get('total',0))
+  extra={}
+  if mine and cmd.get('parallel') and s and (s.get('rewrite') or {}).get('sections'):
+   from .studio_lanes import rewrite_round
+   extra=rewrite_round(self,s);stage='Đang viết lại song song '+str(extra['studio_rewrite_done'])+'/'+str(extra['studio_rewrite_total'])+' trên '+str(extra['studio_lanes_live'])+' tab'
   if self.ledger:self.ledger.update('transcript','transcript','WAITING_RESULT',reason=stage)
   # Watchdog follows progress: each rewritten part restarts the clock.
   key='transcript:'+(str(pipeline.get('stage'))+':'+str(pipeline.get('done',0)) if mine else 'sent')
-  return self.wait(key,1200,dict(actual,studio_stage='Transcript',studio_message=stage,studio_reconcile=facts))
+  if extra.get('studio_rewrite_total'):key='transcript:parallel:'+str(extra['studio_rewrite_done'])
+  return self.wait(key,1200,dict(actual,studio_stage='Transcript',studio_message=stage,studio_reconcile=facts,**extra))
  def post_command(self,command):
   body=json.dumps({'sessionId':self.sid,'runId':self.c['studio_run_id'],'command':command}).encode()
   try:urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8765/api/studio-command',body,{'Content-Type':'application/json'},method='POST'),timeout=3).read()
@@ -199,7 +206,7 @@ class StudioStep:
    facts=reconcile(s,self.presence())
    pipeline=(self.presence().get('project_state') or {}).get('pipeline') or {}
    if self.c.get('studio_youtube_url') and not facts['analysis_completed'] and not facts['script_content_exists']:
-    return self.transcript_pipeline(name,actual,facts,pipeline)
+    return self.transcript_pipeline(name,actual,facts,pipeline,s)
    if facts['analysis_completed']:state,reason='SKIPPED','Studio đã phân tích cấu trúc; không cần transcript'
    elif self.j.get('transcript_command') and pipeline.get('id')==self.j['transcript_command']['id'] and pipeline.get('stage')=='done':state,reason='COMPLETED','Đã lấy transcript'+(' và viết lại theo phong cách' if self.c.get('studio_rewrite',True) else '')+' ('+str(facts['script_character_count'])+' ký tự)'
    elif facts['transcript_exists']:state,reason='SKIPPED','Transcript đã có ('+str(facts['transcript_character_count'])+' ký tự); không lấy lại'

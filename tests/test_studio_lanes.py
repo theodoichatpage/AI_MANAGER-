@@ -130,4 +130,27 @@ class Lanes(unittest.TestCase):
   open_step(w,launch=lambda lane,url:opened.append(lane));self.assertEqual(len(opened),2,'never opens twice')
   w.now+=200;r=open_step(w,launch=None);self.assertNotIn('waiting',r);self.assertIn('1/3',r['context']['studio_message'])
 
+class Rewrite(unittest.TestCase):
+ def test_sections_spread_over_lanes_and_failures_retry(self):
+  from automation_agent.studio_lanes import rewrite_round
+  s={'workEpoch':0,'rewrite':{'sections':[{'id':'s%d'%i,'status':'waiting'} for i in range(1,5)]},'laneJobs':[],'laneLast':{}}
+  posts=[];n=[0]
+  def post(route,body):
+   posts.append(route);bits=route.strip('/').split('/')
+   if bits[2]=='release':s['laneJobs']=[j for j in s['laneJobs'] if j['id']!=body['jobId']];return {}
+   n[0]+=1;job={'id':'j%d'%n[0],'lane':bits[1],'type':'transcript_rewrite','sectionId':bits[3]};s['laneJobs'].append(job)
+   next(x for x in s['rewrite']['sections'] if x['id']==bits[3])['status']='processing';return {'command':job}
+  def finish(lane,ok=True):
+   j=next(j for j in s['laneJobs'] if j['lane']==lane);s['laneJobs'].remove(j)
+   sec=next(x for x in s['rewrite']['sections'] if x['id']==j['sectionId']);sec['status']='done' if ok else 'error'
+   s['laneLast'][lane]={'jobId':j['id'],'type':'transcript_rewrite','status':'completed' if ok else 'error','sectionId':j['sectionId']}
+  w=W(FakeStudio(),[worker('laneA'),worker('laneB')],retry=1)
+  r=rewrite_round(w,s,post=post);self.assertEqual({j['lane']:j['sectionId'] for j in s['laneJobs']},{'laneA':'s1','laneB':'s2'})
+  finish('laneA');finish('laneB',ok=False);rewrite_round(w,s,post=post)
+  self.assertEqual(sorted(j['sectionId'] for j in s['laneJobs']),['s2','s3'],'failed section retried, next one started')
+  for _ in range(6):
+   for lane in ('laneA','laneB'):
+    if any(j['lane']==lane for j in s['laneJobs']):finish(lane)
+   r=rewrite_round(w,s,post=post)
+  self.assertEqual(r['studio_rewrite_done'],4);self.assertEqual(r['studio_rewrite_total'],4)
 if __name__=='__main__':unittest.main()

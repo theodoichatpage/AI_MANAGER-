@@ -50,8 +50,13 @@ def clone(source='Default',name='ChatGPT 2',base=None,running=edge_running,clock
  if running():raise RuntimeError('Edge đang mở; cần đóng Edge trước khi nhân bản hồ sơ.')
  if not src.is_dir():raise ValueError('Không thấy hồ sơ Edge nguồn: '+source)
  state=json.loads(local_state.read_text(encoding='utf8'))
- target=next_profile(ud,state);dst=ud/target
- shutil.copytree(src,dst,ignore=_ignore)
+ target=next_profile(ud,state);dst=ud/target;tmp=ud/(target+'.ai-manager-copy')
+ # Copy to a temporary folder first; a failed copy never leaves a half profile behind.
+ shutil.rmtree(tmp,ignore_errors=True)
+ try:shutil.copytree(src,tmp,ignore=_ignore)
+ except Exception:
+  shutil.rmtree(tmp,ignore_errors=True);raise RuntimeError('Không chép được hồ sơ (Edge có thể vừa mở lại). Chưa thay đổi gì; thử lại.')
+ os.replace(tmp,dst)
  prefs_path=dst/'Preferences'
  try:prefs=json.loads(prefs_path.read_text(encoding='utf8'))
  except (OSError,ValueError):prefs={}

@@ -195,3 +195,39 @@ def step(w,s,post=None):
  if not live and not in_flight:return w.wait('lanes:connection',1800,ctx)
  # Watchdog keyed on progress: any finished part/image restarts the clock.
  return w.wait('lanes:'+str(done_parts)+':'+str(done_images),JOB_LIMIT+LANE_LOST+300,ctx)
+
+def rewrite_round(w,s,post=None):
+ """Get Transcript on several tabs: give each free lane the next rewrite section the Studio tab uploaded.
+ Same safety as scenes: lost/stuck lanes are released first, a failed section is retried up to the limit."""
+ post=post or (lambda route,body:w.api.request(w.sid,route,body))
+ cfg=w.c.get('work_config') or {};limit=int(cfg.get('retry_limit',2))+1;now=w.clock()
+ st=w.j.setdefault('lanes',{'items':{},'cooldown':{},'seen':{},'opened':{}});items=st['items']
+ live=live_lanes(w.presence().get('workers') or [])
+ for lane in live:st['seen'][lane]=now
+ sections=(s.get('rewrite') or {}).get('sections') or [];lane_jobs=s.get('laneJobs') or [];busy={j.get('lane'):j for j in lane_jobs}
+ for lane,r in (s.get('laneLast') or {}).items():
+  if r.get('type')!='transcript_rewrite':continue
+  item=items.get('rewrite:'+str(r.get('sectionId')))
+  if item and item.get('job')==r.get('jobId') and item.get('state')=='sent':item.update(state=r.get('status'),error=r.get('error') or None)
+ for job in lane_jobs:
+  if job.get('type')!='transcript_rewrite':continue
+  lane=job.get('lane');item=items.get('rewrite:'+str(job.get('sectionId'))) or {}
+  lost=lane not in live and now-float(st['seen'].get(lane) or item.get('at') or now)>=LANE_LOST
+  stuck=item.get('job')==job.get('id') and now-float(item.get('at') or now)>=JOB_LIMIT
+  if lost or stuck:
+   post('/lanes/'+lane+'/release',{'jobId':job['id'],'reason':'Tab mất kết nối' if lost else 'Quá thời gian','expectedWorkEpoch':s.get('workEpoch',0)})
+   if item.get('job')==job.get('id'):item.update(state='released')
+   busy.pop(lane,None)
+ open_ids={j.get('sectionId') for j in lane_jobs if j.get('type')=='transcript_rewrite' and j.get('lane') in busy}
+ failed=lambda sid:(items.get('rewrite:'+sid) or {}).get('tries',0)>=limit and (items.get('rewrite:'+sid) or {}).get('state') in ('error','released')
+ todo=[x for x in sections if x.get('status')!='done' and x['id'] not in open_ids and not failed(x['id'])]
+ for lane in live:
+  if lane in busy or not todo:continue
+  sec=todo.pop(0);key='rewrite:'+sec['id'];item=items.setdefault(key,{'tries':0})
+  item.update(state='intent',lane=lane,at=now,tries=item.get('tries',0)+1);w.save()
+  try:result=post('/lanes/'+lane+'/rewrite/'+urllib.parse.quote(sec['id'],safe=''),{'expectedWorkEpoch':s.get('workEpoch',0)})
+  except Exception as exc:item.update(state='error',error=str(exc)[:300]);w.save();continue
+  item.update(state='sent',job=((result or {}).get('command') or {}).get('id'),error=None);w.save()
+ w.save()
+ bad=[x['id'] for x in sections if failed(x['id'])]
+ return {'studio_lanes_live':len(live),'studio_rewrite_done':sum(x.get('status')=='done' for x in sections),'studio_rewrite_total':len(sections),'studio_failed_items':bad or None,'studio_warnings':warnings(w.presence().get('workers') or [])}
