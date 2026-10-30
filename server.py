@@ -52,7 +52,9 @@ class StudioPresence:
             self.tabs={k:v for k,v in self.tabs.items() if now-v['at']<=self.ttl}
             matching=[v for v in self.tabs.values() if (session_id is None or v['session_id']==session_id) and (run_id is None or v.get('manager_run_id')==run_id)]
             if not matching: return {'studio_tab_open':False,'chat_connected':False,'session_id':None,'project_name':None,'last_seen':None}
-            latest=max(matching,key=lambda x:x['at'])
+            # Content state (transcript pipeline etc.) comes from the run's main tab, not an extra ChatGPT lane.
+            main=[v for v in matching if not (v.get('worker') or {}).get('lane_tab')]
+            latest=max(main or matching,key=lambda x:x['at'])
             return {'studio_tab_open':True,'chat_connected':any(v['chat_connected'] for v in matching),
                 'session_id':latest['session_id'],'project_name':latest.get('project_name'),'last_seen':latest['at'],'manager_run_id':latest.get('manager_run_id'),'origin':latest.get('origin'),'projects':latest.get('projects',[]),'project_state':latest.get('project_state'),
                 'workers':[dict(v['worker'],tab_id=v['tab_id'],chat_connected=v['chat_connected'],manager_run_id=v.get('manager_run_id'),seen=v['at']) for v in self.tabs.values() if v['session_id']==latest['session_id'] and v.get('worker')]}

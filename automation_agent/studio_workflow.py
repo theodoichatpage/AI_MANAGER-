@@ -151,7 +151,8 @@ class StudioStep:
   stage=labels.get(pipeline.get('stage'),'Đã gửi yêu cầu lấy transcript cho Studio') if mine else 'Đã gửi yêu cầu lấy transcript cho Studio'
   if mine and pipeline.get('stage')=='rewrite':stage+=' '+str(pipeline.get('done',0))+'/'+str(pipeline.get('total',0))
   extra={}
-  if mine and cmd.get('parallel') and s and (s.get('rewrite') or {}).get('sections'):
+  # Hand out rewrite sections whenever they are on the server (not only when this read came from the main tab).
+  if cmd.get('parallel') and s and (s.get('rewrite') or {}).get('sections'):
    from .studio_lanes import rewrite_round
    extra=rewrite_round(self,s);stage='Đang viết lại song song '+str(extra['studio_rewrite_done'])+'/'+str(extra['studio_rewrite_total'])+' trên '+str(extra['studio_lanes_live'])+' tab'
   if self.ledger:self.ledger.update('transcript','transcript','WAITING_RESULT',reason=stage)
