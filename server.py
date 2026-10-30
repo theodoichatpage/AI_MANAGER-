@@ -264,6 +264,16 @@ class Handler(BaseHTTPRequestHandler):
                 if not EXTENSION.receive(code,data,expected_job=job): return self.send(403,{'error':'Phiên hoặc tác vụ không khớp'})
                 return self.send(200,{'commands':[],'mode':'read-only'})
             if self.headers.get('Origin') not in ('http://127.0.0.1:8765','http://localhost:8765'): raise ValueError('Nguồn truy cập không hợp lệ')
+            if path=='/api/edge-clone':
+                # Extra ChatGPT profile: close Edge, clone the main profile (keeps the ChatGPT login), reopen both.
+                if any(p['status']=='running' for p in manager().list()): raise ValueError('Đang có dự án chạy; tạm dừng trước khi tạo hồ sơ (cần đóng Edge).')
+                from automation_agent import edge_clone
+                source=str(data.get('source') or 'Default')
+                if not re.fullmatch(r'Default|Profile \d{1,3}',source): raise ValueError('Hồ sơ nguồn không hợp lệ')
+                if not edge_clone.close_edge(): raise ValueError('Không đóng được Edge; hãy đóng Edge rồi thử lại.')
+                result=edge_clone.clone(source=source,name=str(data.get('name') or 'ChatGPT 2')[:40])
+                edge_clone.open_profiles([source,result['profile']])
+                return self.send(200,result)
             if path=='/api/extension-update':
                 if data.get('action')=='open':
                     Path(EXT_UPDATER.target).mkdir(parents=True,exist_ok=True)
