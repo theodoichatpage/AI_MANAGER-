@@ -136,6 +136,8 @@ def create_project(name, script, test_key=None):
     atomic(folder/'project.json',project); (folder/'logs'/'activity.log').write_text(f'{now} – Đã tạo dự án\n',encoding='utf-8'); return project
 
 MANAGER=None; WORKER=None; STUDIO=StudioMonitor(); EXTENSION=ExtensionMonitor(); STUDIO_STOP=threading.Event(); threading.Thread(target=STUDIO.run,args=(STUDIO_STOP,),daemon=True).start()
+from extension_updater import ExtensionUpdater
+EXT_UPDATER=ExtensionUpdater(); threading.Thread(target=EXT_UPDATER.run,args=(STUDIO_STOP,),daemon=True).start()
 AUTOMATION=None
 def automation():
     global AUTOMATION
@@ -201,7 +203,7 @@ def synchronized_state(q):
         application_paths={k:str(settings.get(k,'')) for k in ('chrome_path','capcut_path')}
     except (OSError,ValueError):pass
     batch=q.batch()
-    return {'studio_batch':batch,'application_paths':application_paths,'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot()}
+    return {'studio_batch':batch,'application_paths':application_paths,'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot(),'extension_update':EXT_UPDATER.snapshot()}
 
 def render_index():
     page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
@@ -262,6 +264,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not EXTENSION.receive(code,data,expected_job=job): return self.send(403,{'error':'Phiên hoặc tác vụ không khớp'})
                 return self.send(200,{'commands':[],'mode':'read-only'})
             if self.headers.get('Origin') not in ('http://127.0.0.1:8765','http://localhost:8765'): raise ValueError('Nguồn truy cập không hợp lệ')
+            if path=='/api/extension-update':
+                if data.get('action')=='open':
+                    Path(EXT_UPDATER.target).mkdir(parents=True,exist_ok=True)
+                    if hasattr(os,'startfile'): os.startfile(str(EXT_UPDATER.target))
+                    return self.send(200,EXT_UPDATER.snapshot())
+                return self.send(200,EXT_UPDATER.check())
             if path=='/api/automation':
                 result=automation().control(data)
                 return self.send(200,result)
