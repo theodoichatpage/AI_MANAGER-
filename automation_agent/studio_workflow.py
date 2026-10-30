@@ -188,11 +188,12 @@ class StudioStep:
   self.j.setdefault('studio_open',{})[key]=self.clock();self.save();return True
  def step(self,name):
   if name=='STUDIO_OPEN':
-   if not self.ready():self.open_studio(force=not (self.j.get('studio_open') or {}).get('open#'+str(self.c.get('studio_retry_epoch',0))))
+   if not self.ready() and self.c.get('studio_state')!='connected':self.open_studio(force=not (self.j.get('studio_open') or {}).get('open#'+str(self.c.get('studio_retry_epoch',0))))
    return {'context':{'studio_stage':'Mở Studio'}}
   if name=='STUDIO_READY':
    if not self.ready():
-    if self.c.get('studio_launch'):self.open_studio()
+    # Relaunch only when the Studio tab itself is missing (not when only ChatGPT is still connecting).
+    if self.c.get('studio_launch') and self.c.get('studio_state')!='connected':self.open_studio()
     self.c['studio_ready_wait']='WAITING_CHATGPT' if self.c.get('studio_state')=='connected' else 'WAITING_STUDIO'
     if self.ledger:self.ledger.update('connection','studio',self.c['studio_ready_wait'])
     return self.wait(name,300 if self.c.get('studio_launch') else 120,{'studio_stage':'Chờ ChatGPT/Extension' if self.c['studio_ready_wait']=='WAITING_CHATGPT' else 'Chờ tab Studio'})
