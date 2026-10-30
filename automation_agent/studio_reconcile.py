@@ -71,6 +71,7 @@ def resume_point(task,facts,run_tab_open):
  otherwise a running Studio job keeps its checkpoint and an idle run re-validates from STUDIO_READY."""
  names=[a['action'] for a in task['actions']];index=task['next_action']
  if 'STUDIO_READY' not in names or index<=names.index('STUDIO_READY'):return index
+ if not run_tab_open and 'STUDIO_OPEN' in names:return names.index('STUDIO_OPEN')
  if not run_tab_open and 'OPEN_APP' in names:return names.index('OPEN_APP')
  if facts.get('active_job'):return index
  return names.index('STUDIO_READY')

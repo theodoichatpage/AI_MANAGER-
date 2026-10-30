@@ -44,7 +44,7 @@ class StudioWorkflowTests(unittest.TestCase):
   with self.assertRaises(StudioReviewRequired):self.step(api).step('STUDIO_ANALYZE')
  def test_launch_binds_nonce_to_existing_project(self):
   actions,c=workflow(SID,'https://video-image-studio.vercel.app','edge','Default',self.tmp.name,'Script')
-  self.assertIn('managerProject='+SID,next(a['url'] for a in actions if a['action']=='OPEN_URL'));self.assertIn(c['studio_run_id'],next(a['url'] for a in actions if a['action']=='OPEN_URL'));self.assertEqual(actions[-1]['action'],'STUDIO_SCENES')
+  self.assertIn('managerProject='+SID,c['studio_launch_url']);self.assertIn(c['studio_run_id'],c['studio_launch_url']);self.assertEqual(actions[-1]['action'],'STUDIO_SCENES')
  def test_pending_step_preserves_same_action_checkpoint(self):
   from automation_agent.task_store import TaskStore
   store=TaskStore(Path(self.tmp.name)/'task.sqlite3');tid=store.submit([{'action':'STUDIO_SCENES'}]);store.claim(tid);store.mark_action(tid,0)

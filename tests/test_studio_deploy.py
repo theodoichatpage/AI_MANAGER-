@@ -43,7 +43,7 @@ class WorkflowLanes(unittest.TestCase):
   actions,ctx=workflow(SID,URL,'edge','Default','.','',context={'studio_youtube_url':'https://youtu.be/abcdefghijk'},work_config=cfg,stages=['analysis','images'],name='Dự án A')
   names=[a['action'] for a in actions]
   self.assertEqual(names[names.index('STUDIO_READY')+1:],['STUDIO_LANES','STUDIO_TRANSCRIPT','STUDIO_ANALYZE','STUDIO_PARALLEL'])
-  launch=next(a['url'] for a in actions if a['action']=='OPEN_URL')
+  launch=ctx['studio_launch_url'];self.assertEqual(names[:2],['STUDIO_OPEN','STUDIO_READY'],'Edge is launched with the URL, nothing typed')
   self.assertIn('managerStage=transcript',launch);self.assertIn('managerName=',launch)
  def test_single_lane_keeps_the_proven_sequential_steps(self):
   actions,_=workflow(SID,URL,'edge','Default','.','',work_config=normalize({'tasks':['analysis','scenes']}))
@@ -64,3 +64,17 @@ class PresenceLanes(unittest.TestCase):
   self.assertIsNone(p.pending(base));p.command(SID,'r'*32,{'type':'transcript_pipeline','id':'x'});self.assertEqual(p.pending(base)['id'],'x')
   self.assertIsNone(p.pending(dict(base,managerRunId='z'*32)),'another run never receives it')
 if __name__=='__main__':unittest.main()
+
+class LaunchOpen(unittest.TestCase):
+ def test_studio_is_launched_then_relaunched_only_while_missing(self):
+  from automation_agent import studio_lanes
+  opened=[];orig=studio_lanes.open_lane;studio_lanes.open_lane=lambda lane,url,launch=None:opened.append((lane['profile'],url))
+  try:
+   tmp=tempfile.TemporaryDirectory();now=[1000.0];pres=[{'studio_tab_open':False}]
+   c={'studio_project_id':SID,'studio_run_id':'r'*32,'studio_origin':URL,'studio_folder':tmp.name,'studio_launch':True,'studio_launch_url':URL+'/?managerProject='+SID,'browser_profile':'Profile 1'}
+   mk=lambda:StudioStep(c,FakeAPI({'id':SID,'parts':[]}),lambda:pres[0],clock=lambda:now[0])
+   self.assertNotIn('waiting',mk().step('STUDIO_OPEN'));self.assertEqual(opened,[('Profile 1',c['studio_launch_url'])])
+   self.assertTrue(mk().step('STUDIO_READY')['waiting']);self.assertEqual(len(opened),1,'no second window right away')
+   now[0]+=130;mk().step('STUDIO_READY');self.assertEqual(len(opened),2,'tab still missing after 2 minutes: launch again')
+   tmp.cleanup()
+  finally:studio_lanes.open_lane=orig

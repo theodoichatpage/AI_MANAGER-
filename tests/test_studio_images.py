@@ -53,7 +53,7 @@ class ImageTests(unittest.TestCase):
  def test_untrusted_download_rejected(self):
   with self.assertRaises(ValueError):fetch_image('http://127.0.0.1/private')
  def test_selected_stages(self):
-  a,c=workflow(SID,'https://video-image-studio.vercel.app','edge','Default',self.tmp.name,'',stages=['images']);self.assertEqual(a[-1]['action'],'STUDIO_IMAGES');self.assertFalse(any(x['action']=='STUDIO_ANALYZE' for x in a));self.assertIn('managerStage=images',next(x['url'] for x in a if x['action']=='OPEN_URL'))
+  a,c=workflow(SID,'https://video-image-studio.vercel.app','edge','Default',self.tmp.name,'',stages=['images']);self.assertEqual(a[-1]['action'],'STUDIO_IMAGES');self.assertFalse(any(x['action']=='STUDIO_ANALYZE' for x in a));self.assertIn('managerStage=images',c['studio_launch_url'])
   with self.assertRaises(ValueError):workflow(SID,'https://video-image-studio.vercel.app','edge','Default',self.tmp.name,'',stages=[])
  def test_identity_legacy_and_canonical_keeps_progress(self):
   key={'id':SID,'origin':'https://video-image-studio.vercel.app','browser':'edge','profile':'Default'}

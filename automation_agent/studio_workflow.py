@@ -58,7 +58,13 @@ def workflow(sid,url,browser,profile,folder,script,context=None,stages=None,work
  # managerName lets a profile that does not list this project yet (new project, extra lane) open it by ID.
  launch=base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':nonce,'managerStage':'transcript' if youtube and 'analysis' in stages else 'analysis' if 'analysis' in stages else 'images',**({'managerName':name} if name else {}),**({'managerLaneId':__import__('re').sub(r'[^A-Za-z0-9_-]','_',browser+'_'+(profile if browser=='edge' else 'Default'))} if lanes else {})})
  def a(name,**kw):return dict(action=name,target_app=browser,**({'browser_profile':profile} if browser=='edge' else {}),**kw)
- actions=[a('OPEN_APP',timeout=25),a('WAIT_WINDOW',timeout=20),a('FOCUS_WINDOW'),a('NEW_TAB'),a('OPEN_URL',url=launch),a('WAIT_PAGE',url=launch,timeout=30),a('STUDIO_READY')]
+ if browser=='edge':
+  # Open Studio by launching Edge with the profile and URL (no typing into an address bar, which can land in
+  # another window when several profiles are open). The Studio tab itself then proves who it is (presence).
+  target.update(studio_launch=True,studio_launch_url=launch)
+  actions=[a('STUDIO_OPEN',timeout=60),a('STUDIO_READY')]
+ else:
+  actions=[a('OPEN_APP',timeout=25),a('WAIT_WINDOW',timeout=20),a('FOCUS_WINDOW'),a('NEW_TAB'),a('OPEN_URL',url=launch),a('WAIT_PAGE',url=launch,timeout=30),a('STUDIO_READY')]
  if len(lanes)>1:actions.append(a('STUDIO_LANES',timeout=90))
  if 'analysis' in stages:
   if not work_config or 'analysis' in work_config['tasks']:actions+=[a('STUDIO_TRANSCRIPT'),a('STUDIO_ANALYZE')]
@@ -173,12 +179,23 @@ class StudioStep:
   try:result=self.api.request(self.sid,route,body)
   except Exception as exc:raise StudioReviewRequired('Chưa xác nhận Studio đã nhận lệnh. Đã giữ intent và chặn gửi lại để tránh trùng.') from exc
   self.j['commands'][key].update(state='accepted',job_id=(result.get('activeJob') or {}).get('id'));self.save();return result
+ def open_studio(self,force=False):
+  """Launch Edge with this profile and the run's Studio URL; again at most every 2 minutes while not seen."""
+  key='open#'+str(self.c.get('studio_retry_epoch',0));last=float(self.j.get('studio_open',{}).get(key) or 0)
+  if not force and self.clock()-last<120:return False
+  from .studio_lanes import open_lane
+  open_lane({'browser':'edge','profile':self.c.get('browser_profile') or 'Default'},self.c['studio_launch_url'])
+  self.j.setdefault('studio_open',{})[key]=self.clock();self.save();return True
  def step(self,name):
+  if name=='STUDIO_OPEN':
+   if not self.ready():self.open_studio(force=not (self.j.get('studio_open') or {}).get('open#'+str(self.c.get('studio_retry_epoch',0))))
+   return {'context':{'studio_stage':'Mở Studio'}}
   if name=='STUDIO_READY':
    if not self.ready():
+    if self.c.get('studio_launch'):self.open_studio()
     self.c['studio_ready_wait']='WAITING_CHATGPT' if self.c.get('studio_state')=='connected' else 'WAITING_STUDIO'
     if self.ledger:self.ledger.update('connection','studio',self.c['studio_ready_wait'])
-    return self.wait(name,120,{'studio_stage':'Chờ ChatGPT/Extension' if self.c['studio_ready_wait']=='WAITING_CHATGPT' else 'Chờ tab Studio'})
+    return self.wait(name,300 if self.c.get('studio_launch') else 120,{'studio_stage':'Chờ ChatGPT/Extension' if self.c['studio_ready_wait']=='WAITING_CHATGPT' else 'Chờ tab Studio'})
    s=self.api.request(self.sid)
    job=s.get('activeJob')
    # A job the user started by hand is observed by the next step; an unknown kind still needs review.

@@ -12,11 +12,13 @@ def dispatch(a,context,home,settings):
  if target.get('studio_project_id'):
   from .resource_lock import StudioResource
   StudioResource(home).acquire(target,name)
- if name in ('STUDIO_READY','STUDIO_TRANSCRIPT','STUDIO_ANALYZE','STUDIO_SCENES','STUDIO_IMAGES','STUDIO_LANES','STUDIO_PARALLEL'):
+ if name in ('STUDIO_OPEN','STUDIO_READY','STUDIO_TRANSCRIPT','STUDIO_ANALYZE','STUDIO_SCENES','STUDIO_IMAGES','STUDIO_LANES','STUDIO_PARALLEL'):
   from .studio_workflow import StudioReviewRequired
-  try:wm.validate_target(target)
-  except wm.WindowLostError:raise
-  except (RuntimeError,ValueError) as exc:raise StudioReviewRequired('Chưa xác minh đúng cửa sổ/profile; giữ checkpoint') from exc
+  # Launched Studio runs are identified by the Studio tab itself (project + run nonce + origin), not a window handle.
+  if not target.get('studio_launch'):
+   try:wm.validate_target(target)
+   except wm.WindowLostError:raise
+   except (RuntimeError,ValueError) as exc:raise StudioReviewRequired('Chưa xác minh đúng cửa sổ/profile; giữ checkpoint') from exc
   from .studio_workflow import StudioStep
   from .resource_lock import StudioResource
   resource=StudioResource(home);resource.acquire(target,name)
