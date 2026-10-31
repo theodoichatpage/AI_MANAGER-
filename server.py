@@ -254,7 +254,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404,{'error':'Không tìm thấy'})
     def do_GET(self):
         path=urlparse(self.path).path
-        if path in ('/manager_ui.js','/manager_ui.css'): return self.send(200,(Path(__file__).parent/path[1:]).read_bytes(),('application/javascript' if path.endswith('.js') else 'text/css')+'; charset=utf-8')
+        if path in ('/manager_ui.js','/manager_ui.css','/manager_settings.js'): return self.send(200,(Path(__file__).parent/path[1:]).read_bytes(),('application/javascript' if path.endswith('.js') else 'text/css')+'; charset=utf-8')
         if path=='/theme.css': return self.send(200,(Path(__file__).parent/'theme.css').read_bytes(),'text/css; charset=utf-8')
         if path=='/work_board.js':return self.send(200,(Path(__file__).parent/'work_board.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/ui_shell.js': return self.send(200,(Path(__file__).parent/'ui_shell.js').read_bytes(),'application/javascript; charset=utf-8')
@@ -402,6 +402,17 @@ class Handler(BaseHTTPRequestHandler):
                             except Exception: pass
                         app_tools.STATE['result']=None; threading.Thread(target=run,daemon=True).start(); time.sleep(0.2)
                         return self.send(200,dict(app_tools.STATE,backups=app_tools.backups()))
+                    if action=='system': return self.send(200,dict(app_tools.system_load(config()['root']),engine=app_tools.engine_health()))
+                    if action=='open-root':
+                        Path(config()['root']).mkdir(parents=True,exist_ok=True); os.startfile(str(config()['root'])); return self.send(200,{'ok':True})
+                    if action=='open-logs': os.startfile(str(BASE/'automation')); return self.send(200,{'ok':True})
+                    if action=='clean-temp': return self.send(200,app_tools.clean_temp(BASE))
+                    if action=='open-studio':
+                        edge=app_tools.edge_exe()
+                        if not edge: raise ValueError('Không tìm thấy Microsoft Edge')
+                        from automation_agent.studio_workflow import validate_url
+                        url=validate_url(str(data.get('url') or 'https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app/'))
+                        import subprocess; subprocess.Popen([str(edge),'--profile-directory='+str(data.get('profile') or 'Default'),url]); return self.send(200,{'ok':True})
                     if action=='open-backups':
                         app_tools.BACKUPS.mkdir(parents=True,exist_ok=True); os.startfile(str(app_tools.BACKUPS)); return self.send(200,{'ok':True})
                     raise ValueError('Thao tác không hợp lệ')

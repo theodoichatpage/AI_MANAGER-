@@ -1,7 +1,7 @@
 /* AI Manager main screen.
    Layout follows the user's mockup: header, "Quản lý dự án" on the left, "Tạo / Chỉnh sửa dự án" on the right,
    progress of the selected project below. Everything else (scenes, images, separation details) belongs to Studio.
-   Settings (gear) keeps the existing settings page. */
+   Settings (gear) open a popup: manager_settings.js. */
 let mgSel='',mgForms={},mgSearch='',mgMenu='',mgBusy='',mgMsg='',mgErr='',mgProfilesAsked=false;
 const MG_ICONS={
  doc:'M7 3h7l5 5v13H7z M14 3v5h5 M10 12h6 M10 16h6',
@@ -39,7 +39,7 @@ function mgHeader(){
  const cat=state.studio_catalog||{},studioOn=Boolean(cat.studio_tab_open),chatOn=Boolean(cat.chat_connected);
  return `<header class="mg-head"><div class="mg-logo">${mgSvg('play',1)}</div><div><div class="mg-title">AI <b>MANAGER</b></div><div class="mg-sub">for VIDEO IMAGE STUDIO <span class="mg-ver">v${esc(state.version||'')}</span></div></div>
  <div class="mg-pills"><span class="mg-pill"><i class="${studioOn?'on':''}"></i><span>Studio: <b class="${studioOn?'on':''}">${studioOn?'Đã kết nối':'Chưa mở'}</b></span></span><span class="mg-pill"><i class="${chatOn?'on':''}"></i><span>ChatGPT: <b class="${chatOn?'on':''}">${chatOn?'Đã kết nối':'Chưa kết nối'}</b></span></span>
- <button class="mg-icon-btn" title="${page==='Cài đặt'?'Quay lại':'Cài đặt'}" onclick="goPage(page==='Cài đặt'?'Studio Automation':'Cài đặt')">${mgSvg(page==='Cài đặt'?'back':'gear')}</button></div></header>`;
+ <button class="mg-icon-btn mg-gear ${typeof mgSet2!=='undefined'&&mgSet2.open?'on':''}" title="Cài đặt" onclick="mgSet2.open?mgCloseSettings():mgOpenSettings()">${mgSvg('gear')}</button></div></header>`;
 }
 function mgListHTML(){
  const q=mgSearch.trim().toLowerCase(),list=mgProjects().filter(p=>!q||p.name.toLowerCase().includes(q));
@@ -112,10 +112,11 @@ document.addEventListener('click',e=>{if(mgMenu&&!e.target.closest('.mg-menu,.mg
  const base=render;
  render=function(){
   if(pointerHeld||document.activeElement?.id?.startsWith('neo_')||document.activeElement?.id?.startsWith('auto_'))return;
-  const list=document.querySelector('.mg-list'),top=list?list.scrollTop:0;
+  const list=document.querySelector('.mg-list'),top=list?list.scrollTop:0,modal=document.querySelector('.mgs-modal'),mtop=modal?modal.scrollTop:0;
+  if(page==='Cài đặt')page='Studio Automation';  // settings live in the popup now
   base();const extra=$('extra');
-  if(page==='Cài đặt'){extra.innerHTML=mgHeader()+`<div class="mg-settings-wrap">${extra.innerHTML}</div>`;return}
-  extra.innerHTML=mgHTML();const nl=document.querySelector('.mg-list');if(nl)nl.scrollTop=top;
+  extra.innerHTML=mgHTML()+(typeof mgSettingsHTML==='function'?mgSettingsHTML():'');const nl=document.querySelector('.mg-list');if(nl)nl.scrollTop=top;
+  const nm=document.querySelector('.mgs-modal');if(nm)nm.scrollTop=mtop;
  };
  render();
 })();

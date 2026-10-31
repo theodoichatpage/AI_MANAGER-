@@ -165,3 +165,30 @@ def setup_check(root,agent_online,workers,lanes_profiles):
  last=backups()[:1]
  add('backup','Bản sao lưu gần nhất','ok' if last and time.time()-last[0]['at']<7*86400 else 'warn',time.strftime('%d/%m/%Y %H:%M',time.localtime(last[0]['at'])) if last else 'Chưa có','Bấm “Sao lưu ngay”.')
  return items
+
+
+# ---- Settings popup: this PC's load, quick actions ----
+def system_load(root):
+ """CPU %, RAM and disk (of the drive holding the projects) for the settings popup."""
+ import psutil,shutil
+ vm=psutil.virtual_memory();drive=Path(root) if Path(root).exists() else Path.home()
+ du=shutil.disk_usage(drive.anchor or str(drive))
+ return {'cpu':psutil.cpu_percent(interval=0.3),'ram_used':vm.total-vm.available,'ram_total':vm.total,'disk_used':du.used,'disk_total':du.total,'drive':drive.anchor}
+
+def edge_exe():
+ for b in (os.environ.get('ProgramFiles(x86)'),os.environ.get('ProgramFiles')):
+  if b and (Path(b)/'Microsoft'/'Edge'/'Application'/'msedge.exe').exists():return Path(b)/'Microsoft'/'Edge'/'Application'/'msedge.exe'
+ return None
+
+def temp_items(base,code=Path(__file__).resolve().parent):
+ """Files that are safe to delete: diagnostic screenshots and Python caches. Never projects, images or the trash."""
+ shots=[f for f in (Path(base)/'automation'/'screenshots').glob('*') if f.is_file()]
+ caches=[f for d in Path(code).rglob('__pycache__') if '.git' not in d.parts for f in d.glob('*.pyc')]
+ return shots+caches
+
+def clean_temp(base):
+ freed=0;count=0
+ for f in temp_items(base):
+  try:size=f.stat().st_size;f.unlink();freed+=size;count+=1
+  except OSError:pass
+ return {'files':count,'freed':freed}
