@@ -30,6 +30,21 @@ class Cache(unittest.TestCase):
   self.assertEqual(studio_cache.decode(gzip.compress(json.dumps(body).encode()),'gzip'),body)
   bomb=gzip.compress(b' '*(4*studio_cache.LIMIT+10))
   with self.assertRaises(ValueError):studio_cache.decode(bomb,'gzip')
+class DiskCopy(Cache):
+ """A new process (each Manager step) reuses the copy saved on disk instead of downloading the project again."""
+ def test_new_process_uses_disk_copy(self):
+  import os,tempfile,time
+  with tempfile.TemporaryDirectory() as home:
+   os.environ['AI_MANAGER_AGENT_HOME']=home
+   try:
+    sid='s'*16;studio_cache.session(sid);studio_cache._cache.clear()
+    studio_cache.session(sid)
+    self.assertEqual(len([p for p in self.calls if not p.endswith('/version')]),1,'second process: version check only')
+    studio_cache._cache.clear();studio_cache.DISK_MAX_AGE,old=-1,studio_cache.DISK_MAX_AGE
+    try:studio_cache.session(sid)
+    finally:studio_cache.DISK_MAX_AGE=old
+    self.assertEqual(len([p for p in self.calls if not p.endswith('/version')]),2,'an old disk copy is read again')
+   finally:os.environ.pop('AI_MANAGER_AGENT_HOME',None)
 class LaneCommandReply(unittest.TestCase):
  def test_lane_post_returns_the_command(self):
   from automation_agent.studio_workflow import StudioAPI
