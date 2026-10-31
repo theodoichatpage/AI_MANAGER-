@@ -15,9 +15,21 @@ def fetch_image(url):
  if len(data)>8_388_608:raise ValueError('Tệp ảnh quá lớn')
  return data
 
-def save_image(folder,sid,key,result,ordinal=0,fetch=fetch_image):
+def record_path(folder,key,named=False):
+ """Where save_image keeps its checksum record: next to the file (old layout) or in a hidden .vis folder."""
+ folder=Path(folder);return (folder/'.vis' if named else folder)/(hashlib.sha256(key.encode()).hexdigest()+'.json')
+
+def _hide(path):
+ try:
+  import ctypes;ctypes.windll.kernel32.SetFileAttributesW(str(path),2)
+ except Exception:pass
+
+def save_image(folder,sid,key,result,ordinal=0,fetch=fetch_image,name=None):
+ """Download one Studio picture, verify it and keep it. With name, the file is '<name>.<ext>' in folder."""
  folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
- record=folder/(hashlib.sha256(key.encode()).hexdigest()+'.json')
+ record=record_path(folder,key,bool(name))
+ if name:
+  record.parent.mkdir(exist_ok=True);_hide(record.parent)
  try:
   old=json.loads(record.read_text());path=folder/old['file']
   if path.parent==folder and path.exists() and hashlib.sha256(path.read_bytes()).hexdigest()==old['sha256']:
@@ -32,10 +44,10 @@ def save_image(folder,sid,key,result,ordinal=0,fetch=fetch_image):
  with Image.open(io.BytesIO(data)) as image:image.load()
  ext={'PNG':'.png','JPEG':'.jpg','WEBP':'.webp'}.get(fmt)
  if not ext:raise ValueError('Định dạng ảnh không hỗ trợ')
- filename=sid[:8]+'_Scene_'+str(ordinal).zfill(4)+'_'+hashlib.sha256(key.encode()).hexdigest()[:24]+ext;path=folder/filename
+ filename=(name+ext) if name else sid[:8]+'_Scene_'+str(ordinal).zfill(4)+'_'+hashlib.sha256(key.encode()).hexdigest()[:24]+ext;path=folder/filename
  if path.exists() and path.read_bytes()!=data:raise RuntimeError('Ảnh đã có nhưng khác nội dung; không ghi đè')
  from .studio_workflow import atomic
- tmp=path.with_suffix('.download');tmp.write_bytes(data);tmp.replace(path)
+ tmp=Path(str(path)+'.download');tmp.write_bytes(data);tmp.replace(path)
  atomic(record,{'scene_key':key,'file':filename,'sha256':hashlib.sha256(data).hexdigest()})
  return str(path)
 
@@ -54,7 +66,8 @@ def step(worker,session):
   atomic(worker.folder/'analysis'/'studio_image_progress.json',counts)
  for ordinal,(key,scene) in enumerate(scenes,1):
   if scene.get('imageStatus')=='complete' and scene.get('imageResults'):
-   save_image(worker.folder/'images',worker.sid,key,scene['imageResults'][0],ordinal);counts['studio_images_saved']+=1
+   from .project_files import layout,save_scene_image
+   save_scene_image(worker.folder,worker.sid,layout(session),key,scene['imageResults'][0],ordinal);counts['studio_images_saved']+=1
    # One download per worker cycle keeps STOP/timeout responsive.
    record_key='saved:'+key
    if not worker.j.get(record_key):worker.j[record_key]=True;worker.save();report();return worker.wait('save:'+key,120,counts)

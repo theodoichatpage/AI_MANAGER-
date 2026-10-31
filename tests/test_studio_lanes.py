@@ -54,7 +54,7 @@ class W:
 
 class Lanes(unittest.TestCase):
  def setUp(self):
-  self.saved=[];studio_lanes.save_image=lambda folder,sid,key,result,ordinal:self.saved.append(key) or str(Path(folder)/key)
+  self.saved=[];studio_lanes.save_scene_image=lambda project,sid,lay,key,result,ordinal:self.saved.append(key) or str(Path(project)/key)
 
  def test_two_lanes_split_parts_and_finish(self):
   st=FakeStudio(parts=4);w=W(st,[worker('laneA'),worker('laneB')])
@@ -68,7 +68,7 @@ class Lanes(unittest.TestCase):
   self.assertEqual(sorted(p.name for p in (w.folder/'scenes').iterdir()),['p1.json','p2.json','p3.json','p4.json'])
 
  def test_three_lanes_image_lane_starts_as_soon_as_scenes_exist(self):
-  st=FakeStudio(parts=4);w=W(st,[worker('laneA'),worker('laneB'),worker('laneC')],tasks=('analysis','scenes','images'))
+  st=FakeStudio(parts=4);w=W(st,[worker('laneA'),worker('laneB'),worker('laneC')],tasks=('analysis','scenes','images','sync'))
   w.round()
   self.assertEqual(len(st.s['laneJobs']),3,'no images yet: the image lane helps with scenes')
   st.finish('laneA');w.round()
@@ -111,7 +111,7 @@ class Lanes(unittest.TestCase):
 
  def test_rerun_remakes_existing_pictures_and_saves_only_new_ones(self):
   st=FakeStudio(parts=1,scenes=2);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'complete','imageResults':[{'url':'https://x/old'}]} for _ in range(2)])
-  w=W(st,[worker('laneA'),worker('laneB')],tasks=('images',));w.c['work_config']['rerun']=True
+  w=W(st,[worker('laneA'),worker('laneB')],tasks=('images','sync'));w.c['work_config']['rerun']=True
   sent=[];old=st.post
   def post(route,body):sent.append(body);return old(route,body)
   st.post=post;w.round()
@@ -124,10 +124,10 @@ class Lanes(unittest.TestCase):
   import hashlib,json
   from automation_agent.studio_lanes import backup_image
   with tempfile.TemporaryDirectory() as tmp:
-   folder=Path(tmp);key='p1:0';rec=folder/(hashlib.sha256(key.encode()).hexdigest()+'.json')
+   folder=Path(tmp);key='p1:0';rec=folder/'.vis'/(hashlib.sha256(key.encode()).hexdigest()+'.json');rec.parent.mkdir()
    (folder/'a.png').write_bytes(b'x');rec.write_text(json.dumps({'file':'a.png'}))
    backup_image(folder,key,'run1')
-   self.assertFalse((folder/'a.png').exists());self.assertTrue((folder/'backups'/'run1'/'a.png').exists());self.assertTrue((folder/'backups'/'run1'/rec.name).exists())
+   self.assertFalse((folder/'a.png').exists());self.assertTrue((folder/'_backups'/'run1'/'a.png').exists());self.assertTrue((folder/'_backups'/'run1'/rec.name).exists())
    backup_image(folder,key,'run1')
  def test_no_style_no_images(self):
   st=FakeStudio(parts=1);st.s['stylePrompt']='';st.part('p1').update(status='complete',scenes=[{'prompt':'x'}])
@@ -175,7 +175,7 @@ class Rewrite(unittest.TestCase):
   self.assertEqual(r['studio_rewrite_done'],4);self.assertEqual(r['studio_rewrite_total'],4)
 class StaleExtensionJob(unittest.TestCase):
  def test_old_remembered_job_does_not_block_a_free_lane(self):
-  studio_lanes.save_image=lambda *a,**k:'x'
+  studio_lanes.save_scene_image=lambda *a,**k:'x'
   st=FakeStudio(parts=2);ws=[worker('laneA'),worker('laneB')];ws[0]['extension_job']='transcript-old';ws[1]['extension_job']='oldjob'
   w=W(st,ws);w.round()
   self.assertEqual(len(st.s['laneJobs']),2,'both lanes get a part although their extensions remember old job ids')

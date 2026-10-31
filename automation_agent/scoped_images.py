@@ -2,7 +2,10 @@
 from pathlib import Path
 import hashlib,json
 from PIL import Image
-from .studio_images import rows,save_image
+from .studio_images import rows,record_path
+from .studio_images import save_image
+from .project_files import layout,image_place
+from .studio_lanes import backup_image
 from .work_config import in_scope,validate_extent
 from .studio_workflow import atomic,StudioReviewRequired
 
@@ -50,7 +53,7 @@ def step(w,s):
    # A missing local output must be reconciled, not silently trusted.
    if unit['save']:
     try:
-     path=Path(old.get('result_path',''));record=json.loads((path.parent/(hashlib.sha256(key.encode()).hexdigest()+'.json')).read_text());assert record['sha256']==hashlib.sha256(path.read_bytes()).hexdigest()
+     path=Path(old.get('result_path',''));rec=record_path(path.parent,key,True);rec=rec if rec.exists() else record_path(path.parent,key);record=json.loads(rec.read_text());assert record['sha256']==hashlib.sha256(path.read_bytes()).hexdigest()
      with Image.open(path) as image:image.verify()
      assert scene.get('imageStatus')=='complete' and scene.get('imageResults')
     except (OSError,ValueError,KeyError,AssertionError):w.ledger.update('images',key,'ERROR',error='Studio/file/checksum không khớp checkpoint; cần đối soát');counts['studio_images_failed']+=1
@@ -64,10 +67,12 @@ def step(w,s):
   if old.get('retry_at',0)>now:return pending(unit,'RETRYING',retry_at=old['retry_at'],retry_count=old.get('retry_count',0))
   if complete and (not rerun or latest):
    if unit['save']:
-    folder=w.folder/'images' if not rerun else w.folder/'images'/'reruns'/w.c['studio_run_id']
+    lay=layout(s)
     w.ledger.update('images',key,'SYNCING',scene=unit['ordinal'])
     try:
-     path=save_image(folder,w.sid,key,scene['imageResults'][0],unit['ordinal'])
+     if rerun:backup_image(image_place(w.folder,lay,key)[0],key,w.c['studio_run_id'])
+     folder,name=image_place(w.folder,lay,key)
+     path=save_image(folder,w.sid,key,scene['imageResults'][0],unit['ordinal'],name=name)
     except Exception as exc:
      retry=old.get('retry_count',0)
      if retry<cfg['retry_limit']:

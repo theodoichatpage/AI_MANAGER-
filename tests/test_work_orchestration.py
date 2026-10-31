@@ -23,7 +23,7 @@ class API:
 class WorkTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.clock=[100.0];self.api=API();self.c={'studio_project_id':SID,'studio_run_id':'c'*32,'studio_origin':'https://video-image-studio.vercel.app','studio_folder':self.tmp.name,'manager_project_id':'manager','browser':'edge','browser_profile':'Default','work_config':normalize({'tasks':['images','sync'],'scopes':{'images':{'mode':'range','from':2,'to':3},'sync':{'mode':'range','from':2,'to':3}},'retry_limit':1})}
-  out=io.BytesIO();Image.new('RGB',(2,2)).save(out,'PNG');self.bytes=out.getvalue();self.save=patch('automation_agent.scoped_images.save_image',side_effect=lambda *a:save_image(*a,fetch=lambda u:self.bytes));self.save.start()
+  out=io.BytesIO();Image.new('RGB',(2,2)).save(out,'PNG');self.bytes=out.getvalue();self.save=patch('automation_agent.scoped_images.save_image',side_effect=lambda *a,**k:save_image(*a,**dict(k,fetch=lambda u:self.bytes)));self.save.start()
  def tearDown(self):self.save.stop();self.tmp.cleanup()
  def w(self):return StudioStep(self.c,self.api,lambda:{'studio_tab_open':True,'chat_connected':True,'session_id':SID,'manager_run_id':self.c['studio_run_id'],'origin':self.c['studio_origin']},clock=lambda:self.clock[0])
  def run_step(self):return self.w().step('STUDIO_IMAGES')
@@ -72,7 +72,7 @@ class WorkTests(unittest.TestCase):
    with self.assertRaises(ValueError):normalize(raw)
   self.assertTrue(in_scope(5,{'mode':'selected','items':[1,5]}));self.assertFalse(in_scope(2,{'mode':'range','from':3,'to':6}))
  def test_workflow_tasks_are_project_specific(self):
-  a,c=workflow(SID,self.c['studio_origin'],'edge','Default',self.tmp.name,'',work_config={'tasks':['sync']});self.assertFalse(any(x['action']=='STUDIO_SCENES' for x in a));self.assertEqual(a[-1]['action'],'STUDIO_IMAGES');self.assertEqual(c['work_config']['tasks'],['sync'])
+  a,c=workflow(SID,self.c['studio_origin'],'edge','Default',self.tmp.name,'',work_config={'tasks':['sync']});self.assertFalse(any(x['action']=='STUDIO_SCENES' for x in a));self.assertEqual([x['action'] for x in a],['STUDIO_FILES'],'saving pictures needs no browser');self.assertEqual(c['work_config']['tasks'],['sync'])
  def test_partial_scenes_skip_other_parts(self):
   self.c['work_config']=normalize({'tasks':['scenes'],'scopes':{'scenes':{'mode':'range','from':2,'to':2}}});self.api.s['parts']=[{'id':'part1','status':'complete','scenes':[{'prompt':'keep'}]},{'id':'part2','status':'complete','scenes':[{'prompt':'keep2'}]}]
   self.w().step('STUDIO_SCENES');self.assertFalse((Path(self.tmp.name)/'scenes/part1.json').exists());self.assertTrue((Path(self.tmp.name)/'scenes/part2.json').exists());self.assertEqual(self.api.posts,[])

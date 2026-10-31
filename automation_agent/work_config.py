@@ -1,6 +1,6 @@
 """Project-specific tasks and ordinal scopes."""
 import re
-KINDS=('analysis','scenes','images','retry_images','sync')
+KINDS=('analysis','scenes','images','retry_images','sync','separate')
 def lanes(raw):
  """ChatGPT lanes: the main browser first, then extra browser profiles (each with its own ChatGPT + Extension)."""
  if raw is None:return []
@@ -27,12 +27,15 @@ def normalize(raw):
   if not isinstance(scope,dict) or scope.get('mode','all') not in ('all','missing','errors','range','selected'):raise ValueError('Phạm vi không hợp lệ')
   scope=dict(scope,mode=scope.get('mode','all'))
   if kind=='analysis' and scope['mode']!='all':raise ValueError('Studio chỉ phân tích cấu trúc toàn kịch bản; chọn phạm vi ở Phân cảnh')
+  if kind=='separate' and scope['mode'] not in ('all','range','selected'):raise ValueError('Tách ảnh: chọn Toàn bộ, Từ → Đến hoặc Số thứ tự cảnh')
   if scope['mode']=='range' and (any(type(scope.get(k))!=int for k in ('from','to')) or not 1<=scope['from']<=scope['to']<=100000):raise ValueError('Khoảng: số nguyên 1-based, từ <= đến')
   if scope['mode']=='selected':
    if not isinstance(scope.get('items'),list) or not scope['items'] or any(type(x)!=int or not 1<=x<=100000 for x in scope['items']):raise ValueError('Nhập số thứ tự dương')
    scope['items']=sorted(set(scope['items']))
   scopes[kind]=scope
- return {'tasks':[k for k in KINDS if k in selected],'scopes':scopes,'error_policy':policy,'retry_limit':retry,'rerun':bool(raw.get('rerun',False)),**({'lanes':lanes(raw['lanes'])} if raw.get('lanes') else {})}
+ layers=raw.get('separate_layers',3)
+ if layers not in (3,4):raise ValueError('Tách ảnh: 3 hoặc 4 lớp')
+ return {'tasks':[k for k in KINDS if k in selected],'scopes':scopes,'error_policy':policy,'retry_limit':retry,'rerun':bool(raw.get('rerun',False)),'separate_layers':layers,**({'lanes':lanes(raw['lanes'])} if raw.get('lanes') else {})}
 def in_scope(index,scope):
  mode=scope.get('mode','all')
  return scope['from']<=index<=scope['to'] if mode=='range' else index in scope['items'] if mode=='selected' else True

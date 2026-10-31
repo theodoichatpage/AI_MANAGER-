@@ -7,7 +7,9 @@ so an uncertain POST may be re-sent to the SAME lane only. A job on a lost lane 
 given to another lane, so no part or scene is ever sent twice at the same time."""
 import re,subprocess,urllib.parse
 from .studio_workflow import atomic,StudioReviewRequired
-from .studio_images import rows,save_image
+from pathlib import Path
+from .studio_images import rows
+from .project_files import layout,image_place,save_scene_image
 
 LANE_LOST=180        # a lane whose Studio tab stopped reporting this long loses its job
 JOB_LIMIT=1800       # one part/image may take this long before it is taken back
@@ -108,11 +110,12 @@ def image_scope(w,s):
  return [(i,key,scene) for i,(key,scene) in enumerate(rows(s),1) if key.rsplit(':',1)[0] in allowed and in_scope(i,scope)]
 
 def backup_image(folder,key,run):
- """Move the picture saved earlier for this scene (and its record) to images/backups/<run>/."""
- import hashlib,json,shutil
- record=folder/(hashlib.sha256(key.encode()).hexdigest()+'.json')
+ """Move the picture saved earlier for this scene (and its record) to <folder>/_backups/<run>/."""
+ import json,shutil
+ from .studio_images import record_path
+ folder=Path(folder);record=record_path(folder,key,True)
  if not record.exists():return
- dest=folder/'backups'/re.sub(r'[^A-Za-z0-9_-]','_',str(run))[:64];dest.mkdir(parents=True,exist_ok=True)
+ dest=folder/'_backups'/re.sub(r'[^A-Za-z0-9_-]','_',str(run))[:64];dest.mkdir(parents=True,exist_ok=True)
  try:name=json.loads(record.read_text(encoding='utf8')).get('file')
  except (OSError,ValueError):name=None
  if name and (folder/name).parent==folder and (folder/name).exists():shutil.move(str(folder/name),str(dest/name))
@@ -159,13 +162,15 @@ def step(w,s,post=None):
  images=image_scope(w,s) if 'images' in tasks else []
  # "Chạy lại": scenes that already have a picture are made again; only a picture made in this run counts,
  # and the old file is moved to images/backups/<run> before the new one is saved (nothing is deleted).
- redo=bool(cfg.get('rerun'))
+ redo=bool(cfg.get('rerun'));download='sync' in tasks;lay=layout(s)
  mark=lambda key:('redo:' if redo else '')+'image:'+key
  made=lambda key,sc:bool(sc.get('imageStatus')=='complete' and sc.get('imageResults')) and (not redo or (items.get('image:'+key) or {}).get('state')=='completed')
  for ordinal,key,scene in images:
   if made(key,scene) and not saved.get(mark(key)):
-   if redo:backup_image(w.folder/'images',key,w.c.get('studio_run_id') or 'run')
-   path=save_image(w.folder/'images',w.sid,key,scene['imageResults'][0],ordinal);saved[mark(key)]=path
+   # "Tải ảnh về máy" not chosen: the picture stays in Studio (a later Tách ảnh step can still use it).
+   if not download:saved[mark(key)]='studio';continue
+   if redo:backup_image(image_place(w.folder,lay,key)[0],key,w.c.get('studio_run_id') or 'run')
+   path=save_scene_image(w.folder,w.sid,lay,key,scene['imageResults'][0],ordinal);saved[mark(key)]=path
    if w.ledger:w.ledger.update('images',key,'COMPLETED',result_path=path,scene=ordinal)
    break
  w.save()

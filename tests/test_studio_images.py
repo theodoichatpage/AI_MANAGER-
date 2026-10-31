@@ -26,7 +26,7 @@ class ImageTests(unittest.TestCase):
    # Inject fetch explicitly because save_image binds default fetch at definition.
    from automation_agent import studio_images
    original=studio_images.save_image
-   with patch.object(studio_images,'save_image',side_effect=lambda *a:original(*a,fetch=lambda u:self.data)):
+   with patch.object(studio_images,'save_image',side_effect=lambda *a,**k:original(*a,**dict(k,fetch=lambda u:self.data))):
     self.step();self.step();self.assertEqual(self.api.posts[-1]['sceneKeys'],['part_1:1']);self.assertEqual(len(self.api.posts),2)
     self.api.s['activeJob']=None;self.api.s['parts'][0]['scenes'][1].update(imageStatus='complete',imageResults=[{'url':'https://unused'}]);self.step();r=self.step();self.assertNotIn('waiting',r);self.assertEqual(r['context']['studio_images_saved'],2)
  def test_file_format_and_cache_and_collision(self):

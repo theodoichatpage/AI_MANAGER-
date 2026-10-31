@@ -12,7 +12,7 @@ def dispatch(a,context,home,settings):
  if target.get('studio_project_id'):
   from .resource_lock import StudioResource
   StudioResource(home).acquire(target,name)
- if name in ('STUDIO_OPEN','STUDIO_READY','STUDIO_TRANSCRIPT','STUDIO_ANALYZE','STUDIO_SCENES','STUDIO_IMAGES','STUDIO_LANES','STUDIO_PARALLEL'):
+ if name in ('STUDIO_FILES','STUDIO_OPEN','STUDIO_READY','STUDIO_TRANSCRIPT','STUDIO_ANALYZE','STUDIO_SCENES','STUDIO_IMAGES','STUDIO_LANES','STUDIO_PARALLEL'):
   from .studio_workflow import StudioReviewRequired
   # Launched Studio runs are identified by the Studio tab itself (project + run nonce + origin), not a window handle.
   if not target.get('studio_launch'):
