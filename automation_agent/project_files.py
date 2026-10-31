@@ -42,4 +42,4 @@ def separation_dir(project,lay,key):
 def save_scene_image(project,sid,lay,key,result,ordinal,fetch=None):
  from . import studio_images
  folder,name=image_place(project,lay,key)
- return studio_images.save_image(folder,sid,key,result,ordinal,**({'fetch':fetch} if fetch else {}),name=name)
+ return studio_images.save_image(folder,sid,key,result,ordinal,**({'fetch':fetch} if fetch else {}),name=name,project=project)

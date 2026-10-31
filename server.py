@@ -140,6 +140,14 @@ def config():
     return {'root': str(Path.home() / 'VIDEO_PROJECTS')}
 def slug(name):
     name=unicodedata.normalize('NFKD',name.replace('đ','d').replace('Đ','D')).encode('ascii','ignore').decode(); name=re.sub(r'[^A-Za-z0-9]+','_',name).strip('_')[:70]; return name or 'Du_An'
+STUDIO_ORIGIN=re.compile(r'https://video-image-studio(?:-[a-z0-9-]+)?\.vercel\.app')
+def studio_project_folder(sid):
+    """The folder of the Manager project linked to a Studio session, or None."""
+    if not re.fullmatch(r'[A-Za-z0-9-]{16,64}',str(sid or '')): return None
+    for p in projects():
+        if sid in (p.get('studio_project_id'),p.get('studio_import_id'),(p.get('studio_source') or {}).get('id')): return p.get('folder')
+    return None
+
 def projects(include_duplicates=False):
     root=Path(config()['root']); result=[]
     if root.exists():
@@ -250,7 +258,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin','*'); self.send_header('Access-Control-Allow-Methods','POST, OPTIONS'); self.send_header('Access-Control-Allow-Headers','Content-Type, Access-Control-Request-Private-Network'); self.send_header('Access-Control-Allow-Private-Network','true')
         self.end_headers(); self.wfile.write(body)
     def do_OPTIONS(self):
-        if urlparse(self.path).path=='/api/studio-presence': return self.send(204,b'',cors=True)
+        if urlparse(self.path).path in ('/api/studio-presence','/api/studio-image'): return self.send(204,b'',cors=True)
         self.send(404,{'error':'Không tìm thấy'})
     def do_GET(self):
         path=urlparse(self.path).path
@@ -269,14 +277,32 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError,OSError):return self.send(404,{'error':'Không tìm thấy ảnh'})
         if path=='/api/state':
             with LOCK: return self.send(200,synchronized_state(manager()))
+        if path=='/api/studio-image':
+            # A Studio page shows/separates the full picture kept on this PC (Supabase only holds a preview).
+            origin=self.headers.get('Origin','')
+            if origin and not STUDIO_ORIGIN.fullmatch(origin): return self.send(403,{'error':'Nguồn không hợp lệ'})
+            query=parse_qs(urlparse(self.path).query); from automation_agent import originals
+            found=originals.find(studio_project_folder(query.get('sessionId',[''])[0]),{'jobId':query.get('jobId',[''])[0]})
+            if not found: return self.send(404,{'error':'Máy này không có ảnh gốc'},cors=True)
+            kind={'.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp'}[found.suffix]
+            return self.send(200,found.read_bytes(),kind,cors=True)
         if path=='/api/studio-presence':
             query=parse_qs(urlparse(self.path).query);return self.send(200,PRESENCE.snapshot(query.get('sessionId',[None])[0],query.get('runId',[None])[0]),cors=True)
         self.send(404,{'error':'Không tìm thấy'})
     def do_POST(self):
         try:
             path=urlparse(self.path).path; length=int(self.headers.get('Content-Length','0'))
-            if length>5_000_000: raise ValueError('Dữ liệu quá lớn')
+            if length>(12_000_000 if path=='/api/studio-image' else 5_000_000): raise ValueError('Dữ liệu quá lớn')
             data=json.loads(self.rfile.read(length) or b'{}')
+            if path=='/api/studio-image':
+                # The ChatGPT extension hands a new picture to this PC; Studio's server then only stores a preview.
+                origin=self.headers.get('Origin','')
+                if origin and not origin.startswith('chrome-extension://'): return self.send(403,{'error':'Nguồn không hợp lệ'},cors=True)
+                folder=studio_project_folder(data.get('sessionId'))
+                if not folder: return self.send(404,{'error':'Dự án Studio này không thuộc AI Manager'},cors=True)
+                from automation_agent import originals
+                saved=originals.save(folder,str(data.get('jobId','')),data.get('imageDataUrl'))
+                return self.send(200,{'ok':True,'saved':True,'size':saved.stat().st_size},cors=True)
             if path=='/api/studio-presence':
                 if data.get('managerRunId'):
                     origin=self.headers.get('Origin','')

@@ -24,8 +24,9 @@ def _hide(path):
   import ctypes;ctypes.windll.kernel32.SetFileAttributesW(str(path),2)
  except Exception:pass
 
-def save_image(folder,sid,key,result,ordinal=0,fetch=fetch_image,name=None):
- """Download one Studio picture, verify it and keep it. With name, the file is '<name>.<ext>' in folder."""
+def save_image(folder,sid,key,result,ordinal=0,fetch=fetch_image,name=None,project=None):
+ """Download one Studio picture, verify it and keep it. With name, the file is '<name>.<ext>' in folder.
+ With project, the original the extension already sent to this PC is used instead of a download."""
  folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
  record=record_path(folder,key,bool(name))
  if name:
@@ -36,7 +37,8 @@ def save_image(folder,sid,key,result,ordinal=0,fetch=fetch_image,name=None):
    with Image.open(path) as image:image.verify()
    return str(path)
  except (OSError,ValueError,KeyError):pass
- data=fetch(result['url'])
+ from . import originals
+ data=originals.require(project,result,fetch)
  with Image.open(io.BytesIO(data)) as image:
   fmt=image.format
   if image.width*image.height>40_000_000:raise ValueError('Ảnh vượt giới hạn kích thước giải mã')

@@ -127,7 +127,8 @@ def step(w,s,engine=None,fetch=fetch_image):
    if not has(scene):sep[k]={'state':'no-image'};ledger('separate',k,'SKIPPED',reason='Studio chưa có ảnh',scene=i);continue
    try:
     saved=st['saved'].get(k)
-    data=Path(saved).read_bytes() if saved and Path(saved).is_file() else fetch(scene['imageResults'][0]['url'])
+    from . import originals
+    data=Path(saved).read_bytes() if saved and Path(saved).is_file() else originals.require(w.folder,scene['imageResults'][0],fetch)
     part,name=lay[k]
     project=(plain(w.c.get('project_name') or 'du_an',40)+' - '+part)[:80]
     jid=engine.start(data,name+'.png',project,4 if cfg.get('separate_layers')==4 else 3)

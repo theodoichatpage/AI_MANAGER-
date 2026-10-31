@@ -72,7 +72,7 @@ def step(w,s):
     try:
      if rerun:backup_image(image_place(w.folder,lay,key)[0],key,w.c['studio_run_id'])
      folder,name=image_place(w.folder,lay,key)
-     path=save_image(folder,w.sid,key,scene['imageResults'][0],unit['ordinal'],name=name)
+     path=save_image(folder,w.sid,key,scene['imageResults'][0],unit['ordinal'],name=name,project=w.folder)
     except Exception as exc:
      retry=old.get('retry_count',0)
      if retry<cfg['retry_limit']:
