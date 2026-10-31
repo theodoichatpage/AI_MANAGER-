@@ -4,7 +4,7 @@ A session record cannot prove that the Studio browser tab or ChatGPT is online.
 """
 import json,re,urllib.parse,urllib.request
 
-ENDPOINT='https://wtxgjsorpqjanxoevxuw.supabase.co/functions/v1/studio-api'
+ENDPOINT='https://gqzolyrdhlabcvjewlpo.supabase.co/functions/v1/studio-api'
 
 def _project_name(session):
     """Use Studio's own project name; tolerate older/newer session schemas."""

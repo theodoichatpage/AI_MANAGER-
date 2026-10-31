@@ -6,9 +6,11 @@ from PIL import Image
 def rows(session):
  return [(str(part['id'])+':'+str(i),scene) for part in session.get('parts',[]) for i,scene in enumerate(part.get('scenes') or [])]
 
+# Studio's picture store: the current Supabase project, and the earlier one for pictures made before the move.
+STORE_HOSTS=('gqzolyrdhlabcvjewlpo.supabase.co','wtxgjsorpqjanxoevxuw.supabase.co')
 def fetch_image(url):
  p=urllib.parse.urlparse(url)
- if p.scheme!='https' or p.hostname!='wtxgjsorpqjanxoevxuw.supabase.co' or not p.path.startswith('/storage/v1/object/') or p.username or p.password:raise ValueError('Ảnh không thuộc kho Studio; đã chặn tải')
+ if p.scheme!='https' or p.hostname not in STORE_HOSTS or not p.path.startswith('/storage/v1/object/') or p.username or p.password:raise ValueError('Ảnh không thuộc kho Studio; đã chặn tải')
  class NoRedirect(urllib.request.HTTPRedirectHandler):
   def redirect_request(self,*args,**kwargs):raise ValueError('Kho ảnh chuyển hướng ngoài yêu cầu; dừng tải')
  with urllib.request.build_opener(NoRedirect).open(url,timeout=10) as response:data=response.read(8_388_609)

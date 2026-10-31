@@ -3,7 +3,7 @@ whole project only when it changed. Replies are requested gzip-compressed."""
 import copy,json,os,re,threading,time,urllib.error,urllib.parse,urllib.request,zlib
 from pathlib import Path
 
-API='https://wtxgjsorpqjanxoevxuw.supabase.co/functions/v1/studio-api'
+API='https://gqzolyrdhlabcvjewlpo.supabase.co/functions/v1/studio-api'
 LIMIT=5_000_000
 _lock=threading.Lock();_cache={}
 

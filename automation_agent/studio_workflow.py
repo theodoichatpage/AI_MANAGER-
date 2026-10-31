@@ -2,7 +2,7 @@
 import hashlib,json,os,re,time,urllib.parse,urllib.request,uuid
 from pathlib import Path
 from . import window_manager as wm
-API='https://wtxgjsorpqjanxoevxuw.supabase.co/functions/v1/studio-api'
+API='https://gqzolyrdhlabcvjewlpo.supabase.co/functions/v1/studio-api'
 ID=re.compile(r'[A-Za-z0-9-]{16,64}')
 
 class StudioReviewRequired(RuntimeError):pass
