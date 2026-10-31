@@ -6,7 +6,7 @@ import json,re,shutil,time
 from pathlib import Path
 
 TRASH='_Thung_rac'
-INPUTS=('youtube_url','language','rewrite','rewrite_style','image_style','images','download','separate','separate_layers','lanes')
+INPUTS=('use_link','use_script','youtube_url','language','rewrite','rewrite_style','image_style','images','download','separate','separate_layers','lanes')
 MAX_PROMPT=20000
 
 def load(folder):return json.loads((Path(folder)/'project.json').read_text(encoding='utf8'))
@@ -26,13 +26,17 @@ def inputs(data):
  out={}
  if 'youtube_url' in data:out['youtube_url']=str(data['youtube_url'] or '').strip()[:500]
  if 'language' in data:out['language']='en' if data['language']=='en' else 'vi'
- for k in ('rewrite','images','download','separate'):
+ for k in ('rewrite','images','download','separate','use_link','use_script'):
   if k in data:out[k]=bool(data[k])
  for k in ('rewrite_style','image_style'):
   if k in data:
    text=str(data[k] or '')
    if len(text)>MAX_PROMPT:raise ValueError('Prompt quá dài (tối đa 20.000 ký tự)')
    out[k]=text
+ if 'script' in data:
+  text=str(data['script'] or '')
+  if len(text)>2_000_000:raise ValueError('Kịch bản quá dài')
+  out['script']=text
  if 'separate_layers' in data:out['separate_layers']=4 if data['separate_layers']==4 else 3
  return out
 

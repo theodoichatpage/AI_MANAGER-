@@ -85,7 +85,7 @@ def studio_deploy(data):
         saved=project_ops.load(project_ops.find(projects(include_duplicates=True),str(data['project']))['folder'])
         data=dict(data)
         for k,src in (('youtube_url','youtube_url'),('script','script'),('rewrite_style','rewrite_style'),('image_style','image_style'),('language','language'),('rewrite','rewrite'),('separate_layers','separate_layers'),('lanes','lanes')):
-            if not data.get(k) and saved.get(src): data[k]=saved[src]
+            if k not in data and saved.get(src): data[k]=saved[src]
         if not data.get('tasks'): data['tasks']=['analysis','scenes']+[k for k,f in (('images','images'),('sync','download'),('separate','separate')) if saved.get(f)]
     name=str(data.get('name','')).strip()[:120]; url=str(data.get('youtube_url','')).strip(); script=str(data.get('script','')).strip()
     if url and not YOUTUBE.fullmatch(url): raise ValueError('Link YouTube không hợp lệ')
@@ -254,6 +254,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404,{'error':'Không tìm thấy'})
     def do_GET(self):
         path=urlparse(self.path).path
+        if path in ('/manager_ui.js','/manager_ui.css'): return self.send(200,(Path(__file__).parent/path[1:]).read_bytes(),('application/javascript' if path.endswith('.js') else 'text/css')+'; charset=utf-8')
         if path=='/theme.css': return self.send(200,(Path(__file__).parent/'theme.css').read_bytes(),'text/css; charset=utf-8')
         if path=='/work_board.js':return self.send(200,(Path(__file__).parent/'work_board.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/ui_shell.js': return self.send(200,(Path(__file__).parent/'ui_shell.js').read_bytes(),'application/javascript; charset=utf-8')
