@@ -71,6 +71,15 @@ def copy(p,create_project,queue,atomic):
  new['copied_from']=p['id'];atomic(Path(new['folder'])/'project.json',new);queue.add(new)
  return new
 
+def trashed_studio_ids(root):
+ """Studio project ids of the projects in the trash."""
+ ids=set()
+ for f in (Path(root)/TRASH).glob('*/project.json'):
+  try:m=json.loads(f.read_text(encoding='utf8'))
+  except (OSError,ValueError):continue
+  ids.update(x for x in (m.get('studio_project_id'),m.get('studio_import_id'),(m.get('studio_source') or {}).get('id')) if x)
+ return ids
+
 def delete(p,queue,root):
  """Move the project folder to <root>/_Thung_rac/ (not erased)."""
  if queue.get(p['id'])['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi xoá')

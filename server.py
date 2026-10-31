@@ -347,6 +347,9 @@ class Handler(BaseHTTPRequestHandler):
                     sid=str(data.get('studio_project_id',''));origin=validate_url(str(data.get('studio_url',''))).rstrip('/')
                     profile=str(data.get('browser_profile','Default'));require_profile(profile)
                     if not ID.fullmatch(sid):raise ValueError('Studio ID không hợp lệ')
+                    import project_ops
+                    # The automatic catalog sync must not bring back a project the user deleted in Manager (only a manual import may).
+                    if not data.get('manual') and sid in project_ops.trashed_studio_ids(config()['root']): return self.send(200,{'skipped':True})
                     live=PRESENCE.snapshot();entry=next((x for x in live.get('projects',[]) if x.get('id')==sid),None)
                     if not entry or live.get('origin','').rstrip('/')!=origin:raise ValueError('Không thấy dự án tại nguồn Studio đang kết nối. Mở đúng Studio rồi thử lại.')
                     key={'id':sid,'origin':origin,'browser':'edge','profile':profile}

@@ -5,6 +5,14 @@ from . import window_manager as wm
 from . import ui_automation as ui
 from .browser_controller import BrowserController
 
+NET_GRACE=300
+
+def network_error(exc):
+ """True for a connection problem (timeout, refused, DNS, 5xx gateway), not for a Studio answer we refused."""
+ import socket,urllib.error
+ if isinstance(exc,urllib.error.HTTPError):return exc.code>=500
+ return isinstance(exc,(urllib.error.URLError,socket.timeout,TimeoutError,ConnectionError)) or type(exc) is OSError
+
 def dispatch(a,context,home,settings):
  os.environ['AI_MANAGER_AGENT_HOME']=str(home)
  name=a['action'];app=a.get('target_app') or context.get('target_app')
@@ -25,6 +33,7 @@ def dispatch(a,context,home,settings):
   step=StudioStep(target)
   try:
    result=step.step(name)
+   if target.get('studio_net_since') and result.get('waiting'):result.setdefault('context',{})['studio_net_since']=None
    if not result.get('waiting'):
     current=step.api.request(step.sid)
     if not current.get('activeJob') and not current.get('imageJobs'):resource.release(target)
@@ -32,7 +41,13 @@ def dispatch(a,context,home,settings):
   except Exception as exc:
    from .studio_workflow import StudioReviewRequired
    try:current=step.api.request(step.sid)
-   except Exception:raise StudioReviewRequired('Không đọc được Studio để đối soát; giữ khóa và checkpoint') from exc
+   except Exception as read_exc:
+    # A short network drop (Vercel/Supabase unreachable) is waited out: reads are safe to repeat, and an
+    # unconfirmed command is never resent (send() keeps its 'intent' and asks for review instead).
+    since=float(target.get('studio_net_since') or time.time())
+    if network_error(exc) and network_error(read_exc) and time.time()-since<NET_GRACE:
+     return {'waiting':True,'context':{'studio_net_since':since,'studio_waiting_action':name,'studio_message':'Mất kết nối Studio tạm thời, đang thử lại'}}
+    raise StudioReviewRequired('Không đọc được Studio để đối soát; giữ khóa và checkpoint') from exc
    if current.get('activeJob') or current.get('imageJobs') or any(v.get('state')=='intent' for v in step.j['commands'].values()):raise StudioReviewRequired('Còn tác vụ hoặc lệnh chưa rõ kết quả; giữ khóa và checkpoint') from exc
    resource.release(target)
    raise
