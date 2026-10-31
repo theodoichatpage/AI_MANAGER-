@@ -18,10 +18,10 @@ def make_icon():
  from PIL import Image,ImageDraw,ImageFont
  ICON.parent.mkdir(exist_ok=True);size=256
  img=Image.new('RGBA',(size,size),(0,0,0,0));d=ImageDraw.Draw(img)
- d.rounded_rectangle((8,8,size-8,size-8),radius=56,fill=(22,92,214,255))
+ d.rounded_rectangle((8,8,size-8,size-8),radius=56,fill=(203,251,50,255))
  try:font=ImageFont.truetype('segoeuib.ttf',118)
  except OSError:font=ImageFont.load_default()
- box=d.textbbox((0,0),'AI',font=font);d.text(((size-box[2]-box[0])/2,(size-box[3]-box[1])/2-box[1]),'AI',font=font,fill='white')
+ box=d.textbbox((0,0),'AI',font=font);d.text(((size-box[2]-box[0])/2,(size-box[3]-box[1])/2-box[1]),'AI',font=font,fill=(11,11,12,255))
  img.save(ICON,sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
 
 def shortcut(path,args):

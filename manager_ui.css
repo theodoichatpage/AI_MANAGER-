@@ -8,8 +8,7 @@ body.mg main{padding:0!important;background:transparent}
 body.mg #extra{padding:0}
 .mg *{box-sizing:border-box}
 .mg-head{height:56px;display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--mg-line);background:var(--mg-bg);position:sticky;top:0;z-index:5}
-.mg-logo{width:36px;height:36px;border-radius:9px;background:var(--mg-accent);color:var(--mg-accent-ink);display:grid;place-items:center}
-.mg-logo svg{width:18px;height:18px;fill:currentColor;stroke:none}
+.mg-logo{width:40px;height:40px;display:block;flex:none}
 .mg-title{font-size:18px;font-weight:800;letter-spacing:.2px;line-height:1.1}
 .mg-title b{color:var(--mg-accent)}
 .mg-sub{color:var(--mg-muted);font-size:12px;display:flex;gap:8px;align-items:center}

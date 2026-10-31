@@ -263,6 +263,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path=urlparse(self.path).path
         if path in ('/manager_ui.js','/manager_ui.css','/manager_settings.js'): return self.send(200,(Path(__file__).parent/path[1:]).read_bytes(),('application/javascript' if path.endswith('.js') else 'text/css')+'; charset=utf-8')
+        if path in ('/logo.svg','/favicon.ico'): return self.send(200,(Path(__file__).parent/'assets'/('logo.svg' if path=='/logo.svg' else 'ai_manager.ico')).read_bytes(),'image/svg+xml' if path=='/logo.svg' else 'image/x-icon')
         if path=='/theme.css': return self.send(200,(Path(__file__).parent/'theme.css').read_bytes(),'text/css; charset=utf-8')
         if path=='/work_board.js':return self.send(200,(Path(__file__).parent/'work_board.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/ui_shell.js': return self.send(200,(Path(__file__).parent/'ui_shell.js').read_bytes(),'application/javascript; charset=utf-8')

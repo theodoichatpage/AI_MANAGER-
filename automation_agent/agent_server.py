@@ -41,7 +41,8 @@ class AgentHandler(BaseHTTPRequestHandler):
     with r.store.lock,r.store.db:
      t=r.store.get(data['task_id'])
      reviewed=t['status']=='needs_review' and isinstance(data.get('reconcile'),dict) and bool(data.get('journal_clear'))
-     if t['status'] not in ('failed','paused','stopped','held') and not reviewed:raise ValueError('Task cần kiểm tra thủ công hoặc chưa dừng')
+     # timeout: the worker was killed after a slow step; unsure commands are still guarded by the Studio journal.
+     if t['status'] not in ('failed','timeout','paused','stopped','held') and not reviewed:raise ValueError('Task cần kiểm tra thủ công hoặc chưa dừng')
      if t.get('context',{}).get('studio_project_id'):
       if data.get('retry',True):t['context']['studio_retry_epoch']=int(t['context'].get('studio_retry_epoch',0))+1
       if isinstance(data.get('reconcile'),dict):

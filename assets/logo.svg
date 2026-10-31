@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" role="img" aria-label="AI Manager">
+ <rect x="8" y="8" width="1238" height="1238" rx="210" fill="#cbfb32"/>
+ <g fill="#0b0b0c">
+  <path d="M178 797 L414 344 Q440 296 498 296 L554 296 Q604 296 626 344 L831 797 L698 797 L534 424 Q526 409 514 409 Q502 409 495 423 L313 797 Z"/>
+  <rect x="846" y="295" width="128" height="502"/>
+  <path d="M168 845 H202 L264 928 L326 845 H360 V993 H327 V899 L281 961 Q273 970 264 970 Q255 970 247 961 L201 899 V993 H168 Z"/>
+  <text x="371" y="993" textLength="722" lengthAdjust="spacingAndGlyphs" font-family="'Century Gothic','URW Gothic','Avant Garde',Futura,Arial,sans-serif" font-weight="700" font-size="214">anager</text>
+ </g>
+</svg>

@@ -37,7 +37,7 @@ function mgDefaultLanes(){
 }
 function mgHeader(){
  const cat=state.studio_catalog||{},studioOn=Boolean(cat.studio_tab_open),chatOn=Boolean(cat.chat_connected);
- return `<header class="mg-head"><div class="mg-logo">${mgSvg('play',1)}</div><div><div class="mg-title">AI <b>MANAGER</b></div><div class="mg-sub">for VIDEO IMAGE STUDIO <span class="mg-ver">v${esc(state.version||'')}</span></div></div>
+ return `<header class="mg-head"><img class="mg-logo" src="/logo.svg" alt="AI Manager"><div><div class="mg-title">AI <b>MANAGER</b></div><div class="mg-sub">for VIDEO IMAGE STUDIO <span class="mg-ver">v${esc(state.version||'')}</span></div></div>
  <div class="mg-pills"><span class="mg-pill"><i class="${studioOn?'on':''}"></i><span>Studio: <b class="${studioOn?'on':''}">${studioOn?'Đã kết nối':'Chưa mở'}</b></span></span><span class="mg-pill"><i class="${chatOn?'on':''}"></i><span>ChatGPT: <b class="${chatOn?'on':''}">${chatOn?'Đã kết nối':'Chưa kết nối'}</b></span></span>
  <button class="mg-icon-btn mg-gear ${typeof mgSet2!=='undefined'&&mgSet2.open?'on':''}" title="Cài đặt" onclick="mgSet2.open?mgCloseSettings():mgOpenSettings()">${mgSvg('gear')}</button></div></header>`;
 }

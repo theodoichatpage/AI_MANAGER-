@@ -66,14 +66,15 @@ class StudioWorkflowTests(unittest.TestCase):
   import threading,json
   from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
   from unittest.mock import patch
-  from automation_agent import studio_workflow as sw
+  from automation_agent import studio_workflow as sw,studio_cache
   class Handler(BaseHTTPRequestHandler):
    def log_message(self,*a):pass
    def do_GET(self):
     self.send_response(200);self.end_headers();self.wfile.write(json.dumps({'session':{'id':'wrong'}}).encode())
   server=ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
   try:
-   with patch.object(sw,'API','http://127.0.0.1:'+str(server.server_address[1])):
+   local='http://127.0.0.1:'+str(server.server_address[1])
+   with patch.object(sw,'API',local),patch.object(studio_cache,'API',local),patch.object(studio_cache,'_from_disk',lambda sid:None,create=True):
     with self.assertRaisesRegex(RuntimeError,'sai project ID'):sw.StudioAPI().request(SID)
   finally:server.shutdown();server.server_close();thread.join()
  def test_explicit_retry_only_retries_unfinished_part(self):

@@ -146,7 +146,7 @@ class AutomationService:
    except ValueError:continue
    t=tasks.get(p.get('automation_task_id'))
    if p.get('execution_mode')!='automation' or not t or not t.get('context',{}).get('studio_project_id'):continue
-   if t['status'] not in ('paused','stopped','failed') and not(t['status']=='needs_review' and self.review_resolvable(t)):continue
+   if t['status'] not in ('paused','stopped','failed','timeout') and not(t['status']=='needs_review' and self.review_resolvable(t)):continue
    body={'task_id':t['id'],'retry':False};body.update(self.reconcile_studio(p,t))
    self.client.request('/requeue',body,timeout=10)
   self.refresh_tasks()
