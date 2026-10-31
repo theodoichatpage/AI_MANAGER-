@@ -101,7 +101,7 @@ body.mg .mg-btn,body.mg .mg-menu button,body.mg .mg-item .k{font-size:14px}
 body.mg .mg-item .k svg{stroke-width:3.2}
 /* Settings popup */
 .mgs-bg{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px}
-.mgs-modal{width:min(1180px,100%);max-height:calc(100vh - 32px);overflow:auto;background:var(--mg-bg);border:1px solid #3a4a14;border-radius:14px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.mgs-modal{width:min(1180px,100%);height:min(820px,calc(100vh - 32px));overflow:auto;background:var(--mg-bg);border:1px solid #3a4a14;border-radius:14px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
 .mgs-head{display:flex;align-items:center;gap:14px;margin-bottom:14px}
 .mgs-head h1{font-size:20px;font-weight:800;margin:0}
 .mgs-head p{margin:2px 0 0;color:var(--mg-muted)}

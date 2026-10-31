@@ -59,18 +59,29 @@ function mgFormHTML(p){
  <label class="mg-opt"><input type="checkbox" class="mg-check" ${f.download?'checked':''} onchange="mgSet('download',this.checked)"> Tải ảnh</label><label class="mg-opt"><input type="checkbox" class="mg-check" ${f.separate?'checked':''} onchange="mgSet('separate',this.checked)"> Tách ảnh</label>
  ${mgErr?`<span class="mg-note err">${esc(mgErr)}</span>`:mgMsg?`<span class="mg-note ok">${esc(mgMsg)}</span>`:''}</div></section>`;
 }
+// What Studio itself holds for a linked project (it may be worked on in Studio directly, not by a Manager run).
+let mgPlans={};
+function mgPlan(p){
+ const sid=p.studio_project_id||p.studio_import_id;if(!sid)return null;const e=mgPlans[sid];
+ if(!e||(Date.now()-e.at>20000&&!e.busy)){mgPlans[sid]={...(e||{}),at:Date.now(),busy:true};api('/api/studio-plan',{studio_project_id:sid}).then(d=>{mgPlans[sid]={at:Date.now(),data:d};render()}).catch(()=>{mgPlans[sid]={...(mgPlans[sid]||{}),busy:false}})}
+ return e?.data||null;
+}
 function mgStatusHTML(p){
  if(!p)return `<section class="mg-card mg-status"><div class="mg-empty">Chưa chọn dự án.</div></section>`;
- const q=state.queue.find(x=>x.id===p.id)||{},task=(state.automation?.tasks||[]).find(t=>t.id===q.automation_task_id),c=task?.context||{};
- const label=(typeof names!=='undefined'&&names[q.status])||q.status||'Chưa chạy';
- const cls=q.status==='running'?'run':['failed','needs_review'].includes(task?.status)?'err':'';
+ const q=state.queue.find(x=>x.id===p.id)||{},task=(state.automation?.tasks||[]).find(t=>t.id===q.automation_task_id),c={...(task?.context||{})};
+ // Not running in Manager: show Studio's own numbers, so work done in Studio is visible here too.
+ const plan=q.status!=='running'?mgPlan(p):null;
+ if(plan){c.studio_total_parts=plan.parts;c.studio_completed_parts=plan.parts_done;c.studio_scope_total=plan.scenes;c.studio_images_generated=plan.images_done;if(!c.studio_stage)c.studio_stage=plan.active_job?'Studio đang xử lý':'Theo dữ liệu Studio';}
+ const studioBusy=Boolean(plan?.active_job);
+ const label=studioBusy?'Studio đang chạy':(typeof names!=='undefined'&&names[q.status])||q.status||'Chưa chạy';
+ const cls=q.status==='running'||studioBusy?'run':['failed','needs_review'].includes(task?.status)?'err':'';
  const bar=(l,a,b)=>{const pct=b?Math.round(100*(a||0)/b):0;return `<div class="mg-bar"><div class="l">${l}</div><div class="v">${b?`${a||0}/${b}`:'—'}</div><div class="p"><i style="width:${pct}%"></i></div></div>`};
  const lanes=c.studio_lanes||[];
  const errs=[];if(task?.error&&['failed','needs_review','stopped'].includes(task.status))errs.push(task.error);(c.studio_attention||[]).forEach(a=>errs.push(a));
  if(c.studio_failed_items?.length)errs.push(c.studio_failed_items.length+' mục lỗi: '+c.studio_failed_items.slice(0,5).join(', '));
  if(c.studio_files_failed?.length)errs.push('Tải/tách ảnh lỗi: '+c.studio_files_failed.slice(0,5).join(', '));
  if(c.studio_message)errs.push(c.studio_message);
- if(!task&&!q.status)return `<section class="mg-card mg-status"><div class="mg-empty">Dự án chưa chạy. Nhập thông tin rồi bấm “Triển khai toàn bộ”.</div></section>`;
+ if(!task&&!q.status&&!plan)return `<section class="mg-card mg-status"><div class="mg-empty">Dự án chưa chạy. Nhập thông tin rồi bấm “Triển khai toàn bộ”.</div></section>`;
  return `<section class="mg-card mg-status"><div class="mg-stage"><h2 style="margin:0">Tiến độ</h2><span class="mg-badge ${cls}">${esc(label)}</span><span class="mg-note">${esc(c.studio_stage||q.current_stage||'')}</span></div>
  <div class="mg-bars">${bar('Phân cảnh (phần)',c.studio_completed_parts,c.studio_total_parts)}${bar('Ảnh đã tạo',c.studio_images_generated,c.studio_scope_total)}${bar('Ảnh đã tải',c.studio_files_saved??c.studio_images_saved,c.studio_files_total??c.studio_scope_total)}${bar('Ảnh đã tách',c.studio_separated,c.studio_separate_total)}</div>
  ${lanes.length?`<div class="mg-sec">Tab ChatGPT</div>${lanes.map((l,i)=>`<div class="mg-lane"><b>Tab ${i+1}</b> ${esc(l.label||'')}<span>${l.cooldown?'Nghỉ tạo ảnh':!l.job?'Rảnh':l.kind==='image_generation'?'Tạo ảnh '+esc(l.job):'Phân cảnh '+esc(l.job)}</span></div>`).join('')}`:''}
@@ -94,7 +105,10 @@ function mgSave(id){mgRun('save',async()=>{await mgSaveForm(id);delete mgForms[i
 function mgDeploy(id){mgRun('deploy',async()=>{
  const p=state.projects.find(x=>x.id===id),f=mgForm(p);await mgSaveForm(id);
  const link=f.use_link?f.youtube_url.trim():'',script=f.use_script?f.script:'';
- const tasks=['analysis','scenes',...(f.use_image?['images']:[]),...(f.download?['sync']:[]),...(f.separate?['separate']:[])];
+ let tasks=['analysis','scenes',...(f.use_image?['images']:[]),...(f.download?['sync']:[]),...(f.separate?['separate']:[])];
+ // A project already on Studio with "Prompt tạo ảnh" unticked: only download / separate the images it already has.
+ const filesOnly=Boolean(p.studio_project_id)&&!f.use_image&&(f.download||f.separate);
+ if(filesOnly)tasks=tasks.filter(t=>t==='sync'||t==='separate');
  const lanes=(p.lanes&&p.lanes.length?p.lanes:null)||p.work_config?.lanes||mgDefaultLanes();
  if(!p.studio_project_id){
   if(!link&&!script.trim())throw Error('Tích và nhập Link tham khảo hoặc Kịch bản');
@@ -103,7 +117,7 @@ function mgDeploy(id){mgRun('deploy',async()=>{
   await api('/api/automation',{command:'studio_attach',project:id,studio_project_id:p.studio_project_id,studio_url:p.studio_url,browser:'edge',browser_profile:lanes[0]?.profile||p.browser_profile||'Default',work_config:{tasks,scopes:{},error_policy:'continue',retry_limit:2,rerun:false,lanes,separate_layers:p.separate_layers||3}});
   await api('/api/queue',{action:'start_batch',ids:[id]});
  }
- delete mgForms[id];mgMsg='Đã triển khai. Manager đang mở Studio và ChatGPT.';
+ delete mgForms[id];mgMsg=filesOnly?'Đã triển khai: chỉ '+[f.download?'tải':'',f.separate?'tách':''].filter(Boolean).join(' và ')+' ảnh đã có.':'Đã triển khai. Manager đang mở Studio và ChatGPT.';
 })}
 function mgStop(){if(typeof stopEverything==='function')stopEverything();else api('/api/queue',{action:'stop_all'}).then(refresh)}
 document.addEventListener('click',e=>{if(mgMenu&&!e.target.closest('.mg-menu,.mg-item .k')){mgMenu='';render()}});
