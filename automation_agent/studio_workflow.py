@@ -47,7 +47,7 @@ def workflow(sid,url,browser,profile,folder,script,context=None,stages=None,work
  if work_config is not None:
   from .work_config import normalize
   work_config=normalize(work_config)
-  stages=(['analysis'] if any(k in work_config['tasks'] for k in ('analysis','scenes')) else [])+(['images'] if any(k in work_config['tasks'] for k in ('images','retry_images','sync','separate')) else [])
+  stages=(['analysis'] if any(k in work_config['tasks'] for k in ('analysis','scenes')) else [])+(['images'] if any(k in work_config['tasks'] for k in ('images','retry_images','sync','separate','parallax')) else [])
  stages=['analysis'] if stages is None else stages
  if not isinstance(stages,list) or not stages or any(x not in ('analysis','images') for x in stages):raise ValueError('Chọn Phân tích/Phân cảnh hoặc Tạo ảnh; transcript chưa hỗ trợ')
  base=validate_url(url);nonce=uuid.uuid4().hex
@@ -58,8 +58,8 @@ def workflow(sid,url,browser,profile,folder,script,context=None,stages=None,work
  # managerName lets a profile that does not list this project yet (new project, extra lane) open it by ID.
  launch=base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':nonce,'managerStage':'transcript' if youtube and 'analysis' in stages else 'analysis' if 'analysis' in stages else 'images',**({'managerName':name} if name else {}),**({'managerLaneId':__import__('re').sub(r'[^A-Za-z0-9_-]','_',browser+'_'+(profile if browser=='edge' else 'Default'))} if lanes else {})})
  def a(name,**kw):return dict(action=name,target_app=browser,**({'browser_profile':profile} if browser=='edge' else {}),**kw)
- # Only saving and/or separating pictures: no browser at all (Studio storage + Local Engine).
- if work_config and set(work_config['tasks'])<={'sync','separate'}:
+ # Only saving, separating pictures and/or making Parallax videos: no browser at all (Studio storage + Local Engine + Parallax25D).
+ if work_config and set(work_config['tasks'])<={'sync','separate','parallax'}:
   target.update(studio_launch=True,studio_files_only=True)
   return [a('STUDIO_FILES')],target
  if browser=='edge':
@@ -77,7 +77,7 @@ def workflow(sid,url,browser,profile,folder,script,context=None,stages=None,work
  else:
   if 'analysis' in stages and (not work_config or 'scenes' in work_config['tasks']):actions.append(a('STUDIO_SCENES'))
   if 'images' in stages:actions.append(a('STUDIO_IMAGES'))
- if work_config and 'separate' in work_config['tasks']:actions.append(a('STUDIO_FILES'))
+ if work_config and any(k in work_config['tasks'] for k in ('separate','parallax')):actions.append(a('STUDIO_FILES'))
  return actions,target
 
 class StudioStep:

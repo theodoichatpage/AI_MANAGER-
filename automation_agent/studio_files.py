@@ -2,6 +2,8 @@
 
 - "Tải ảnh về máy" (task 'sync'):  <project>/Anh/Phan N - .../Canh M - ....png
 - "Tách ảnh"       (task 'separate'): <project>/Tach anh/Phan N - .../Canh M - .../ (layers from the Local Engine)
+- "Làm video Parallax" (task 'parallax'): <project>/Video Parallax/Phan N - .../Canh M - ....mp4 (Parallax25D.exe),
+  once downloads and separation are finished
 Pictures come straight from Studio's storage. When they are not downloaded, separation reads them in memory only.
 The Local Engine handles one picture at a time, so this step sends one, polls it, saves its layers, then the next."""
 import io,json,re,shutil,time,uuid,zipfile,urllib.error,urllib.request
@@ -9,6 +11,7 @@ from pathlib import Path
 from .studio_images import rows,fetch_image
 from .project_files import layout,image_place,separation_dir,save_scene_image,plain,SEPARATED
 from .work_config import in_scope,validate_extent
+from . import parallax_video
 
 ENGINE='http://127.0.0.1:17841'
 JOB_LIMIT=1800        # one picture may take this long in the Local Engine
@@ -147,8 +150,38 @@ def step(w,s,engine=None,fetch=fetch_image):
       'studio_files_failed':failed or None,'studio_message':message,'studio_folder_images':str(w.folder/'Anh') if saves else None,'studio_folder_separated':str(w.folder/SEPARATED) if seps else None}
  downloads_left=any(not st['saved'].get(k) for _,k,_ in saves)
  seps_left=any((sep.get(k) or {}).get('state') not in ('done','error','no-image') for _,k,_ in seps)
+ # 4. Parallax videos, after every picture is downloaded and separated.
+ if 'parallax' in tasks and not downloads_left and not seps_left and not st.get('job'):
+  pv=st.get('parallax')
+  if pv is None:
+   ready=parallax_video.scenes_ready(w.folder/SEPARATED)
+   if not ready:pv={'state':'none'}
+   else:
+    try:pv=dict(parallax_video.start(w.folder,w.c.get('studio_ratio','16:9'),cfg.get('parallax_motion','random'),bool(cfg.get('rerun'))),state='running',scenes=ready)
+    except (OSError,ValueError) as exc:pv={'state':'error','error':str(exc)[:300]}
+   st['parallax']=pv;w.save()
+  if pv.get('state')=='running':
+   kind,info=parallax_video.check(pv)
+   if kind=='running':
+    made=int(info.get('done') or 0)+int(info.get('skipped') or 0);pct=int(info.get('percent') or 0)
+    now_doing=', '.join(info.get('current') or [])[:120]
+    msg='Đang khởi động Parallax25D…' if info.get('state')=='starting' else 'Làm video Parallax %d%% (%d/%s cảnh)%s'%(pct,made,info.get('total','?'),(': '+now_doing) if now_doing else '')
+    return w.wait('parallax:%d:%d'%(made,pct),JOB_LIMIT+600,dict(ctx,studio_stage='Làm video Parallax',studio_message=msg,studio_parallax_percent=pct,studio_folder_parallax=str(w.folder/parallax_video.OUTPUT)))
+   if kind=='done':
+    scenes=info.get('scenes') or {}
+    pv.update(state='done',made=int(info.get('done') or 0),skipped=int(info.get('skipped') or 0),failed=[n for n,r in scenes.items() if (r or {}).get('state')=='error'])
+    for name,row in scenes.items():
+     row=row or {};state={'done':'COMPLETED','skipped':'SKIPPED','error':'ERROR'}.get(row.get('state'))
+     if state:ledger('parallax',name[:200],state,result_path=row.get('video'),**({'error':str(row.get('error'))[:200]} if row.get('error') else {}))
+   else:pv.update(state='error',error=info)
+   w.save()
+  if pv.get('state')=='error':failed.append('Video Parallax: '+pv.get('error',''))
+  failed+=['Video '+n for n in pv.get('failed') or []]
+  ctx.update(studio_parallax_made=pv.get('made'),studio_parallax_skipped=pv.get('skipped'),studio_folder_parallax=str(w.folder/parallax_video.OUTPUT) if pv.get('state')=='done' else None,studio_files_failed=failed or None,
+             studio_message='Chưa có cảnh đã tách để làm video Parallax' if pv.get('state')=='none' else ctx.get('studio_message'))
  if not downloads_left and not seps_left and not st.get('job'):
   if failed and cfg.get('error_policy')=='stop':raise RuntimeError('Dừng: %d mục lỗi (%s)'%(len(failed),', '.join(failed[:5])))
-  return {'context':dict(ctx,studio_stage='Hoàn tất tải ảnh / tách ảnh'+(' · %d mục lỗi'%len(failed) if failed else ''),studio_waiting_action=None)}
+  label='Hoàn tất tải ảnh / tách ảnh'+(' / video Parallax' if 'parallax' in tasks else '')
+  return {'context':dict(ctx,studio_stage=label+(' · %d mục lỗi'%len(failed) if failed else ''),studio_waiting_action=None)}
  # Watchdog keyed on progress: every saved picture or separated scene restarts the clock.
  return w.wait('files:%d:%d'%(saved_ok,sep_done),JOB_LIMIT+600,ctx)

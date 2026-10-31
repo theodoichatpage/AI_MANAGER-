@@ -98,6 +98,41 @@ class Files(unittest.TestCase):
   with zipfile.ZipFile(out,'w') as z:z.writestr('../evil.png',PNG);z.writestr('vi_tri.json','{}')
   with self.assertRaises(ValueError):studio_files.unpack_layers(out.getvalue(),Path(self.tmp.name)/'x',Path(self.tmp.name)/'b')
 
+class Parallax(unittest.TestCase):
+ """After separation, Parallax25D makes the videos; Manager waits on its status file."""
+ def setUp(self):self.tmp=tempfile.TemporaryDirectory()
+ def tearDown(self):self.tmp.cleanup()
+ def test_videos_are_made_after_separation(self):
+  from unittest.mock import patch
+  from automation_agent import parallax_video
+  w=W(self.tmp.name,['separate','parallax'],{'separate':{'mode':'selected','items':[1]}});engine=FakeEngine();launched=[]
+  def start(project,ratio,motion,rerun):
+   launched.append((str(project),ratio,motion,rerun));return {'pid':7,'at':w.now,'status':str(Path(project)/'.vis'/'s.json')}
+  progress=iter([('running',{'state':'starting'}),('running',{'state':'running','percent':50,'done':0,'total':1,'current':['Canh 1']}),
+                 ('done',{'state':'done','done':1,'skipped':0,'scenes':{'Phan 1/Canh 1 - Hai dau so phan':{'state':'done','video':'v.mp4'}}})])
+  with patch.object(parallax_video,'start',start),patch.object(parallax_video,'check',lambda job:next(progress)):
+   r=studio_files.step(w,SESSION,engine=engine,fetch=lambda u:PNG)
+   self.assertEqual(launched,[],'videos wait for separation');engine.finish()
+   msgs=[]
+   for _ in range(6):
+    r=studio_files.step(w,SESSION,engine=engine,fetch=lambda u:PNG)
+    if 'waiting' not in r:break
+    msgs.append(r['context'].get('studio_message'))
+  self.assertEqual(len(launched),1,'launched once');self.assertEqual(launched[0][1:],('16:9','random',False))
+  self.assertIn('Làm video Parallax 50% (0/1 cảnh): Canh 1',msgs)
+  self.assertEqual(r['context']['studio_parallax_made'],1);self.assertIsNone(r['context']['studio_files_failed'])
+  self.assertIn('video Parallax',r['context']['studio_stage'])
+ def test_missing_exe_is_reported_without_blocking_the_rest(self):
+  from unittest.mock import patch
+  from automation_agent import parallax_video
+  root=Path(self.tmp.name)/'Tach anh'/'Phan 1'/'Canh 1';root.mkdir(parents=True);(root/'01_bg.png').write_bytes(b'x')
+  w=W(self.tmp.name,['parallax'])
+  with patch.object(parallax_video,'find_exe',lambda:None):r=studio_files.step(w,SESSION,engine=FakeEngine(),fetch=lambda u:PNG)
+  self.assertNotIn('waiting',r);self.assertIn('Parallax25D.exe',r['context']['studio_files_failed'][0])
+ def test_nothing_separated_yet(self):
+  w=W(self.tmp.name,['parallax']);r=studio_files.step(w,SESSION,engine=FakeEngine(),fetch=lambda u:PNG)
+  self.assertNotIn('waiting',r);self.assertEqual(r['context']['studio_message'],'Chưa có cảnh đã tách để làm video Parallax')
+
 class Actions(unittest.TestCase):
  def test_files_only_needs_no_browser_and_separation_runs_last(self):
   sid='a'*32
@@ -105,4 +140,6 @@ class Actions(unittest.TestCase):
   self.assertEqual([x['action'] for x in a],['STUDIO_FILES']);self.assertTrue(c['studio_launch'])
   a,_=workflow(sid,'https://video-image-studio.vercel.app','edge','Default','C:/x','',work_config={'tasks':['images','separate']})
   self.assertEqual(a[-2]['action'],'STUDIO_IMAGES');self.assertEqual(a[-1]['action'],'STUDIO_FILES')
+  a,c=workflow(sid,'https://video-image-studio.vercel.app','edge','Default','C:/x','',work_config={'tasks':['parallax']})
+  self.assertEqual([x['action'] for x in a],['STUDIO_FILES'],'videos only: no browser')
 if __name__=='__main__':unittest.main()

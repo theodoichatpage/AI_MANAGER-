@@ -25,7 +25,7 @@ function mgForm(p){
  if(!mgForms[p.id]){const link=p.youtube_url||'',script=p.script||'';
   mgForms[p.id]={youtube_url:link,script,rewrite_style:p.rewrite_style||'',image_style:p.image_style||'',
    use_link:p.use_link??Boolean(link),use_script:p.use_script??(!link&&Boolean(script)),use_rewrite:p.rewrite??true,use_image:p.images??true,
-   download:p.download??true,separate:p.separate??false}}
+   download:p.download??true,separate:p.separate??false,parallax:p.parallax??false}}
  return mgForms[p.id];
 }
 function mgSet(key,value){const p=mgCurrent();if(p)mgForm(p)[key]=value}
@@ -56,7 +56,7 @@ function mgFormHTML(p){
  <div class="mg-field">${check('use_image','Prompt tạo ảnh')}<div class="mg-input ${f.use_image?'':'off'}">${mgSvg('image')}<textarea id="neo_mg_image" placeholder="Nhập prompt tạo ảnh..." oninput="mgSet('image_style',this.value)" onblur="render()">${esc(f.image_style)}</textarea></div></div>
  <button class="mg-btn outline" ${mgBusy?'disabled':''} onclick="mgSave('${p.id}')">${mgSvg('save')} Lưu prompt</button></div></div>
  <div class="mg-actions"><button class="mg-btn primary" ${mgBusy||busy?'disabled':''} onclick="mgDeploy('${p.id}')">${mgSvg('play',1)} ${mgBusy==='deploy'?'Đang triển khai…':'Triển khai toàn bộ'}</button><button class="mg-btn outline" onclick="mgStop()">${mgSvg('pause')} Dừng toàn bộ</button>
- <label class="mg-opt"><input type="checkbox" class="mg-check" ${f.download?'checked':''} onchange="mgSet('download',this.checked)"> Tải ảnh</label><label class="mg-opt"><input type="checkbox" class="mg-check" ${f.separate?'checked':''} onchange="mgSet('separate',this.checked)"> Tách ảnh</label>
+ <label class="mg-opt"><input type="checkbox" class="mg-check" ${f.download?'checked':''} onchange="mgSet('download',this.checked)"> Tải ảnh</label><label class="mg-opt"><input type="checkbox" class="mg-check" ${f.separate?'checked':''} onchange="mgSet('separate',this.checked)"> Tách ảnh</label><label class="mg-opt" title="Sau khi tách ảnh: Parallax25D làm video 2.5D cho mỗi cảnh (Dự án\Video Parallax)"><input type="checkbox" class="mg-check" ${f.parallax?'checked':''} onchange="mgSet('parallax',this.checked)"> Video Parallax</label>
  ${mgErr?`<span class="mg-note err">${esc(mgErr)}</span>`:mgMsg?`<span class="mg-note ok">${esc(mgMsg)}</span>`:''}</div></section>`;
 }
 // What Studio itself holds for a linked project (it may be worked on in Studio directly, not by a Manager run).
@@ -100,15 +100,15 @@ function mgNew(){const name=prompt('Tên dự án mới:','');if(!name||!name.tr
 function mgRename(id){mgMenu='';const p=state.projects.find(x=>x.id===id);const name=prompt('Tên mới:',p?.name||'');if(!name||!name.trim()||name.trim()===p?.name){render();return}mgRun('rename',async()=>{await api('/api/project-action',{id,action:'rename',name:name.trim()});mgMsg='Đã đổi tên'+(p?.studio_project_id?'; Studio nhận tên mới khi tab Studio mở':'')})}
 function mgCopy(id){mgMenu='';mgRun('copy',async()=>{const r=await api('/api/project-action',{id,action:'copy'});mgSel=r.id;mgMsg='Đã sao chép thành “'+r.name+'”.'})}
 function mgDelete(id){mgMenu='';const p=state.projects.find(x=>x.id===id);if(!confirm('Xóa dự án “'+(p?.name||'')+'”?\n\nThư mục được chuyển vào _Thung_rac trong thư mục dự án, không bị xóa hẳn.')){render();return}mgRun('delete',async()=>{await api('/api/project-action',{id,action:'delete'});delete mgForms[id];mgSel='';mgMsg='Đã chuyển vào thùng rác.'})}
-async function mgSaveForm(id){const f=mgForms[id];if(!f)return;await api('/api/project-action',{id,action:'update',youtube_url:f.youtube_url,script:f.script,rewrite_style:f.rewrite_style,image_style:f.image_style,use_link:f.use_link,use_script:f.use_script,rewrite:f.use_rewrite,images:f.use_image,download:f.download,separate:f.separate})}
+async function mgSaveForm(id){const f=mgForms[id];if(!f)return;await api('/api/project-action',{id,action:'update',youtube_url:f.youtube_url,script:f.script,rewrite_style:f.rewrite_style,image_style:f.image_style,use_link:f.use_link,use_script:f.use_script,rewrite:f.use_rewrite,images:f.use_image,download:f.download,separate:f.separate,parallax:f.parallax})}
 function mgSave(id){mgRun('save',async()=>{await mgSaveForm(id);delete mgForms[id];mgMsg='Đã lưu'})}
 function mgDeploy(id){mgRun('deploy',async()=>{
  const p=state.projects.find(x=>x.id===id),f=mgForm(p);await mgSaveForm(id);
  const link=f.use_link?f.youtube_url.trim():'',script=f.use_script?f.script:'';
- let tasks=['analysis','scenes',...(f.use_image?['images']:[]),...(f.download?['sync']:[]),...(f.separate?['separate']:[])];
+ let tasks=['analysis','scenes',...(f.use_image?['images']:[]),...(f.download?['sync']:[]),...(f.separate?['separate']:[]),...(f.parallax?['parallax']:[])];
  // A project already on Studio with "Prompt tạo ảnh" unticked: only download / separate the images it already has.
- const filesOnly=Boolean(p.studio_project_id)&&!f.use_image&&(f.download||f.separate);
- if(filesOnly)tasks=tasks.filter(t=>t==='sync'||t==='separate');
+ const filesOnly=Boolean(p.studio_project_id)&&!f.use_image&&(f.download||f.separate||f.parallax);
+ if(filesOnly)tasks=tasks.filter(t=>t==='sync'||t==='separate'||t==='parallax');
  const lanes=(p.lanes&&p.lanes.length?p.lanes:null)||p.work_config?.lanes||mgDefaultLanes();
  if(!p.studio_project_id){
   if(!link&&!script.trim())throw Error('Tích và nhập Link tham khảo hoặc Kịch bản');
@@ -117,7 +117,7 @@ function mgDeploy(id){mgRun('deploy',async()=>{
   await api('/api/automation',{command:'studio_attach',project:id,studio_project_id:p.studio_project_id,studio_url:p.studio_url,browser:'edge',browser_profile:lanes[0]?.profile||p.browser_profile||'Default',work_config:{tasks,scopes:{},error_policy:'continue',retry_limit:2,rerun:false,lanes,separate_layers:p.separate_layers||3}});
   await api('/api/queue',{action:'start_batch',ids:[id]});
  }
- delete mgForms[id];mgMsg=filesOnly?'Đã triển khai: chỉ '+[f.download?'tải':'',f.separate?'tách':''].filter(Boolean).join(' và ')+' ảnh đã có.':'Đã triển khai. Manager đang mở Studio và ChatGPT.';
+ delete mgForms[id];mgMsg=filesOnly?'Đã triển khai: chỉ '+[f.download?'tải ảnh':'',f.separate?'tách ảnh':'',f.parallax?'làm video Parallax':''].filter(Boolean).join(', ')+' từ ảnh đã có.':'Đã triển khai. Manager đang mở Studio và ChatGPT.';
 })}
 function mgStop(){if(typeof stopEverything==='function')stopEverything();else api('/api/queue',{action:'stop_all'}).then(refresh)}
 document.addEventListener('click',e=>{if(mgMenu&&!e.target.closest('.mg-menu,.mg-item .k')){mgMenu='';render()}});

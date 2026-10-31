@@ -86,12 +86,12 @@ def studio_deploy(data):
         data=dict(data)
         for k,src in (('youtube_url','youtube_url'),('script','script'),('rewrite_style','rewrite_style'),('image_style','image_style'),('language','language'),('rewrite','rewrite'),('separate_layers','separate_layers'),('lanes','lanes')):
             if k not in data and saved.get(src): data[k]=saved[src]
-        if not data.get('tasks'): data['tasks']=['analysis','scenes']+[k for k,f in (('images','images'),('sync','download'),('separate','separate')) if saved.get(f)]
+        if not data.get('tasks'): data['tasks']=['analysis','scenes']+[k for k,f in (('images','images'),('sync','download'),('separate','separate'),('parallax','parallax')) if saved.get(f)]
     name=str(data.get('name','')).strip()[:120]; url=str(data.get('youtube_url','')).strip(); script=str(data.get('script','')).strip()
     if url and not YOUTUBE.fullmatch(url): raise ValueError('Link YouTube không hợp lệ')
     if not url and not script: raise ValueError('Nhập link YouTube hoặc dán kịch bản')
     if len(script)>2_000_000: raise ValueError('Kịch bản quá dài')
-    tasks=[k for k in ('analysis','scenes','images','sync','separate') if k in (data.get('tasks') or ['analysis','scenes'])]
+    tasks=[k for k in ('analysis','scenes','images','sync','separate','parallax') if k in (data.get('tasks') or ['analysis','scenes'])]
     if 'analysis' not in tasks: raise ValueError('Dự án mới cần bước Phân tích kịch bản')
     lanes=data.get('lanes') or [{'browser':data.get('browser','edge'),'profile':data.get('browser_profile') or 'Default'}]
     browser=lanes[0]['browser']; profile=lanes[0].get('profile') or 'Default'
@@ -107,7 +107,7 @@ def studio_deploy(data):
     else:
         p=create_project(name or ('YouTube '+vid if url else ''),script); manager().add(p); manager().stop(p['id'])
     # The project keeps its own inputs (link, prompts, options), so a copy or a new PC can run it again.
-    meta=project_ops.load(p['folder']); meta.update(project_ops.inputs({'youtube_url':url,'language':data.get('language'),'rewrite':data.get('rewrite',True),'rewrite_style':data.get('rewrite_style',''),'image_style':data.get('image_style',''),'images':'images' in tasks,'download':'sync' in tasks,'separate':'separate' in tasks,'separate_layers':data.get('separate_layers',3)}),lanes=lanes)
+    meta=project_ops.load(p['folder']); meta.update(project_ops.inputs({'youtube_url':url,'language':data.get('language'),'rewrite':data.get('rewrite',True),'rewrite_style':data.get('rewrite_style',''),'image_style':data.get('image_style',''),'images':'images' in tasks,'download':'sync' in tasks,'separate':'separate' in tasks,'parallax':'parallax' in tasks,'separate_layers':data.get('separate_layers',3)}),lanes=lanes)
     if script: meta['script']=script
     atomic(Path(p['folder'])/'project.json',meta)
     sid=uuid.uuid4().hex; api=StudioAPI(); api.create(sid)
