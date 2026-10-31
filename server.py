@@ -162,7 +162,7 @@ def create_project(name, script, test_key=None):
     for d in ('analysis','scenes','prompts','images','logs'): (folder/d).mkdir()
     atomic(folder/'project.json',project); (folder/'logs'/'activity.log').write_text(f'{now} – Đã tạo dự án\n',encoding='utf-8'); return project
 
-MANAGER=None; WORKER=None; STUDIO=StudioMonitor(); EXTENSION=ExtensionMonitor(); STUDIO_STOP=threading.Event(); threading.Thread(target=STUDIO.run,args=(STUDIO_STOP,),daemon=True).start()
+MANAGER=None; WORKER=None; STUDIO=StudioMonitor(); EXTENSION=ExtensionMonitor(); STUDIO_STOP=threading.Event(); threading.Thread(target=STUDIO.run,args=(STUDIO_STOP,),kwargs={'busy':lambda:MANAGER is not None and any(x.get('status')=='running' for x in MANAGER.list())},daemon=True).start()
 from extension_updater import ExtensionUpdater
 EXT_UPDATER=ExtensionUpdater(); threading.Thread(target=EXT_UPDATER.run,args=(STUDIO_STOP,),daemon=True).start()
 AUTOMATION=None

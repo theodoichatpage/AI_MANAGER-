@@ -4,13 +4,16 @@ from automation_agent import studio_cache
 
 class Cache(unittest.TestCase):
  def setUp(self):
+  import os;self._home=os.environ.pop('AI_MANAGER_AGENT_HOME',None)  # other tests may leave a disk copy
   studio_cache._cache.clear();self.calls=[];self.version={'updatedAt':1,'workEpoch':0};self.full={'id':'s'*16,'updatedAt':1,'workEpoch':0,'parts':[]}
   def call(path,body=None,timeout=10):
    self.calls.append(path)
    if path.endswith('/version'):return {'version':self.version}
    return {'session':dict(self.full)}
   self.orig=studio_cache.call;studio_cache.call=call
- def tearDown(self):studio_cache.call=self.orig
+ def tearDown(self):
+  import os;studio_cache.call=self.orig
+  if self._home is not None:os.environ['AI_MANAGER_AGENT_HOME']=self._home
  def test_unchanged_project_is_not_downloaded_again(self):
   sid='s'*16
   studio_cache.session(sid);studio_cache.session(sid);studio_cache.session(sid)

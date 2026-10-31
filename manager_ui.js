@@ -63,7 +63,7 @@ function mgFormHTML(p){
 let mgPlans={};
 function mgPlan(p){
  const sid=p.studio_project_id||p.studio_import_id;if(!sid)return null;const e=mgPlans[sid];
- if(!e||(Date.now()-e.at>20000&&!e.busy)){mgPlans[sid]={...(e||{}),at:Date.now(),busy:true};api('/api/studio-plan',{studio_project_id:sid}).then(d=>{mgPlans[sid]={at:Date.now(),data:d};render()}).catch(()=>{mgPlans[sid]={...(mgPlans[sid]||{}),busy:false}})}
+ if(!e||(Date.now()-e.at>60000&&!e.busy)){mgPlans[sid]={...(e||{}),at:Date.now(),busy:true};api('/api/studio-plan',{studio_project_id:sid}).then(d=>{mgPlans[sid]={at:Date.now(),data:d};render()}).catch(()=>{mgPlans[sid]={...(mgPlans[sid]||{}),busy:false}})}
  return e?.data||null;
 }
 function mgStatusHTML(p){

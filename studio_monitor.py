@@ -41,5 +41,11 @@ class StudioMonitor:
     self.failure_count+=1;self.status='lost' if self.data else 'error';self.error=f'{err} Đã thử phục hồi {self.max_recovery} lần; sẽ tiếp tục kiểm tra tự động.'
    else:
     self.status='connected';self.data=data;self.error='';self.failure_count=0;self.last_ok=time.time()
- def run(self,stop,interval=5):
-  while not stop.wait(interval):self.poll()
+ def run(self,stop,interval=5,idle=60,busy=None):
+  """Read every `interval` s while a project runs; when nothing runs, only every `idle` s (Studio's database
+  is shared and has a usage quota)."""
+  last=0.0
+  while not stop.wait(interval):
+   try:active=busy() if busy else True
+   except Exception:active=True
+   if active or time.time()-last>=idle:last=time.time();self.poll()
