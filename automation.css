@@ -40,3 +40,26 @@
 .neo-setting-row.bad .neo-setting-mark{background:#b54708;color:#fff}
 .neo-advanced summary{cursor:pointer;font-weight:600}
 .neo-advanced h3{margin-top:18px}
+
+/* Project card and errors panel (work board) */
+.proj-card .proj-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+.proj-card .proj-grid label{display:flex;flex-direction:column;gap:4px;font-weight:600}
+.proj-card .proj-grid .proj-wide{grid-column:1/-1}
+.proj-card .proj-grid textarea,.proj-card .proj-grid input{font-weight:400;width:100%;box-sizing:border-box}
+.proj-card .btn.danger{color:#b42318}
+.err-panel summary{cursor:pointer;font-weight:700;color:#b42318}
+.err-panel table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.err-panel th,.err-panel td{border-bottom:1px solid #e5e7eb;padding:6px;text-align:left;vertical-align:top}
+.np-yn{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.np-yn.muted{opacity:.55}
+@media (max-width:700px){.proj-card .proj-grid{grid-template-columns:1fr}}
+.app-tools .app-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid #eef0f3}
+.app-tools .app-row b{min-width:150px}
+.app-tools .app-row span{flex:1;min-width:220px;color:#475467;font-size:13px}
+.app-check{width:100%;border-collapse:collapse;margin-top:8px}
+.app-check td{padding:6px;border-bottom:1px solid #eef0f3;vertical-align:top}
+.app-check tr.ok td:first-child{color:#067647;font-weight:700}
+.app-check tr.warn td:first-child{color:#b54708;font-weight:700}
+.app-check tr.missing td:first-child{color:#b42318;font-weight:700}
+.app-check .fix{color:#175cd3}
+.app-msg,.app-progress{margin-top:8px;font-weight:600}

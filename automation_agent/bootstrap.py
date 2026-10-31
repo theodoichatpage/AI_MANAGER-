@@ -18,7 +18,9 @@ def main():
  with (report_home/'windows_api_contract.json').open('w',encoding='utf8') as report:
   check=subprocess.run([str(python),'-m','automation_agent.windows_api_contract'],cwd=str(root),stdout=report,stderr=subprocess.STDOUT)
  if check.returncode:print('Windows API contract FAIL. See Windows Agent diagnostics; unsupported APIs are not treated as PASS.',flush=True)
- return subprocess.call([str(python),str(root/'server.py')],cwd=str(root))
+ # Desktop app: icon + Start menu + start with Windows, then Manager runs in the background in its own window.
+ subprocess.run([str(python),str(root/'install_app.py')],cwd=str(root))
+ return subprocess.call([str(base/'Scripts/pythonw.exe'),str(root/'app_launcher.pyw')],cwd=str(root))
 if __name__=='__main__':
  try:raise SystemExit(main())
  except subprocess.CalledProcessError:raise SystemExit('Setup failed. Check Internet access and reopen MO_AI_MANAGER.bat. See the error above.')

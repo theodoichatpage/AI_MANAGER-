@@ -42,6 +42,11 @@ class AutomationService:
     if missing:raise ValueError('Không có hồ sơ Edge: '+', '.join(missing))
    actions,context=studio_workflow(sid,url,browser,profile,p['folder'],metadata.get('script',''),base_context,stages=data.get('stages',metadata.get('studio_stages',['analysis'])),work_config=data.get('work_config'),name=p['name'])
    context['manager_project_id']=p['id'];context['project_name']=p['name']
+   # The project's own image style (kept in Manager) is the one Studio uses for this run.
+   style=str(metadata.get('image_style') or '').strip()
+   if style:
+    from .studio_workflow import StudioAPI
+    if str(StudioAPI().request(sid).get('stylePrompt') or '').strip()!=style:StudioAPI().request(sid,'/settings',{'stylePrompt':style})
    if context.get('work_config'):
     from .studio_workflow import StudioAPI
     current=StudioAPI().request(sid)

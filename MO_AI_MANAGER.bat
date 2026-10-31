@@ -11,4 +11,4 @@ if not errorlevel 1 (
         python -m automation_agent.bootstrap
     )
 )
-pause
+if errorlevel 1 pause

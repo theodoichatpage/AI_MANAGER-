@@ -163,6 +163,15 @@ class QueueManager:
    other=self.db.execute('SELECT project_id FROM studio_links WHERE studio_project_id=?',(sid,)).fetchone()
    if other and other[0]!=pid:raise ValueError('Studio ID đã được gán cho dự án khác')
    self.db.execute('INSERT OR REPLACE INTO studio_links VALUES(?,?,?,?,?)',(pid,sid,origin,browser,profile))
+ def relocate(self,pid,name,folder):
+  """Manager renamed the project (and possibly its folder)."""
+  with self.lock,self.db:
+   if self.get(pid)['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi đổi tên')
+   self._set(pid,name=name,folder=str(folder));self._log(pid,'Đổi tên thành '+name)
+ def remove(self,pid):
+  with self.lock,self.db:
+   if self.get(pid)['status'] in ('running','paused'):raise ValueError('Dừng dự án trước khi xoá')
+   self.db.execute('DELETE FROM projects WHERE id=?',(pid,));self.db.execute('DELETE FROM studio_links WHERE project_id=?',(pid,));self._log(pid,'Đã chuyển vào thùng rác')
  def studio_rename(self,pid,name):
   with self.lock,self.db:
    if self.get(pid)['name']!=name:self._set(pid,name=name)

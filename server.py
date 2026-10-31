@@ -79,21 +79,41 @@ def studio_deploy(data):
     """Dự án mới -> Triển khai: create the Manager project and its Studio project, attach the workflow, start it.
     Source is a YouTube link (Studio gets the transcript and rewrites it) or a script typed in Manager."""
     from automation_agent.studio_workflow import StudioAPI
+    if data.get('project'):
+        # An existing project (e.g. a copy) runs with its saved inputs unless the form sends new ones.
+        import project_ops
+        saved=project_ops.load(project_ops.find(projects(include_duplicates=True),str(data['project']))['folder'])
+        data=dict(data)
+        for k,src in (('youtube_url','youtube_url'),('script','script'),('rewrite_style','rewrite_style'),('image_style','image_style'),('language','language'),('rewrite','rewrite'),('separate_layers','separate_layers'),('lanes','lanes')):
+            if not data.get(k) and saved.get(src): data[k]=saved[src]
+        if not data.get('tasks'): data['tasks']=['analysis','scenes']+[k for k,f in (('images','images'),('sync','download'),('separate','separate')) if saved.get(f)]
     name=str(data.get('name','')).strip()[:120]; url=str(data.get('youtube_url','')).strip(); script=str(data.get('script','')).strip()
     if url and not YOUTUBE.fullmatch(url): raise ValueError('Link YouTube không hợp lệ')
     if not url and not script: raise ValueError('Nhập link YouTube hoặc dán kịch bản')
     if len(script)>2_000_000: raise ValueError('Kịch bản quá dài')
-    tasks=[k for k in ('analysis','scenes','images') if k in (data.get('tasks') or ['analysis','scenes'])]
+    tasks=[k for k in ('analysis','scenes','images','sync','separate') if k in (data.get('tasks') or ['analysis','scenes'])]
     if 'analysis' not in tasks: raise ValueError('Dự án mới cần bước Phân tích kịch bản')
     lanes=data.get('lanes') or [{'browser':data.get('browser','edge'),'profile':data.get('browser_profile') or 'Default'}]
     browser=lanes[0]['browser']; profile=lanes[0].get('profile') or 'Default'
     if browser!='edge': raise ValueError('Dự án mới chạy trên Edge (trình duyệt chính); Chrome chỉ dùng làm tab ChatGPT phụ')
     if not automation().snapshot().get('online'): raise ValueError('Windows Agent chưa kết nối')
     vid=(re.search(r'(?:v=|youtu\.be/|shorts/|live/)([A-Za-z0-9_-]{6,})',url) or [None,''])[1] if url else ''
-    p=create_project(name or ('YouTube '+vid if url else ''),script); manager().add(p); manager().stop(p['id'])
+    import project_ops
+    if data.get('project'):
+        # Deploy an existing project that has no Studio project yet (e.g. a copy).
+        p=project_ops.find(projects(include_duplicates=True),str(data['project']))
+        if project_ops.load(p['folder']).get('studio_project_id'): raise ValueError('Dự án này đã có Studio; dùng bảng công việc để chạy tiếp')
+        manager().stop(p['id'])
+    else:
+        p=create_project(name or ('YouTube '+vid if url else ''),script); manager().add(p); manager().stop(p['id'])
+    # The project keeps its own inputs (link, prompts, options), so a copy or a new PC can run it again.
+    meta=project_ops.load(p['folder']); meta.update(project_ops.inputs({'youtube_url':url,'language':data.get('language'),'rewrite':data.get('rewrite',True),'rewrite_style':data.get('rewrite_style',''),'image_style':data.get('image_style',''),'images':'images' in tasks,'download':'sync' in tasks,'separate':'separate' in tasks,'separate_layers':data.get('separate_layers',3)}),lanes=lanes)
+    if script: meta['script']=script
+    atomic(Path(p['folder'])/'project.json',meta)
     sid=uuid.uuid4().hex; api=StudioAPI(); api.create(sid)
     if script: api.request(sid,'/script',{'script':script})
-    work={'tasks':tasks,'scopes':{},'error_policy':'continue','retry_limit':2,'lanes':lanes}
+    if str(meta.get('image_style') or '').strip(): api.request(sid,'/settings',{'stylePrompt':meta['image_style']})
+    work={'tasks':tasks,'scopes':{},'error_policy':'continue','retry_limit':2,'lanes':lanes,'separate_layers':meta.get('separate_layers',3)}
     extra={'studio_youtube_url':url,'studio_rewrite':bool(data.get('rewrite',True)),'studio_language':'en' if data.get('language')=='en' else 'vi'} if url else {}
     if url and str(data.get('rewrite_style','')).strip(): extra['studio_rewrite_style']=str(data['rewrite_style']).strip()[:20000]
     studio_url=str(data.get('studio_url') or 'https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app/')
@@ -101,6 +121,11 @@ def studio_deploy(data):
     if data.get('start',True):
         q=manager(); automation().ensure_bridge(); automation().resume_studio([p['id']]); q.start_selected(p['id'])
     return {'project':p['id'],'studio_project_id':sid,'name':p['name']}
+
+def pending_renames():
+    """{studio id: name} for projects renamed in Manager that Studio has not picked up yet."""
+    try: return {p['studio_project_id']:p['name'] for p in projects(include_duplicates=True) if p.get('name_pending') and p.get('studio_project_id')}
+    except Exception: return {}
 
 def atomic(path, data):
     path.parent.mkdir(parents=True, exist_ok=True); fd, name = tempfile.mkstemp(dir=path.parent, prefix='.tmp-')
@@ -179,6 +204,10 @@ def synchronized_state(q):
         sid=project.get('studio_project_id')
         if sid:
             live=PRESENCE.snapshot(sid);name=live.get('project_name')
+            if project.get('name_pending'):
+                if name==project['name'] or any(isinstance(x,dict) and x.get('id')==sid and x.get('name')==project['name'] for x in live.get('projects') or []):
+                    saved=json.loads((Path(project['folder'])/'project.json').read_text(encoding='utf8'));saved.pop('name_pending',None);atomic(Path(project['folder'])/'project.json',saved);project.pop('name_pending',None)
+                name=None
             if name and name!=project['name']:
                 project['name']=name;q.studio_rename(project['id'],name);item['name']=name
                 saved=json.loads((Path(project['folder'])/'project.json').read_text(encoding='utf8'));saved['name']=name;atomic(Path(project['folder'])/'project.json',saved)
@@ -189,6 +218,7 @@ def synchronized_state(q):
         studio=dict(studio); studio['data']=data; studio['presence']=presence
         if studio.get('status') in ('unconfigured','connecting','lost','error'): studio['status']='connected'
     studio_name=data.get('project_name')
+    if studio_name and any(p.get('name_pending') and p.get('studio_project_id')==data.get('project_id') for p in ps): studio_name=None
     if studio_name:
         target=next((p.get('id') for p in ps if p.get('studio_project_id') and p.get('studio_project_id')==data.get('project_id')),None)
         if target:
@@ -253,7 +283,7 @@ class Handler(BaseHTTPRequestHandler):
                 PRESENCE.update(data)
                 # Only the run's main Studio tab gets requests; extra ChatGPT lanes only take lane jobs.
                 lane_tab=isinstance(data.get('worker'),dict) and bool(data['worker'].get('lane'))
-                return self.send(200,{'ok':True,'command':PRESENCE.pending(data) if data.get('managerRunId') and not lane_tab else None},cors=True)
+                return self.send(200,{'ok':True,'command':PRESENCE.pending(data) if data.get('managerRunId') and not lane_tab else None,'renames':pending_renames()},cors=True)
             if path=='/api/studio-command':
                 # Only the local Windows Agent (no browser Origin) may queue a request for a Studio tab.
                 if self.headers.get('Origin'): return self.send(403,{'error':'Nguồn không hợp lệ'})
@@ -339,6 +369,47 @@ class Handler(BaseHTTPRequestHandler):
                         q.add(p);q.stop(p['id'])
                     return self.send(200,p)
                 if path=='/api/project': p=create_project(str(data.get('name','')),str(data.get('script',''))); manager().add(p); return self.send(201,p)
+                if path=='/api/app':
+                    import app_tools, install_app
+                    action=data.get('action'); busy=any(x.get('status') in ('running','paused') for x in manager().list())
+                    if action=='update-check': return self.send(200,app_tools.update_check())
+                    if action=='update-apply': return self.send(200,app_tools.update_apply(busy))
+                    if action=='install': return self.send(200,install_app.install())
+                    if action=='setup-check':
+                        now=time.time()
+                        with PRESENCE.lock: workers=[dict(v['worker']) for v in PRESENCE.tabs.values() if v.get('worker') and now-v['at']<=PRESENCE.ttl]
+                        lanes=sorted({l.get('profile') for p in projects() for l in (p.get('lanes') or []) if l.get('browser')=='edge'}-{None})
+                        return self.send(200,{'items':app_tools.setup_check(config()['root'],automation().snapshot().get('online'),workers,lanes)})
+                    if action=='backup':
+                        if app_tools.STATE['running']: raise ValueError('Đang sao lưu/khôi phục')
+                        def run():
+                            try: app_tools.backup(config()['root'],BASE)
+                            except Exception: pass
+                        threading.Thread(target=run,daemon=True).start(); time.sleep(0.2)
+                        return self.send(200,dict(app_tools.STATE,backups=app_tools.backups()))
+                    if action=='status': return self.send(200,dict(app_tools.STATE,backups=app_tools.backups(),folder=str(app_tools.BACKUPS)))
+                    if action=='restore':
+                        if app_tools.STATE['running']: raise ValueError('Đang sao lưu/khôi phục')
+                        target=str(data.get('path',''))
+                        def run():
+                            try:
+                                app_tools.STATE['result']=app_tools.restore(target,config()['root'],BASE,busy)
+                                for p in projects(): manager().add(p)
+                            except Exception: pass
+                        app_tools.STATE['result']=None; threading.Thread(target=run,daemon=True).start(); time.sleep(0.2)
+                        return self.send(200,dict(app_tools.STATE,backups=app_tools.backups()))
+                    if action=='open-backups':
+                        app_tools.BACKUPS.mkdir(parents=True,exist_ok=True); os.startfile(str(app_tools.BACKUPS)); return self.send(200,{'ok':True})
+                    raise ValueError('Thao tác không hợp lệ')
+                if path=='/api/project-action':
+                    import project_ops
+                    q=manager(); p=project_ops.find(projects(include_duplicates=True),str(data.get('id',''))); action=data.get('action')
+                    if action=='rename': return self.send(200,project_ops.rename(p,data.get('name'),slug,q,atomic))
+                    if action=='copy': return self.send(201,project_ops.copy(p,create_project,q,atomic))
+                    if action=='delete': return self.send(200,project_ops.delete(p,q,config()['root']))
+                    if action=='update': return self.send(200,project_ops.update(p,data,atomic))
+                    if action=='open': os.startfile(p['folder']); return self.send(200,{'ok':True})
+                    raise ValueError('Thao tác không hợp lệ')
                 if path=='/api/studio-deploy': return self.send(201,studio_deploy(data))
                 if path=='/api/root':
                     global MANAGER,WORKER

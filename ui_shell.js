@@ -27,6 +27,7 @@ function uiSettingsHTML(){if(!uiSettings.loaded){Object.assign(uiSettings,state.
  const a=state.automation||{},e=state.extension||{},cat=state.studio_catalog||{},ident=a.agent_identity||{};
  const extOk=e.status==='responding'||Boolean(cat.chat_connected);
  return `<div class="neo-page-title"><div><h1>Cài đặt</h1><p>Chỉ cần làm một lần. Mục có ✓ là đã sẵn sàng.</p></div><span class="neo-version">v${esc(state.version||'')}</span></div><div class="neo-settings-grid">
+ ${appHTML()}
  <section class="card"><h2>${glyph('screen')} 1. Kết nối</h2>
  ${uiSettingRow(a.online,'Windows Agent','Đang chạy · phiên bản '+esc(ident.version||'?'),'Chưa chạy. Bấm Khởi động lại; nếu vẫn lỗi, mở lại MO_AI_MANAGER.bat.',`<button class="btn" onclick="agentCommand('start_agent')">Khởi động lại</button>`)}
  ${uiSettingRow(extOk,'ChatGPT + Extension',e.version?'Extension '+esc(e.version)+' đang phản hồi':'Đã kết nối qua Studio','Cài Extension một lần theo hướng dẫn bên dưới và đăng nhập ChatGPT trên Edge. Studio tự kết nối, tự mở tab ChatGPT.')}
@@ -59,3 +60,29 @@ function uiApplicationsHTML(){
 function uiTechnicalHTML(){const container=document.createElement('div');container.innerHTML=automationHTML();return container.querySelector('.app-advanced')?.innerHTML||'<p>Chưa có dữ liệu.</p>';}
 
 async function uiSaveAssignment(){if(!uiSettings.project){autoError='Chọn dự án trước';render();return}await agentCommand('project_browser',{project:uiSettings.project,browser:uiSettings.browser||'edge',browser_profile:uiSettings.browser==='chrome'?'Default':uiSettings.profile||edgeProfiles[0]?.directory||'Default'})}
+
+// ---- App: install, update, backup/restore, this PC's checklist ----
+let appTools={update:null,check:null,status:null,restorePath:'',busy:'',msg:''};
+async function appCall(action,extra={}){appTools.busy=action;appTools.msg='';render();try{const r=await api('/api/app',{action,...extra});
+ if(action==='update-check')appTools.update=r;else if(action==='setup-check')appTools.check=r.items;else if(['status','backup','restore'].includes(action))appTools.status=r;
+ if(action==='install')appTools.msg='Đã cài: biểu tượng AI Manager ngoài Desktop, trong menu Start và tự chạy cùng Windows.';
+ if(action==='update-apply')appTools.msg=r.updated?'Đang cập nhật và khởi động lại AI Manager… trang tự tải lại sau ít giây.':'Đang dùng bản mới nhất.';
+ if(action==='update-apply'&&r.updated)setTimeout(()=>location.reload(),9000);
+ if(['backup','restore'].includes(action))appPoll();
+}catch(e){appTools.msg=e.message}finally{appTools.busy='';render()}}
+function appPoll(){setTimeout(async()=>{try{appTools.status=await api('/api/app',{action:'status'});render();if(appTools.status.running)appPoll();else if(appTools.status.kind==='restore')refresh()}catch{}},1500)}
+function appHTML(){
+ if(!appTools.status&&!appTools.busy){appTools.busy='init';api('/api/app',{action:'status'}).then(r=>{appTools.status=r;appTools.busy='';render()}).catch(()=>{appTools.busy=''})}
+ const u=appTools.update,st=appTools.status||{},b=appTools.busy,mb=n=>(n/1048576).toFixed(n>1048576*10?0:1)+' MB';
+ const icon={ok:'✓',warn:'!',missing:'✕'};
+ const check=appTools.check?`<table class="app-check">${appTools.check.map(i=>`<tr class="${i.state}"><td>${icon[i.state]}</td><td><b>${esc(i.label)}</b><br><small>${esc(i.detail)}</small>${i.fix&&i.state!=='ok'?`<br><small class="fix">→ ${esc(i.fix)}</small>`:''}</td></tr>`).join('')}</table>`:'';
+ const progress=st.running?`<div class="app-progress">${st.kind==='backup'?'Đang sao lưu':'Đang khôi phục'}… ${st.done}/${st.total} tệp</div>`:st.error?`<div class="sa-error-inline">${esc(st.error)}</div>`:st.result?`<div class="sa-ok-inline">Đã khôi phục ${st.result.added.length} dự án${st.result.skipped.length?' · bỏ qua '+st.result.skipped.length+' dự án đã có':''}</div>`:'';
+ return `<section class="card app-tools"><h2>Ứng dụng và chuyển máy</h2>
+ <div class="app-row"><b>Cài thành ứng dụng</b><span>Biểu tượng AI Manager ngoài Desktop và menu Start; mở trong cửa sổ riêng; tự chạy ngầm cùng Windows.</span><button class="btn" ${b?'disabled':''} onclick="appCall('install')">Cài thành ứng dụng</button></div>
+ <div class="app-row"><b>Cập nhật</b><span>${u?(u.ok?(u.behind?`Có ${u.behind} bản cập nhật: ${esc((u.notes||[]).slice(0,3).join(' · '))}`:'Đang dùng bản mới nhất ('+esc(u.current)+')')+(u.dirty?' · có thay đổi chưa lưu, chưa thể cập nhật':''):esc(u.error)):'Lấy bản mới từ GitHub, rồi tự khởi động lại.'}</span><button class="btn" ${b?'disabled':''} onclick="appCall('update-check')">Kiểm tra</button>${u&&u.ok&&u.behind&&!u.dirty?`<button class="btn primary" ${b?'disabled':''} onclick="appCall('update-apply')">Cập nhật ngay</button>`:''}</div>
+ <div class="app-row"><b>Sao lưu</b><span>Gói mọi dự án (ảnh, ảnh tách, phân cảnh, prompt) và cài đặt vào một tệp trong ${esc(st.folder||'Documents\AI_MANAGER_Backups')}. Khi đổi máy, chép tệp này sang thư mục đó ở máy mới.</span><button class="btn" ${b||st.running?'disabled':''} onclick="appCall('backup')">Sao lưu ngay</button><button class="btn" onclick="api('/api/app',{action:'open-backups'})">Mở thư mục</button></div>
+ ${progress}
+ <div class="app-row"><b>Khôi phục</b><span>Dự án đã có không bị ghi đè.</span><select onchange="appTools.restorePath=this.value"><option value="">Chọn bản sao lưu…</option>${(st.backups||[]).map(x=>`<option value="${autoAttr(x.path)}" ${appTools.restorePath===x.path?'selected':''}>${esc(x.name)} · ${mb(x.size)}</option>`).join('')}</select><button class="btn" ${!appTools.restorePath||b||st.running?'disabled':''} onclick="appCall('restore',{path:appTools.restorePath})">Khôi phục</button></div>
+ <div class="app-row"><b>Kiểm tra máy này</b><span>Những gì máy cần để chạy trọn quy trình (dùng khi mới chuyển máy).</span><button class="btn" ${b?'disabled':''} onclick="appCall('setup-check')">${b==='setup-check'?'Đang kiểm tra…':'Kiểm tra'}</button></div>
+ ${check}${appTools.msg?`<div class="app-msg">${esc(appTools.msg)}</div>`:''}</section>`;
+}

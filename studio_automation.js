@@ -52,7 +52,7 @@ function setStudioStage(stage,checked){studioDraft.stages=checked?[...new Set([.
 async function reviewStudioProject(){try{const r=await api('/api/studio-plan',{studio_project_id:studioDraft.sid});if(r.project_id!==studioDraft.sid)throw Error('Dự án thay đổi trong lúc rà soát');studioPlan=r;autoNotice='Đã đọc tiến độ thật từ Studio, chưa gửi lệnh xử lý.';render()}catch(e){autoError=e.message;render()}}
 
 // Dự án mới -> Triển khai: YouTube link (Studio gets transcript, rewrites, analyses) or a pasted script.
-let newDraft={open:true,name:'',youtube:'',script:'',rewrite:true,style:'',images:false,lanes:[{browser:'edge',profile:studioDraft.profile||'Default'}],busy:false,error:'',done:''};
+let newDraft={open:true,name:'',youtube:'',script:'',rewrite:true,style:'',imageStyle:'',images:false,download:true,separate:false,layers:3,lanes:[{browser:'edge',profile:studioDraft.profile||'Default'}],busy:false,error:'',done:''};
 function npSet(key,value){newDraft[key]=value}
 function npLane(i,key,value){newDraft.lanes[i][key]=value;if(key==='browser'&&value==='chrome')newDraft.lanes[i].profile='Default';document.activeElement?.blur();render()}
 function npAddLane(){if(newDraft.lanes.length<4){const used=new Set(newDraft.lanes.map(l=>l.browser+':'+l.profile));const next=(edgeProfiles||[]).map(p=>p.directory).find(d=>!used.has('edge:'+d));newDraft.lanes.push(next?{browser:'edge',profile:next}:{browser:'chrome',profile:'Default'})}render()}
@@ -61,8 +61,8 @@ async function deployNewProject(){
  const d=newDraft;d.error='';d.done='';
  if(!d.youtube.trim()&&!d.script.trim()){d.error='Nhập link YouTube hoặc dán kịch bản.';render();return}
  d.busy=true;render();
- try{const r=await api('/api/studio-deploy',{name:d.name,youtube_url:d.youtube.trim(),script:d.youtube.trim()?'':d.script,rewrite:d.rewrite,rewrite_style:d.style,tasks:['analysis','scenes',...(d.images?['images']:[])],lanes:d.lanes});
-  d.done='Đã triển khai “'+r.name+'”. Manager đang mở Studio'+(d.lanes.length>1?' và '+(d.lanes.length-1)+' trình duyệt ChatGPT phụ':'')+'.';studioDraft.project=r.project;studioDraft.sid=r.studio_project_id;Object.assign(d,{name:'',youtube:'',script:''});await refresh()}
+ try{const r=await api('/api/studio-deploy',{name:d.name,youtube_url:d.youtube.trim(),script:d.youtube.trim()?'':d.script,rewrite:d.rewrite,rewrite_style:d.style,image_style:d.imageStyle,separate_layers:d.layers,tasks:['analysis','scenes',...(d.images?['images',...(d.download?['sync']:[]),...(d.separate?['separate']:[])]:[])],lanes:d.lanes});
+  d.done='Đã triển khai “'+r.name+'”. Manager đang mở Studio'+(d.lanes.length>1?' và '+(d.lanes.length-1)+' trình duyệt ChatGPT phụ':'')+'.';studioDraft.project=r.project;studioDraft.sid=r.studio_project_id;Object.assign(d,{name:'',youtube:'',script:'',imageStyle:''});await refresh()}
  catch(e){d.error=e.message}finally{d.busy=false;render()}
 }
 function newProjectHTML(){
@@ -76,7 +76,9 @@ function newProjectHTML(){
  <label class="np-wide">Hoặc kịch bản (khi không có link)<textarea id="auto_np_script" rows="4" oninput="npSet('script',this.value)" placeholder="Dán toàn bộ kịch bản">${esc(d.script)}</textarea></label>
  <label class="np-check"><input type="checkbox" style="width:auto" ${d.rewrite?'checked':''} onchange="npSet('rewrite',this.checked)"> Viết lại transcript theo phong cách</label>
  <label class="np-wide">Phong cách viết lại <small>(để trống: dùng phong cách đã lưu ở tab Get Transcript của Studio)</small><textarea id="auto_np_style" rows="2" oninput="npSet('style',this.value)">${esc(d.style)}</textarea></label>
- <label class="np-check"><input type="checkbox" style="width:auto" ${d.images?'checked':''} onchange="npSet('images',this.checked)"> Tạo ảnh sau khi phân cảnh <small>(cần phong cách ảnh đã lưu trong Studio)</small></label>
+ <label class="np-check"><input type="checkbox" style="width:auto" ${d.images?'checked':''} onchange="npSet('images',this.checked);render()"> Tạo ảnh sau khi phân cảnh</label>
+ <label class="np-wide">Prompt tạo ảnh (phong cách chung của dự án) <small>(để trống: dùng phong cách đang có trong ô Tạo ảnh của Studio. Dùng {{ }} hoặc {{SCENE_PROMPT}} để đánh dấu chỗ đặt nội dung cảnh)</small><textarea id="auto_np_imgstyle" rows="3" oninput="npSet('imageStyle',this.value)">${esc(d.imageStyle)}</textarea></label>
+ <div class="np-wide np-yn ${d.images?'':'muted'}"><label class="np-check"><input type="checkbox" style="width:auto" ${d.download?'checked':''} ${d.images?'':'disabled'} onchange="npSet('download',this.checked)"> Tải ảnh về máy <small>(Dự án\Anh\Phần\Cảnh)</small></label><label class="np-check"><input type="checkbox" style="width:auto" ${d.separate?'checked':''} ${d.images?'':'disabled'} onchange="npSet('separate',this.checked);render()"> Tách ảnh bằng Local Engine <small>(Dự án\Tach anh\Phần\Cảnh)</small></label>${d.separate?`<select onchange="npSet('layers',Number(this.value))"><option value="3" ${d.layers===3?'selected':''}>3 lớp</option><option value="4" ${d.layers===4?'selected':''}>4 lớp</option></select>`:''}</div>
  <div class="np-wide"><b>Tab ChatGPT</b>${lanes}${d.lanes.length<4?'<button class="btn" onclick="npAddLane()">+ Thêm tab ChatGPT</button>':''}${same}</div>
  <div class="np-wide np-actions"><button class="btn primary" onclick="deployNewProject()" ${d.busy||!(state.automation||{}).online?'disabled':''}>${d.busy?'Đang triển khai…':'▶ Triển khai'}</button>${(state.automation||{}).online?'':'<span class="sa-check">! Windows Agent chưa kết nối</span>'}${d.error?`<span class="sa-error-inline">${esc(d.error)}</span>`:''}${d.done?`<span class="sa-ok-inline">${esc(d.done)}</span>`:''}</div></div></details>`;
 }
