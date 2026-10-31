@@ -5,14 +5,16 @@ from . import window_manager as wm
 from . import ui_automation as ui
 from .browser_controller import BrowserController
 
-NET_GRACE=300
+NET_GRACE=900
 
 def network_error(exc):
- """True for a connection problem (timeout, refused, DNS, 5xx gateway), not for a Studio answer we refused."""
- import socket,urllib.error
- if isinstance(exc,urllib.error.HTTPError):return exc.code>=500
+ """True for a connection problem (timeout, refused, DNS, SSL, cut-off or garbled reply, 5xx gateway),
+ not for a Studio answer we refused or a local file problem."""
+ import http.client,json,urllib.error,zlib
  if str(exc).startswith('Studio quá thời gian'):return False  # the progress watchdog, not the network
- return isinstance(exc,(urllib.error.URLError,socket.timeout,TimeoutError,ConnectionError)) or type(exc) is OSError
+ if isinstance(exc,urllib.error.HTTPError):return exc.code>=500 or exc.code==429
+ if isinstance(exc,(FileNotFoundError,PermissionError,IsADirectoryError,NotADirectoryError,FileExistsError)):return False
+ return isinstance(exc,(OSError,http.client.HTTPException,zlib.error,json.JSONDecodeError))
 
 def dispatch(a,context,home,settings):
  os.environ['AI_MANAGER_AGENT_HOME']=str(home)
@@ -43,11 +45,13 @@ def dispatch(a,context,home,settings):
    from .studio_workflow import StudioReviewRequired
    # A short network drop (Vercel/Supabase slow or unreachable) is waited out: reads are safe to repeat, and an
    # unconfirmed command is never resent (send() keeps its 'intent' and asks for review instead).
-   since=float(target.get('studio_net_since') or time.time())
-   if network_error(exc) and time.time()-since<NET_GRACE:
-    return {'waiting':True,'context':{'studio_net_since':since,'studio_waiting_action':name,'studio_message':'Mất kết nối Studio tạm thời, đang thử lại'}}
+   now=time.time();since=float(target.get('studio_net_since') or now)
+   if now-float(target.get('studio_net_last') or 0)>120:since=now  # an old drop that recovered does not count
+   if network_error(exc) and now-since<NET_GRACE:
+    return {'waiting':True,'context':{'studio_net_since':since,'studio_net_last':now,'studio_waiting_action':name,'studio_message':'Mất kết nối Studio tạm thời, đang thử lại'}}
+   why=type(exc).__name__+': '+str(exc)[:160]
    try:current=step.api.request(step.sid)
-   except Exception:raise StudioReviewRequired('Không đọc được Studio để đối soát; giữ khóa và checkpoint') from exc
+   except Exception:raise StudioReviewRequired('Không đọc được Studio để đối soát ('+why+'); giữ khóa và checkpoint') from exc
    if current.get('activeJob') or current.get('imageJobs') or any(v.get('state')=='intent' for v in step.j['commands'].values()):raise StudioReviewRequired('Còn tác vụ hoặc lệnh chưa rõ kết quả; giữ khóa và checkpoint') from exc
    resource.release(target)
    raise

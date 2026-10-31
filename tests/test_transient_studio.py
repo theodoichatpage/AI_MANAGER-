@@ -13,6 +13,14 @@ class Transient(unittest.TestCase):
   self.assertFalse(network_error(urllib.error.HTTPError('u',404,'nf',{},None)))
   self.assertFalse(network_error(RuntimeError('Studio trả sai project ID; đã chặn')))
   self.assertFalse(network_error(ValueError('x')))
+  import ssl,http.client,zlib,json
+  self.assertTrue(network_error(ssl.SSLError('EOF occurred in violation of protocol')))
+  self.assertTrue(network_error(http.client.IncompleteRead(b'')))
+  self.assertTrue(network_error(http.client.RemoteDisconnected('closed')))
+  self.assertTrue(network_error(zlib.error('truncated')))
+  self.assertTrue(network_error(json.JSONDecodeError('x','<html>',0)))
+  self.assertTrue(network_error(urllib.error.HTTPError('u',429,'busy',{},None)))
+  self.assertFalse(network_error(FileNotFoundError('checkpoint')))
   self.assertTrue(network_error(TimeoutError('The read operation timed out')))
   self.assertFalse(network_error(TimeoutError('Studio quá thời gian tại STUDIO_PARALLEL; giữ checkpoint')))
  def test_trashed_studio_ids(self):
