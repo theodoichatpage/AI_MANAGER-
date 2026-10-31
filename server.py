@@ -10,7 +10,7 @@ from extension_monitor import ExtensionMonitor
 from automation_agent.manager_service import AutomationService
 
 VERSION = '0.2.23'
-DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/phase4-windows-agent-preview.zip'
+DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/main.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
@@ -235,7 +235,7 @@ def synchronized_state(q):
         application_paths={k:str(settings.get(k,'')) for k in ('chrome_path','capcut_path')}
     except (OSError,ValueError):pass
     batch=q.batch()
-    return {'studio_batch':batch,'application_paths':application_paths,'version':VERSION,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot(),'extension_update':EXT_UPDATER.snapshot()}
+    return {'studio_batch':batch,'application_paths':application_paths,'version':VERSION,'download_url':DOWNLOAD_URL,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot(),'extension_update':EXT_UPDATER.snapshot()}
 
 def render_index():
     page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
