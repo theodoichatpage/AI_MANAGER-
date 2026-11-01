@@ -8,8 +8,13 @@ class StudioResource:
   from .studio_workflow import StudioReviewRequired
   with sqlite3.connect(self.path,timeout=5) as db:
    db.execute('PRAGMA synchronous=FULL');db.execute('CREATE TABLE IF NOT EXISTS resource(id INTEGER PRIMARY KEY, owner TEXT, payload TEXT)');db.execute('BEGIN IMMEDIATE')
-   row=db.execute('SELECT owner FROM resource WHERE id=1').fetchone()
-   if row and row[0]!=context['studio_run_id']:
+   row=db.execute('SELECT owner,payload FROM resource WHERE id=1').fetchone()
+   # A new run of the same Manager project replaces its earlier run (re-deploy after a pause or a stop): the queue
+   # runs one workflow per project, so the earlier one is no longer driving Studio and its lock moves over.
+   # A lock held by another project still stops this run for review.
+   try:held_by=json.loads(row[1]).get('project_id') if row else None
+   except (TypeError,ValueError):held_by=None
+   if row and row[0]!=context['studio_run_id'] and not(held_by and held_by==context.get('manager_project_id')):
     if context.get('work_config'):
      from .work_ledger import WorkLedger
      WorkLedger(context['studio_folder'],context).update('resource','Studio/ChatGPT','WAITING_RESOURCE',error='Khóa đang thuộc workflow '+row[0])

@@ -56,7 +56,7 @@ class WorkTests(unittest.TestCase):
   with self.assertRaises(StudioReviewRequired):self.run_step()
   self.assertEqual(self.api.posts,[])
  def test_resource_lock_survives_restart_and_other_owner_cannot_release(self):
-  lock=StudioResource(self.tmp.name);lock.acquire(self.c,'RUN');other=dict(self.c,studio_run_id='b'*32)
+  lock=StudioResource(self.tmp.name);lock.acquire(self.c,'RUN');other=dict(self.c,studio_run_id='b'*32,manager_project_id='another')
   with self.assertRaises(StudioReviewRequired):StudioResource(self.tmp.name).acquire(other,'RUN')
   lock.release(other)
   with self.assertRaises(StudioReviewRequired):lock.acquire(other,'RUN')

@@ -6,6 +6,13 @@ from .automation_log import AutomationLog
 def may_recover(action,result,count):
  return action['action'] not in UNSAFE and result.get('error_code')=='WINDOW_LOST' and count<3
 
+SLOW_GRACE=900  # seconds of consecutive slow Studio rounds before the run stops for review
+
+def slow_round(action,result,task):
+ """A Studio round that ran out of time (the worker was stopped), not a failure the round reported itself."""
+ name=action.get('action','')
+ return result.get('status')=='timeout' and bool(task.get('context',{}).get('studio_project_id')) and name.startswith('STUDIO_') and name!='STUDIO_OPEN'
+
 class AgentRuntime:
  def __init__(self,home,settings=None):
   self.store=TaskStore(home/'agent.sqlite3');self.executor=ActionExecutor(home,settings);self.log=AutomationLog(home,self.store)
@@ -85,6 +92,15 @@ class AgentRuntime:
       if result['success'] or self.cancel.is_set():break
       if retry<maximum and self.cancel.wait(min(2**retry,8)):break
      if self.cancel.is_set():break
+     if slow_round(action,result,task):
+      since=float(task['context'].get('studio_slow_since') or 0) or time.time()
+      if time.time()-since<SLOW_GRACE:
+       # One slow round (Studio or Supabase answering slowly) is waited out like a network drop: the next round
+       # reconciles from the journal, which never re-sends a command whose outcome is unknown.
+       self.store.pending_action(tid,idx,{'result':{'context':{'studio_slow_since':since,'studio_message':'Một lượt Studio chạy quá %d giây; Manager đang thử lại'%int(float(action.get('timeout',30)))}}})
+       self.log.write(task,action['action'],message='Quá thời gian một lượt; thử lại');self.cancel.wait(4);continue
+     if result['success'] and task['context'].get('studio_slow_since'):
+      result.setdefault('result',{}).setdefault('context',{})['studio_slow_since']=None
      if task['context'].get('studio_project_id') and result.get('error_code')=='WINDOW_LOST' and task.get('recoveries',0)<2:
       self.recover_studio(task);continue
      if may_recover(action,result,task.get('recoveries',0)) and task['context'].get('target_app') in ('chrome','capcut'):
