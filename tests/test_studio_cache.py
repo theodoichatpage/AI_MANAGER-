@@ -6,7 +6,7 @@ class Cache(unittest.TestCase):
  def setUp(self):
   import os;self._home=os.environ.pop('AI_MANAGER_AGENT_HOME',None)  # other tests may leave a disk copy
   studio_cache._cache.clear();self.calls=[];self.version={'updatedAt':1,'workEpoch':0};self.full={'id':'s'*16,'updatedAt':1,'workEpoch':0,'parts':[]}
-  def call(path,body=None,timeout=10):
+  def call(path,body=None,timeout=10,reply=None):
    self.calls.append(path)
    if path.endswith('/version'):return {'version':self.version}
    return {'session':dict(self.full)}
@@ -51,7 +51,42 @@ class DiskCopy(Cache):
 class LaneCommandReply(unittest.TestCase):
  def test_lane_post_returns_the_command(self):
   from automation_agent.studio_workflow import StudioAPI
-  orig=studio_cache.call;studio_cache.call=lambda path,body=None,timeout=10:{'command':{'id':'job9'},'session':{'id':'s'*16,'updatedAt':5}}
+  orig=studio_cache.call;studio_cache.call=lambda path,body=None,timeout=10,reply=None:{'command':{'id':'job9'},'session':{'id':'s'*16,'updatedAt':5}}
   try:self.assertEqual(StudioAPI().request('s'*16,'/lanes/laneA01/parts/p1',{})['command']['id'],'job9')
   finally:studio_cache.call=orig
+class Lean(unittest.TestCase):
+ """After one full read, changes come as lean replies; the project text is merged back from the copy Manager holds."""
+ def setUp(self):
+  import os;self._home=os.environ.pop('AI_MANAGER_AGENT_HOME',None);studio_cache._cache.clear();self.calls=[]
+  self.text={'script':'KỊCH BẢN','parts':[{'id':'p1','title':'Phần 1','content':'nội dung','status':'complete','scenes':[{'title':'Cảnh 1','prompt':'a door','imageStatus':'waiting'}]}]}
+  self.fp='fp1';self.version={'updatedAt':1,'workEpoch':0}
+  def lean_of(full):
+   s={k:v for k,v in full.items() if k not in ('script','stylePrompt','rewrite')}
+   s['parts']=[{**{k:v for k,v in p.items() if k not in ('title','content','range','analysisText')},'scenes':[{k:v for k,v in sc.items() if k not in ('title','prompt','content','backdrop','character','emotion','shot')} for sc in p['scenes']]} for p in full['parts']]
+   return s
+  def call(path,body=None,timeout=10,reply=None):
+   self.calls.append((path,reply))
+   if path.endswith('/version'):return {'version':self.version}
+   full={'id':'s'*16,'updatedAt':self.version['updatedAt'],'workEpoch':0,**json.loads(json.dumps(self.text))}
+   return {'session':lean_of(full),'textsFp':self.fp,'lean':True} if reply=='lean' else {'session':full,'textsFp':self.fp}
+  self.orig=studio_cache.call;studio_cache.call=call
+ def tearDown(self):
+  import os;studio_cache.call=self.orig
+  if self._home is not None:os.environ['AI_MANAGER_AGENT_HOME']=self._home
+ def test_status_change_downloads_only_the_lean_part(self):
+  sid='s'*16;studio_cache.session(sid)
+  self.text['parts'][0]['scenes'][0]['imageStatus']='complete';self.version={'updatedAt':2,'workEpoch':0}
+  s=studio_cache.session(sid)
+  self.assertEqual(self.calls[-1],('sessions/'+sid,'lean'),'a change reads the lean reply only')
+  self.assertEqual(s['script'],'KỊCH BẢN');self.assertEqual(s['parts'][0]['scenes'][0]['prompt'],'a door');self.assertEqual(s['parts'][0]['scenes'][0]['imageStatus'],'complete')
+ def test_changed_text_reads_the_full_project_once(self):
+  sid='s'*16;studio_cache.session(sid)
+  self.text['parts'][0]['scenes'][0]['prompt']='a window';self.fp='fp2';self.version={'updatedAt':3,'workEpoch':0}
+  s=studio_cache.session(sid)
+  self.assertEqual(self.calls[-2:],[('sessions/'+sid,'lean'),('sessions/'+sid,'fp')]);self.assertEqual(s['parts'][0]['scenes'][0]['prompt'],'a window')
+ def test_command_reply_is_completed(self):
+  from automation_agent.studio_workflow import StudioAPI
+  sid='s'*16;studio_cache.session(sid)
+  s=StudioAPI().request(sid,'/settings',{'stylePrompt':'x'})
+  self.assertEqual(s['parts'][0]['title'],'Phần 1');self.assertEqual(self.calls[-1],('sessions/'+sid+'/settings','lean'))
 if __name__=='__main__':unittest.main()

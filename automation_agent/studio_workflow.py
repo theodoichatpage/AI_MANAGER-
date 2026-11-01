@@ -28,11 +28,9 @@ class StudioAPI:
   # Plain reads go through the version-stamp cache; commands always reach the server.
   if body is None and not route:session=studio_cache.session(sid)
   else:
-   data=studio_cache.call('sessions/'+sid+route,body);session=data.get('session')
-   if route.startswith('/lanes/'):
-    if isinstance(session,dict):studio_cache.remember(session)
-    return data
-   studio_cache.remember(session)
+   # Command replies come lean (no project text); complete() merges the text Manager already holds.
+   data=studio_cache.complete(sid,studio_cache.call('sessions/'+sid+route,body,reply='lean'));session=data.get('session')
+   if route.startswith('/lanes/'):return data
   if not isinstance(session,dict) or session.get('id')!=sid:raise RuntimeError('Studio trả sai project ID; đã chặn')
   return session
 
