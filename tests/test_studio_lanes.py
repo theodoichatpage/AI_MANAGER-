@@ -99,7 +99,27 @@ class Lanes(unittest.TestCase):
   st.finish('laneA',ok=False);w.round()
   self.assertEqual(st.job('laneA')['partId'],'p2','after the retry limit the part is reported, others continue')
   st.finish('laneA');r=w.round()
-  self.assertEqual(r['context']['studio_failed_items'],['part:p1']);self.assertNotIn('waiting',r)
+  self.assertEqual(r['context']['studio_failed_items'],['part:p1'])
+  self.assertTrue(r['waiting'],'a failed item is not the end: Manager waits to try it again')
+  self.assertIn('tự thử lại',r['context']['studio_attention'][0])
+
+ def test_failed_item_is_tried_again_after_a_pause_then_reported(self):
+  st=FakeStudio(parts=1);w=W(st,[worker('laneA')],retry=0)
+  w.round();st.finish('laneA',ok=False);w.round();self.assertIsNone(st.job('laneA'),'the one try is used')
+  w.now+=900;w.round();self.assertEqual(st.job('laneA')['partId'],'p1','after 15 minutes it is sent again')
+  for pause in (1800,3600,7200):
+   st.finish('laneA',ok=False);r=w.round();self.assertTrue(r['waiting'])
+   w.now+=pause;w.round()
+  st.finish('laneA',ok=False);r=w.round()
+  self.assertNotIn('waiting',r,'after the last new set it stays failed and the run ends');self.assertEqual(r['context']['studio_failed_items'],['part:p1'])
+
+ def test_chatgpt_limit_is_not_a_used_try(self):
+  st=FakeStudio(parts=1,scenes=1);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'}])
+  w=W(st,[worker('laneA')],tasks=('images',),retry=0)
+  for _ in range(3):
+   w.round();st.finish('laneA',ok=False,error="You've reached the image generation limit");w.round();w.now+=901
+  r=w.round();self.assertEqual(st.job('laneA')['sceneKey'],'p1:0','still being tried after 3 limits with no retries allowed')
+  self.assertIsNone(r['context']['studio_failed_items'],'a limit never marks the scene failed')
 
  def test_image_limit_rests_only_that_lane(self):
   st=FakeStudio(parts=1,scenes=4);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'} for _ in range(4)])

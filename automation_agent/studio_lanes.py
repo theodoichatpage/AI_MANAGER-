@@ -14,6 +14,8 @@ from .project_files import layout,image_place,save_scene_image
 LANE_LOST=180        # a lane whose Studio tab stopped reporting this long loses its job
 JOB_LIMIT=1800       # one part/image may take this long before it is taken back
 LIMIT_COOLDOWN=900   # ChatGPT said "limit reached": rest this lane's images
+REARM_AFTER=900      # an item that used all its tries gets a new set after this long (doubling each time)
+REARM_MAX=4          # ...at most this many new sets, then it stays failed for the user
 OPEN_WAIT=180        # how long to wait for extra lanes to connect before working with fewer
 RATE=re.compile(r'limit|giới hạn|too many|quá nhiều|try again later|thử lại sau|rate',re.I)
 MIN_VERSION=(0,5,0)
@@ -144,6 +146,7 @@ def step(w,s,post=None):
   if not item or item.get('job')!=r.get('jobId') or item.get('state')!='sent':continue
   item['state']=r.get('status');item['error']=r.get('error') or None
   if r.get('status')=='error' and r.get('type')=='image_generation' and RATE.search(str(r.get('error') or '')):
+   item['tries']=max(0,item.get('tries',1)-1)  # the account's limit says nothing about this scene: not a used try
    st['cooldown'][lane]=now+LIMIT_COOLDOWN;attention.append('ChatGPT báo hết lượt/giới hạn ở '+((live.get(lane) or {}).get('account_label') or lane)+'; tab này nghỉ tạo ảnh 15 phút.')
  # 2. Take jobs back from lost or stuck lanes so another lane can do them.
  for job in lane_jobs:
@@ -155,6 +158,12 @@ def step(w,s,post=None):
    post('/lanes/'+lane+'/release',{'jobId':job['id'],'reason':'Tab mất kết nối' if lost else 'Quá thời gian','expectedWorkEpoch':s.get('workEpoch',0)})
    if item.get('job')==job.get('id'):item.update(state='released',error='Tab ChatGPT mất kết nối' if lost else 'Quá thời gian chờ')
    busy.pop(lane,None)
+ # 2b. Self-check: an item that used all its tries is looked at again after a pause (15, 30, 60, 120 min) instead of
+ # staying failed for good; the cause (ChatGPT limit, slow tab, lost tab) is often gone by then.
+ for key,item in items.items():
+  if item.get('state') in ('error','released') and item.get('tries',0)>=limit and item.get('rearm',0)<REARM_MAX and now-float(item.get('at') or 0)>=REARM_AFTER*2**item.get('rearm',0):
+   item.update(tries=0,rearm=item.get('rearm',0)+1,error=None)
+   attention.append('Tự thử lại '+key.split(':',1)[-1]+' (lần '+str(item['rearm'])+'/'+str(REARM_MAX)+')')
  # 3. Keep real outputs: scene JSON per part, then one image download per round.
  saved=w.j.setdefault('lane_saved',{})
  for p in parts:
@@ -216,6 +225,8 @@ def step(w,s,post=None):
  lanes_view=[{'lane':lane,'label':live[lane].get('account_label') or lane,'plan':live[lane].get('account_plan'),'job':(busy.get(lane) or {}).get('partId') or (busy.get(lane) or {}).get('sceneKey'),'kind':(busy.get(lane) or {}).get('type'),'cooldown':float(st['cooldown'].get(lane) or 0)>now} for lane in order]
  done_parts=sum(p.get('status')=='complete' for p in parts);done_images=sum(1 for _,k,_ in images if saved.get(mark(k)))
  failed_items=[k for k in items if failed(k)]
+ waiting=[k for k in failed_items if items[k].get('rearm',0)<REARM_MAX]
+ if waiting:attention.append(str(len(waiting))+' mục lỗi: Manager tự thử lại sau '+str(max(1,int(min(float(items[k].get('at') or now)+REARM_AFTER*2**items[k].get('rearm',0) for k in waiting)-now)//60+1))+' phút.')
  ctx={'studio_stage':'Chạy song song '+str(len(order))+' tab ChatGPT','studio_total_parts':len(parts),'studio_completed_parts':done_parts,
   'studio_total_scenes':sum(len(p.get('scenes') or []) for p in parts),'studio_scope_total':len(images),'studio_images_saved':done_images,
   'studio_images_generated':sum(1 for _,_,sc in images if sc.get('imageStatus')=='complete'),'studio_lanes':lanes_view,'studio_warnings':warnings(workers),
@@ -224,12 +235,13 @@ def step(w,s,post=None):
  in_flight=any(open_item(k) for k in items)
  scenes_done='scenes' not in tasks or not parts_left
  images_done=not images or all(saved.get(mark(k)) or failed('image:'+k) for _,k,_ in images)
- if scenes_done and images_done and not in_flight:
+ if scenes_done and images_done and not in_flight and not waiting:
   if failed_items and cfg.get('error_policy')=='stop':raise RuntimeError('Dừng: '+str(len(failed_items))+' mục lỗi sau '+str(limit)+' lần thử ('+', '.join(failed_items[:5])+')')
   return {'context':dict(ctx,studio_stage='Hoàn tất chạy song song'+(' · '+str(len(failed_items))+' mục lỗi' if failed_items else ''),studio_waiting_action=None)}
  if not live:
   ctx['studio_message']='Chưa có tab ChatGPT nào kết nối (cần Extension 0.5.0+). Manager chờ, không gửi lệnh.'
  if not live and not in_flight:return w.wait('lanes:connection',1800,ctx)
+ if waiting and scenes_done and images_done and not in_flight:return w.wait('lanes:rearm:'+str(sum(items[k].get('rearm',0) for k in items)),REARM_AFTER*2**REARM_MAX+JOB_LIMIT,ctx)
  # Watchdog keyed on progress: any finished part/image restarts the clock.
  return w.wait('lanes:'+str(done_parts)+':'+str(done_images),JOB_LIMIT+LANE_LOST+300,ctx)
 
