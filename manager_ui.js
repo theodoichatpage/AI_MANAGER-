@@ -77,13 +77,18 @@ function mgStatusHTML(p){
  const cls=q.status==='running'||studioBusy?'run':['failed','needs_review'].includes(task?.status)?'err':'';
  const bar=(l,a,b)=>{const pct=b?Math.round(100*(a||0)/b):0;return `<div class="mg-bar"><div class="l">${l}</div><div class="v">${b?`${a||0}/${b}`:'—'}</div><div class="p"><i style="width:${pct}%"></i></div></div>`};
  const lanes=c.studio_lanes||[];
+ // Is Manager still receiving from Studio? Newest sign of life: its own read of the project, or the Studio tab's heartbeat.
+ const seenAt=Math.max(state.studio?.last_ok||0,state.studio?.presence?.last_seen||0),age=seenAt?Math.max(0,Date.now()/1000-seenAt):null;
+ const live=q.status==='running'&&age!==null&&age<30,stale=q.status==='running'&&!live;
+ const ago=a=>a<90?Math.round(a)+' giây':Math.round(a/60)+' phút';
+ const link=live?`<span class="mg-link live"><i></i>Đang nhận tin từ Studio · ${ago(age)} trước</span>`:stale?`<span class="mg-link stale"><i></i>${age===null?'Chưa nhận được tin từ Studio':'Chưa có tin mới từ Studio '+ago(age)}</span>`:'';
  const errs=[];if(task?.error&&['failed','needs_review','stopped'].includes(task.status))errs.push(task.error);(c.studio_attention||[]).forEach(a=>errs.push(a));
  if(c.studio_failed_items?.length)errs.push(c.studio_failed_items.length+' mục lỗi: '+c.studio_failed_items.slice(0,5).join(', '));
  if(c.studio_files_failed?.length)errs.push('Tải/tách ảnh lỗi: '+c.studio_files_failed.slice(0,5).join(', '));
  if(c.studio_message)errs.push(c.studio_message);
  if(!task&&!q.status&&!plan)return `<section class="mg-card mg-status"><div class="mg-empty">Dự án chưa chạy. Nhập thông tin rồi bấm “Triển khai toàn bộ”.</div></section>`;
- return `<section class="mg-card mg-status"><div class="mg-stage"><h2 style="margin:0">Tiến độ</h2><span class="mg-badge ${cls}">${esc(label)}</span><span class="mg-note">${esc(c.studio_stage||q.current_stage||'')}</span></div>
- <div class="mg-bars">${bar('Phân cảnh (phần)',c.studio_completed_parts,c.studio_total_parts)}${bar('Ảnh đã tạo',c.studio_images_generated,c.studio_scope_total)}${bar('Ảnh đã tải',c.studio_files_saved??c.studio_images_saved,c.studio_files_total??c.studio_scope_total)}${bar('Ảnh đã tách',c.studio_separated,c.studio_separate_total)}</div>
+ return `<section class="mg-card mg-status"><div class="mg-stage"><h2 style="margin:0">Tiến độ</h2><span class="mg-badge ${cls}">${esc(label)}</span><span class="mg-note">${esc(c.studio_stage||q.current_stage||'')}</span>${link}</div>
+ <div class="mg-bars${live?' live':''}">${bar('Phân cảnh (phần)',c.studio_completed_parts,c.studio_total_parts)}${bar('Ảnh đã tạo',c.studio_images_generated,c.studio_scope_total)}${bar('Ảnh đã tải',c.studio_files_saved??c.studio_images_saved,c.studio_files_total??c.studio_scope_total)}${bar('Ảnh đã tách',c.studio_separated,c.studio_separate_total)}</div>
  ${lanes.length?`<div class="mg-sec">Tab ChatGPT</div>${lanes.map((l,i)=>`<div class="mg-lane"><b>Tab ${i+1}</b> ${esc(l.label||'')}<span>${l.cooldown?'Nghỉ tạo ảnh':!l.job?'Rảnh':l.kind==='image_generation'?'Tạo ảnh '+esc(l.job):'Phân cảnh '+esc(l.job)}</span></div>`).join('')}`:''}
  ${errs.length?`<div class="mg-sec">Thông báo</div>${errs.map(e=>`<div class="mg-err">${esc(e)}</div>`).join('')}`:''}
  <div class="mg-sec">Thư mục</div><div class="mg-note">${esc(p.folder||'')}</div></section>`;
