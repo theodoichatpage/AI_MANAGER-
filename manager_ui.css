@@ -88,9 +88,9 @@ body.mg #extra{padding:0}
 .mg-bar .v{font-size:18px;font-weight:700;margin:2px 0 6px}
 .mg-bar .p{height:4px;border-radius:4px;background:#26262a;overflow:hidden}
 .mg-bar .p i{display:block;height:100%;background:var(--mg-accent)}
-.mg-bar .p{position:relative}
-.mg-bars.live .p::after{content:'';position:absolute;top:0;bottom:0;left:0;width:45%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent);animation:mg-sweep 1.6s linear infinite}
-@keyframes mg-sweep{from{transform:translateX(-100%)}to{transform:translateX(320%)}}
+.mg-bars.live .mg-bar.run .p i{position:relative;overflow:hidden}
+.mg-bars.live .mg-bar.run .p i::after{content:'';position:absolute;top:0;bottom:0;left:0;width:60%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);animation:mg-sweep 1.4s linear infinite}
+@keyframes mg-sweep{from{transform:translateX(-100%)}to{transform:translateX(170%)}}
 .mg-link{display:inline-flex;align-items:center;gap:6px;margin-left:auto;font-size:12px;color:var(--mg-muted)}
 .mg-link i{width:8px;height:8px;border-radius:50%;background:var(--mg-accent)}
 .mg-link.live i{animation:mg-pulse 1.4s ease-in-out infinite}

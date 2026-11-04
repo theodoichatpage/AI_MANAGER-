@@ -75,7 +75,7 @@ function mgStatusHTML(p){
  const studioBusy=Boolean(plan?.active_job);
  const label=studioBusy?'Studio đang chạy':(typeof names!=='undefined'&&names[q.status])||q.status||'Chưa chạy';
  const cls=q.status==='running'||studioBusy?'run':['failed','needs_review'].includes(task?.status)?'err':'';
- const bar=(l,a,b)=>{const pct=b?Math.round(100*(a||0)/b):0;return `<div class="mg-bar"><div class="l">${l}</div><div class="v">${b?`${a||0}/${b}`:'—'}</div><div class="p"><i style="width:${pct}%"></i></div></div>`};
+ const bar=(l,a,b)=>{const pct=b?Math.round(100*(a||0)/b):0;return `<div class="mg-bar${b&&pct<100?' run':''}"><div class="l">${l}</div><div class="v">${b?`${a||0}/${b}`:'—'}</div><div class="p"><i style="width:${pct}%"></i></div></div>`};
  const lanes=c.studio_lanes||[];
  // Is Manager still receiving from Studio? Newest sign of life: its own read of the project, or the Studio tab's heartbeat.
  const seenAt=Math.max(state.studio?.last_ok||0,state.studio?.presence?.last_seen||0),age=seenAt?Math.max(0,Date.now()/1000-seenAt):null;
