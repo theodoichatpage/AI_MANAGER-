@@ -47,6 +47,53 @@ def read_status(path):
  try:return json.loads(Path(path).read_text(encoding='utf-8'))
  except (OSError,ValueError):return None
 
+JOB_NAME='parallax_job.json'
+
+def videos_done(project):
+ """How many finished scene videos are in <project>/Video Parallax."""
+ out=Path(project)/OUTPUT
+ return sum(1 for _ in out.rglob('*.mp4')) if out.is_dir() else 0
+
+def summary(project,clock=time.time):
+ """What the program is doing for this project (from its status file), for the Manager board."""
+ project=Path(project);status=project/'.vis'/STATUS_NAME;info=read_status(status);out={'videos':videos_done(project),'state':'idle'}
+ if not info:return out
+ try:fresh=clock()-status.stat().st_mtime<90
+ except OSError:fresh=False
+ job=read_status(project/'.vis'/JOB_NAME) or {}
+ alive=fresh or (bool(job.get('pid')) and alive_pid(job['pid']))
+ state=info.get('state') or 'idle'
+ if state=='running' and not alive:state='stopped'
+ out.update(state=state,done=info.get('done',0),total=info.get('total',0),percent=info.get('percent',0))
+ if info.get('error'):out['error']=str(info['error'])[:200]
+ return out
+
+def alive_pid(pid):return alive(pid)
+
+def start_manual(project,ratio='16:9',motion='random',rerun=False,**kw):
+ """Start the program for the whole project from the Manager board (the same command the workflow step uses)."""
+ project=Path(project)
+ if summary(project)['state']=='running':raise ValueError('Parallax25D đang chạy cho dự án này.')
+ if scenes_ready(project/'Tach anh')==0:raise ValueError('Chưa có cảnh nào đã tách trong Tach anh để làm video Parallax.')
+ job=start(project,ratio,motion,rerun,**kw)
+ path=project/'.vis'/JOB_NAME;path.write_text(json.dumps({'pid':job['pid'],'at':job['at'],'exe':job['exe']}),encoding='utf-8')
+ return job
+
+def stop_manual(project,run=subprocess.run):
+ """Stop the program Manager started for this project (its whole process tree)."""
+ path=Path(project)/'.vis'/JOB_NAME;job=read_status(path)
+ if not job or not job.get('pid'):raise ValueError('Manager không có tiến trình Parallax25D nào đang chạy cho dự án này.')
+ run(['taskkill','/PID',str(int(job['pid'])),'/T','/F'],capture_output=True)
+ try:path.unlink()
+ except OSError:pass
+ return True
+
+def open_program():
+ """Open the program's own window (for doing it by hand)."""
+ exe=find_exe()
+ if not exe:raise FileNotFoundError('Không thấy Parallax25D.exe (Desktop hoặc VIDEO_IMAGE_STUDIO\\parallax-tool\\dist).')
+ os.startfile(str(exe));return str(exe)
+
 def start(project,ratio='16:9',motion='random',rerun=False,exe=None,popen=subprocess.Popen,clock=time.time):
  """Launch the exe for the whole project. Returns the job record kept in the step journal."""
  exe=exe or find_exe()

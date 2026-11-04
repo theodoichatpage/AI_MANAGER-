@@ -75,8 +75,12 @@ function mgStatusHTML(p){
  const studioBusy=Boolean(plan?.active_job);
  const label=studioBusy?'Studio đang chạy':(typeof names!=='undefined'&&names[q.status])||q.status||'Chưa chạy';
  const cls=q.status==='running'||studioBusy?'run':['failed','needs_review'].includes(task?.status)?'err':'';
- const bar=(l,a,b)=>{const pct=b?Math.round(100*(a||0)/b):0;return `<div class="mg-bar${b&&pct<100?' run':''}"><div class="l">${l}</div><div class="v">${b?`${a||0}/${b}`:'—'}</div><div class="p"><i style="width:${pct}%"></i></div></div>`};
+ const bar=(l,a,b,act)=>{const pct=b?Math.round(100*(a||0)/b):0;return `<div class="mg-bar${b&&pct<100?' run':''}${act&&b&&pct<100?' act':''}"><div class="l">${l}</div><div class="v">${b?`${a||0}/${b}`:'—'}</div><div class="p"><i style="width:${pct}%"></i></div></div>`};
  const lanes=c.studio_lanes||[];
+ // Work done by hand (Tách ảnh in Studio, Parallax25D) does not go through the workflow: the board reads it from the folders.
+ const totalScenes=c.studio_total_scenes||c.studio_scope_total||p.scenes||0,par=p.parallax||{},eng=state.engine||{};
+ const sepDone=c.studio_separated??p.separated_count,sepTotal=c.studio_separate_total||totalScenes;
+ const parRun=par.state==='running',parDone=par.videos||0;
  // Is Manager still receiving from Studio? Newest sign of life: its own read of the project, or the Studio tab's heartbeat.
  const seenAt=Math.max(state.studio?.last_ok||0,state.studio?.presence?.last_seen||0),age=seenAt?Math.max(0,Date.now()/1000-seenAt):null;
  const live=q.status==='running'&&age!==null&&age<30,stale=q.status==='running'&&!live;
@@ -88,10 +92,10 @@ function mgStatusHTML(p){
  if(c.studio_message)errs.push(c.studio_message);
  if(!task&&!q.status&&!plan)return `<section class="mg-card mg-status"><div class="mg-empty">Dự án chưa chạy. Nhập thông tin rồi bấm “Triển khai toàn bộ”.</div></section>`;
  return `<section class="mg-card mg-status"><div class="mg-stage"><h2 style="margin:0">Tiến độ</h2><span class="mg-badge ${cls}">${esc(label)}</span><span class="mg-note">${esc(c.studio_stage||q.current_stage||'')}</span>${link}</div>
- <div class="mg-bars${live?' live':''}">${bar('Phân cảnh (phần)',c.studio_completed_parts,c.studio_total_parts)}${bar('Ảnh đã tạo',c.studio_images_generated,c.studio_scope_total)}${bar('Ảnh đã tải',c.studio_files_saved??c.studio_images_saved,c.studio_files_total??c.studio_scope_total)}${bar('Ảnh đã tách',c.studio_separated,c.studio_separate_total)}</div>
+ <div class="mg-bars${live?' live':''}">${bar('Phân cảnh (phần)',c.studio_completed_parts,c.studio_total_parts)}${bar('Ảnh đã tạo',c.studio_images_generated,c.studio_scope_total)}${bar('Ảnh đã tải',c.studio_files_saved??c.studio_images_saved,c.studio_files_total??c.studio_scope_total)}${bar('Ảnh đã tách',sepDone,sepTotal,eng.busy)}${bar('Video Parallax',parDone,totalScenes,parRun)}</div>${parRun?`<div class="mg-note">Parallax25D đang làm video: ${par.done||0}/${par.total||'?'} cảnh (${par.percent||0}%)</div>`:par.state==='error'?`<div class="mg-err">Parallax25D báo lỗi: ${esc(par.error||'')}</div>`:par.state==='stopped'?`<div class="mg-err">Parallax25D đã tắt giữa chừng (${par.done||0}/${par.total||'?'} cảnh).</div>`:''}${eng.busy?`<div class="mg-note">Local Engine đang tách ảnh…</div>`:''}
  ${lanes.length?`<div class="mg-sec">Tab ChatGPT</div>${lanes.map((l,i)=>`<div class="mg-lane"><b>Tab ${i+1}</b> ${esc(l.label||'')}<span>${l.cooldown?'Nghỉ tạo ảnh':!l.job?'Rảnh':l.kind==='image_generation'?'Tạo ảnh '+esc(l.job):'Phân cảnh '+esc(l.job)}</span></div>`).join('')}`:''}
  ${errs.length?`<div class="mg-sec">Thông báo</div>${errs.map(e=>`<div class="mg-err">${esc(e)}</div>`).join('')}`:''}
- <div class="mg-sec">Thư mục</div><div class="mg-note">${esc(p.folder||'')}</div><div class="mg-btns"><button class="mg-btn" onclick="mgAct('open-root')">Mở thư mục dự án</button><button class="mg-btn" title="Cảnh tách tay trong Studio nằm lẫn trong Tach anh: xếp vào đúng Phần như thư mục Anh" onclick="mgOrganizeTach('${esc(p.id)}')">Xếp Tach anh theo phần</button>${typeof rootDialog!=='undefined'?'<button class="mg-btn" title="Thư mục gốc chứa mọi dự án; Studio cũng lưu ảnh tách vào đây" onclick="rootDialog.showModal()">Đổi thư mục lưu</button>':''}</div></section>`;
+ <div class="mg-sec">Thư mục</div><div class="mg-note">${esc(p.folder||'')}</div><div class="mg-btns"><button class="mg-btn" onclick="mgAct('open-root')">Mở thư mục dự án</button>${parRun?`<button class="mg-btn" onclick="mgParallax('${esc(p.id)}','parallax_stop')">Dừng Parallax</button>`:`<button class="mg-btn" title="Làm video Parallax cho các cảnh đã tách trong Tach anh, không cần chạy cả quy trình" onclick="mgParallax('${esc(p.id)}','parallax_now')">Làm Video Parallax ngay</button>`}<button class="mg-btn" title="Mở cửa sổ Parallax25D để tự chỉnh và chạy bằng tay" onclick="mgParallax('${esc(p.id)}','parallax_open')">Mở Parallax25D</button><button class="mg-btn" title="Cảnh tách tay trong Studio nằm lẫn trong Tach anh: xếp vào đúng Phần như thư mục Anh" onclick="mgOrganizeTach('${esc(p.id)}')">Xếp Tach anh theo phần</button>${typeof rootDialog!=='undefined'?'<button class="mg-btn" title="Thư mục gốc chứa mọi dự án; Studio cũng lưu ảnh tách vào đây" onclick="rootDialog.showModal()">Đổi thư mục lưu</button>':''}</div></section>`;
 }
 function mgHTML(){
  const p=mgCurrent();
@@ -140,3 +144,4 @@ document.addEventListener('click',e=>{if(mgMenu&&!e.target.closest('.mg-menu,.mg
  render();
 })();
 async function mgOrganizeTach(id){try{const r=await api('/api/project-action',{id,action:'organize_tach_anh'});alert('Đã xếp '+r.moved.length+' cảnh vào đúng Phần.'+(r.skipped.length?' Bỏ qua '+r.skipped.length+': '+r.skipped.slice(0,6).map(x=>x[0]+' ('+x[1]+')').join('; '):''))}catch(e){alert(e.message)}}
+async function mgParallax(id,action){try{await api('/api/project-action',{id,action});if(action==='parallax_open')return;const r=await fetch('/api/state');state=await r.json();render()}catch(e){alert(e.message)}}

@@ -45,6 +45,24 @@ class ParallaxVideo(unittest.TestCase):
   self.assertEqual(pv.check(job,clock=lambda:130,is_alive=lambda p:False)[0],'done')
   status.write_text(json.dumps({'state':'error','started_at':101,'error':'bad --res'}))
   self.assertEqual(pv.check(job,clock=lambda:130,is_alive=lambda p:False),('error','bad --res'))
+ def test_board_summary_start_and_stop_by_hand(self):
+  import os
+  status=self.project/'.vis'/pv.STATUS_NAME;status.parent.mkdir()
+  self.assertEqual(pv.summary(self.project)['state'],'idle');self.assertEqual(pv.summary(self.project)['videos'],0)
+  (self.project/pv.OUTPUT/'Phan 1 - A').mkdir(parents=True);(self.project/pv.OUTPUT/'Phan 1 - A'/'Canh 1 - B.mp4').write_bytes(b'x')
+  status.write_text(json.dumps({'state':'running','done':1,'total':4,'percent':25}))
+  s=pv.summary(self.project);self.assertEqual((s['state'],s['done'],s['total'],s['videos']),('running',1,4,1))
+  old=time.time()-600;os.utime(status,(old,old))
+  self.assertEqual(pv.summary(self.project)['state'],'stopped','a running file nobody updates any more is a stopped program')
+  with self.assertRaises(ValueError):pv.start_manual(self.project)  # no separated scenes yet
+  self.scene('Phan 1 - A/Canh 1 - B')
+  exe=Path(self.tmp.name)/'Parallax25D.exe';exe.write_bytes(b'')
+  calls=[];job=pv.start_manual(self.project,'16:9','dolly',False,exe=exe,popen=lambda args,**kw:calls.append(args) or Proc(777))
+  self.assertEqual(job['pid'],777);self.assertIn('dolly',calls[0])
+  self.assertEqual(json.loads((self.project/'.vis'/pv.JOB_NAME).read_text())['pid'],777)
+  killed=[];pv.stop_manual(self.project,run=lambda args,**kw:killed.append(args))
+  self.assertEqual(killed[0][:3],['taskkill','/PID','777']);self.assertFalse((self.project/'.vis'/pv.JOB_NAME).exists())
+  with self.assertRaises(ValueError):pv.stop_manual(self.project)
  def test_work_config_accepts_parallax(self):
   c=normalize({'tasks':['separate','parallax','sync'],'parallax_motion':'zoomin'})
   self.assertEqual(c['tasks'],['sync','separate','parallax']);self.assertEqual(c['parallax_motion'],'zoomin')

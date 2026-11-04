@@ -187,6 +187,18 @@ def manager():
         WORKER=SimulationWorker(MANAGER)
     return MANAGER
 
+_ENGINE={'at':0.0,'value':{'ok':False,'busy':False}}
+def local_engine():
+    """Is the Local Engine (separation) up, and is it working on a picture right now? Cached for 3 s."""
+    if time.time()-_ENGINE['at']<3: return _ENGINE['value']
+    value={'ok':False,'busy':False}
+    try:
+        import urllib.request
+        with urllib.request.urlopen('http://127.0.0.1:17841/v1/health',timeout=0.4) as r: health=json.loads(r.read())
+        value={'ok':bool(health.get('ok')),'busy':bool(health.get('busy'))}
+    except Exception: pass
+    _ENGINE.update(at=time.time(),value=value); return value
+
 def synchronized_state(q):
     ps=projects(); visible={p['id'] for p in ps}; qs=[p for p in q.list() if p['id'] in visible]
     running=next((row for row in qs if row.get('status')=='running' and row.get('execution_mode')=='automation'),None)
@@ -200,6 +212,11 @@ def synchronized_state(q):
         if item.get('execution_mode')=='automation':project.update(scenes=item.get('total_scenes',0),parts=item.get('total_parts',0))
         try:project['image_progress']=json.loads((Path(project['folder'])/'analysis'/'studio_image_progress.json').read_text(encoding='utf8'))
         except (OSError,ValueError,KeyError):pass
+        # Work done by hand (Tách ảnh in Studio, Parallax25D) never goes through the workflow: read it from the folders.
+        try:
+            from automation_agent import tach_anh,parallax_video
+            project['separated_count']=len(tach_anh.done_scenes(project['folder']));project['parallax']=parallax_video.summary(project['folder'])
+        except Exception:pass
         try:
             checkpoint={}
             if AUTOMATION:
@@ -243,7 +260,8 @@ def synchronized_state(q):
         application_paths={k:str(settings.get(k,'')) for k in ('chrome_path','capcut_path')}
     except (OSError,ValueError):pass
     batch=q.batch()
-    return {'studio_batch':batch,'application_paths':application_paths,'version':VERSION,'download_url':DOWNLOAD_URL,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot(),'extension_update':EXT_UPDATER.snapshot()}
+    engine=local_engine()
+    return {'engine':engine,'studio_batch':batch,'application_paths':application_paths,'version':VERSION,'download_url':DOWNLOAD_URL,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot(),'extension_update':EXT_UPDATER.snapshot()}
 
 def render_index():
     page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
@@ -459,6 +477,12 @@ class Handler(BaseHTTPRequestHandler):
                     if action=='delete': return self.send(200,project_ops.delete(p,q,config()['root']))
                     if action=='update': return self.send(200,project_ops.update(p,data,atomic))
                     if action=='open': os.startfile(p['folder']); return self.send(200,{'ok':True})
+                    if action in ('parallax_now','parallax_stop','parallax_open'):
+                        from automation_agent import parallax_video
+                        if action=='parallax_open': return self.send(200,{'ok':True,'exe':parallax_video.open_program()})
+                        if action=='parallax_stop': parallax_video.stop_manual(p['folder']); return self.send(200,{'ok':True})
+                        cfg=p.get('work_config') or {}; job=parallax_video.start_manual(p['folder'],'16:9',cfg.get('parallax_motion','random'),bool(data.get('rerun')))
+                        return self.send(200,{'ok':True,'pid':job['pid']})
                     if action=='organize_tach_anh':
                         from automation_agent import tach_anh
                         moved,skipped=tach_anh.organize(p['folder']); return self.send(200,{'moved':moved,'skipped':skipped})

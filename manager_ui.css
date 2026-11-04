@@ -82,14 +82,14 @@ body.mg #extra{padding:0}
 .mg-badge{height:24px;display:inline-flex;align-items:center;padding:0 10px;border-radius:999px;background:var(--mg-panel2);border:1px solid var(--mg-line);font-size:12px;font-weight:700;color:var(--mg-muted)}
 .mg-badge.run{color:var(--mg-accent-ink);background:var(--mg-accent);border-color:var(--mg-accent)}
 .mg-badge.err{color:#fff;background:#7a1f1f;border-color:#7a1f1f}
-.mg-bars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.mg-bars{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:16px}
 .mg-bar{background:var(--mg-panel2);border:1px solid var(--mg-line);border-radius:10px;padding:10px 12px}
 .mg-bar .l{color:var(--mg-muted);font-size:12px}
 .mg-bar .v{font-size:18px;font-weight:700;margin:2px 0 6px}
 .mg-bar .p{height:4px;border-radius:4px;background:#26262a;overflow:hidden}
 .mg-bar .p i{display:block;height:100%;background:var(--mg-accent)}
-.mg-bars.live .mg-bar.run .p i{position:relative;overflow:hidden}
-.mg-bars.live .mg-bar.run .p i::after{content:'';position:absolute;top:0;bottom:0;left:0;width:60%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);animation:mg-sweep 1.4s linear infinite}
+.mg-bars.live .mg-bar.run .p i,.mg-bar.act .p i{position:relative;overflow:hidden}
+.mg-bars.live .mg-bar.run .p i::after,.mg-bar.act .p i::after{content:'';position:absolute;top:0;bottom:0;left:0;width:60%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);animation:mg-sweep 1.4s linear infinite}
 @keyframes mg-sweep{from{transform:translateX(-100%)}to{transform:translateX(170%)}}
 .mg-link{display:inline-flex;align-items:center;gap:6px;margin-left:auto;font-size:12px;color:var(--mg-muted)}
 .mg-link i{width:8px;height:8px;border-radius:50%;background:var(--mg-accent)}
