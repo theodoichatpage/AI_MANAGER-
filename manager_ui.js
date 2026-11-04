@@ -91,7 +91,7 @@ function mgStatusHTML(p){
  <div class="mg-bars${live?' live':''}">${bar('Phân cảnh (phần)',c.studio_completed_parts,c.studio_total_parts)}${bar('Ảnh đã tạo',c.studio_images_generated,c.studio_scope_total)}${bar('Ảnh đã tải',c.studio_files_saved??c.studio_images_saved,c.studio_files_total??c.studio_scope_total)}${bar('Ảnh đã tách',c.studio_separated,c.studio_separate_total)}</div>
  ${lanes.length?`<div class="mg-sec">Tab ChatGPT</div>${lanes.map((l,i)=>`<div class="mg-lane"><b>Tab ${i+1}</b> ${esc(l.label||'')}<span>${l.cooldown?'Nghỉ tạo ảnh':!l.job?'Rảnh':l.kind==='image_generation'?'Tạo ảnh '+esc(l.job):'Phân cảnh '+esc(l.job)}</span></div>`).join('')}`:''}
  ${errs.length?`<div class="mg-sec">Thông báo</div>${errs.map(e=>`<div class="mg-err">${esc(e)}</div>`).join('')}`:''}
- <div class="mg-sec">Thư mục</div><div class="mg-note">${esc(p.folder||'')}</div><div class="mg-btns"><button class="mg-btn" onclick="mgAct('open-root')">Mở thư mục dự án</button>${typeof rootDialog!=='undefined'?'<button class="mg-btn" title="Thư mục gốc chứa mọi dự án; Studio cũng lưu ảnh tách vào đây" onclick="rootDialog.showModal()">Đổi thư mục lưu</button>':''}</div></section>`;
+ <div class="mg-sec">Thư mục</div><div class="mg-note">${esc(p.folder||'')}</div><div class="mg-btns"><button class="mg-btn" onclick="mgAct('open-root')">Mở thư mục dự án</button><button class="mg-btn" title="Cảnh tách tay trong Studio nằm lẫn trong Tach anh: xếp vào đúng Phần như thư mục Anh" onclick="mgOrganizeTach('${esc(p.id)}')">Xếp Tach anh theo phần</button>${typeof rootDialog!=='undefined'?'<button class="mg-btn" title="Thư mục gốc chứa mọi dự án; Studio cũng lưu ảnh tách vào đây" onclick="rootDialog.showModal()">Đổi thư mục lưu</button>':''}</div></section>`;
 }
 function mgHTML(){
  const p=mgCurrent();
@@ -139,3 +139,4 @@ document.addEventListener('click',e=>{if(mgMenu&&!e.target.closest('.mg-menu,.mg
  };
  render();
 })();
+async function mgOrganizeTach(id){try{const r=await api('/api/project-action',{id,action:'organize_tach_anh'});alert('Đã xếp '+r.moved.length+' cảnh vào đúng Phần.'+(r.skipped.length?' Bỏ qua '+r.skipped.length+': '+r.skipped.slice(0,6).map(x=>x[0]+' ('+x[1]+')').join('; '):''))}catch(e){alert(e.message)}}

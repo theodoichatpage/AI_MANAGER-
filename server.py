@@ -293,7 +293,8 @@ class Handler(BaseHTTPRequestHandler):
             if origin and not STUDIO_ORIGIN.fullmatch(origin): return self.send(403,{'error':'Nguồn không hợp lệ'})
             folder=studio_project_folder(parse_qs(urlparse(self.path).query).get('sessionId',[''])[0])
             if not folder: return self.send(404,{'error':'Dự án này chưa nằm trong Manager'},cors=True)
-            return self.send(200,{'folder':folder,'tach_anh':str(Path(folder)/'Tach anh')},cors=True)
+            from automation_agent import tach_anh
+            return self.send(200,{'folder':folder,'tach_anh':str(Path(folder)/'Tach anh'),'scenes':tach_anh.scene_parts(folder),'done':tach_anh.done_scenes(folder)},cors=True)
         if path=='/api/studio-presence':
             query=parse_qs(urlparse(self.path).query);return self.send(200,PRESENCE.snapshot(query.get('sessionId',[None])[0],query.get('runId',[None])[0]),cors=True)
         self.send(404,{'error':'Không tìm thấy'})
@@ -458,6 +459,9 @@ class Handler(BaseHTTPRequestHandler):
                     if action=='delete': return self.send(200,project_ops.delete(p,q,config()['root']))
                     if action=='update': return self.send(200,project_ops.update(p,data,atomic))
                     if action=='open': os.startfile(p['folder']); return self.send(200,{'ok':True})
+                    if action=='organize_tach_anh':
+                        from automation_agent import tach_anh
+                        moved,skipped=tach_anh.organize(p['folder']); return self.send(200,{'moved':moved,'skipped':skipped})
                     raise ValueError('Thao tác không hợp lệ')
                 if path=='/api/studio-deploy': return self.send(201,studio_deploy(data))
                 if path=='/api/root':
