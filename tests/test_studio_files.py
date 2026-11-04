@@ -79,8 +79,14 @@ class Files(unittest.TestCase):
   self.assertFalse((root/'Anh').exists(),'nothing downloaded');self.assertEqual(r['context']['studio_separated'],1)
   self.assertEqual(engine.sent,[('Canh 2 - Duong_ _xa_.png','Thu du an - Phan 1 - Tu day ngheo doi',4,True)])
  def test_engine_down_or_busy_waits_and_nothing_is_lost(self):
-  w=W(self.tmp.name,['separate'],{'separate':{'mode':'selected','items':[1]}});engine=FakeEngine();engine.down=True
-  r=studio_files.step(w,SESSION,engine=engine,fetch=self.fetch);self.assertIn('Local Engine chưa chạy',r['context']['studio_message'])
+  from unittest.mock import patch
+  from automation_agent import local_engine_boot
+  w=W(self.tmp.name,['separate'],{'separate':{'mode':'selected','items':[1]}});engine=FakeEngine();engine.down=True;started=[]
+  with patch.object(local_engine_boot,'launch',lambda:started.append(1)):
+   r=studio_files.step(w,SESSION,engine=engine,fetch=self.fetch);self.assertIn('Local Engine chưa chạy',r['context']['studio_message'])
+   self.assertEqual(len(started),1,'Manager starts the engine itself')
+   r=studio_files.step(w,SESSION,engine=engine,fetch=self.fetch);self.assertEqual(len(started),1,'not again while it is loading')
+   self.assertIn('đang chờ nó nạp',r['context']['studio_message'])
   engine.down=False;engine.busy=True
   r=studio_files.step(w,SESSION,engine=engine,fetch=self.fetch);self.assertIn('đang tách một ảnh khác',r['context']['studio_message'])
   engine.busy=False;r=self.run_until_done(w,engine);self.assertEqual(r['context']['studio_separated'],1)
@@ -122,6 +128,34 @@ class Parallax(unittest.TestCase):
   self.assertIn('Làm video Parallax 50% (0/1 cảnh): Canh 1',msgs)
   self.assertEqual(r['context']['studio_parallax_made'],1);self.assertIsNone(r['context']['studio_files_failed'])
   self.assertIn('video Parallax',r['context']['studio_stage'])
+ def test_an_interrupted_program_is_started_again_then_gives_up(self):
+  from unittest.mock import patch
+  from automation_agent import parallax_video
+  root=Path(self.tmp.name)/'Tach anh'/'Phan 1'/'Canh 1';root.mkdir(parents=True);(root/'01_bg.png').write_bytes(b'x')
+  w=W(self.tmp.name,['parallax']);launched=[]
+  def start(project,ratio,motion,rerun):
+   launched.append(rerun);return {'pid':len(launched),'at':w.now,'status':str(Path(project)/'.vis'/'s.json')}
+  crash=('error','Parallax25D đã tắt giữa chừng (1/3 video).')
+  with patch.object(parallax_video,'start',start),patch.object(parallax_video,'check',lambda job:crash):
+   r=studio_files.step(w,SESSION,engine=FakeEngine(),fetch=lambda u:PNG)
+   self.assertGreaterEqual(len(launched),1,'started in the first round')
+   for _ in range(5):r=studio_files.step(w,SESSION,engine=FakeEngine(),fetch=lambda u:PNG)
+  self.assertEqual(launched,[False,False,False],'3 runs in total, never with "rerun" (it would redo the finished videos)')
+  self.assertIn('giữa chừng',r['context']['studio_files_failed'][0]);self.assertNotIn('waiting',r)
+ def test_videos_that_failed_are_tried_again(self):
+  from unittest.mock import patch
+  from automation_agent import parallax_video
+  root=Path(self.tmp.name)/'Tach anh'/'Phan 1'/'Canh 1';root.mkdir(parents=True);(root/'01_bg.png').write_bytes(b'x')
+  w=W(self.tmp.name,['parallax']);launched=[]
+  def start(project,ratio,motion,rerun):
+   launched.append(1);return {'pid':len(launched),'at':w.now,'status':str(Path(project)/'.vis'/'s.json')}
+  results=iter([('done',{'state':'done','done':0,'skipped':0,'scenes':{'Phan 1/Canh 1':{'state':'error','error':'x'}}}),
+                ('done',{'state':'done','done':1,'skipped':0,'scenes':{'Phan 1/Canh 1':{'state':'done','video':'v.mp4'}}})])
+  with patch.object(parallax_video,'start',start),patch.object(parallax_video,'check',lambda job:next(results)):
+   for _ in range(4):
+    r=studio_files.step(w,SESSION,engine=FakeEngine(),fetch=lambda u:PNG)
+    if 'waiting' not in r:break
+  self.assertEqual(len(launched),2);self.assertIsNone(r['context']['studio_files_failed']);self.assertEqual(r['context']['studio_parallax_made'],1)
  def test_missing_exe_is_reported_without_blocking_the_rest(self):
   from unittest.mock import patch
   from automation_agent import parallax_video

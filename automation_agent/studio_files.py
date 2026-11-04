@@ -11,9 +11,10 @@ from pathlib import Path
 from .studio_images import rows,fetch_image
 from .project_files import layout,image_place,separation_dir,save_scene_image,plain,SEPARATED
 from .work_config import in_scope,validate_extent
-from . import parallax_video
+from . import parallax_video,local_engine_boot
 
 ENGINE='http://127.0.0.1:17841'
+PARALLAX_TRIES=3      # Parallax25D is started again after an interruption, up to this many runs in total
 JOB_LIMIT=1800        # one picture may take this long in the Local Engine
 ROUND_SECONDS=20      # downloads per round stop after this, so STOP stays responsive
 MAX_ZIP=200_000_000
@@ -119,7 +120,7 @@ def step(w,s,engine=None,fetch=fetch_image):
    elif now-float(job['at'])>JOB_LIMIT:
     fail(k,i,'Quá %d phút chưa tách xong'%(JOB_LIMIT//60));st['job']=None
    else:message='Đang tách %s: %s'%(lay[k][1],info.get('message') or str(info.get('progress') or 0)+'%')
-  except EngineDown:message='Local Engine chưa chạy. Mở Local Engine (cửa sổ start_engine) để tách tiếp; Manager đang chờ.'
+  except EngineDown:message=local_engine_boot.ensure(st,now)
   w.save()
  if not st.get('job') and not message:
   todo=[(i,k,scene) for i,k,scene in seps if (sep.get(k) or {}).get('state') not in ('done','error','no-image')]
@@ -138,7 +139,7 @@ def step(w,s,engine=None,fetch=fetch_image):
     st['job']={'key':k,'ordinal':i,'id':jid,'at':now};sep.setdefault(k,{})['state']='running'
     ledger('separate',k,'WAITING_RESULT',scene=i);message='Đã gửi %s sang Local Engine'%name
    except EngineBusy:message='Local Engine đang tách một ảnh khác (có thể từ tab Tách ảnh). Manager chờ rồi gửi tiếp.'
-   except EngineDown:message='Local Engine chưa chạy. Mở Local Engine (cửa sổ start_engine) để tách tiếp; Manager đang chờ.'
+   except EngineDown:message=local_engine_boot.ensure(st,now)
    except Exception as exc:fail(k,i,exc);continue
    break
   w.save()
@@ -153,6 +154,11 @@ def step(w,s,engine=None,fetch=fetch_image):
  # 4. Parallax videos, after every picture is downloaded and separated.
  if 'parallax' in tasks and not downloads_left and not seps_left and not st.get('job'):
   pv=st.get('parallax')
+  def relaunch(reason):
+   """Parallax25D stopped half way or some videos failed: start it again, it only makes the missing videos."""
+   try:job=parallax_video.start(w.folder,w.c.get('studio_ratio','16:9'),cfg.get('parallax_motion','random'),False)
+   except (OSError,ValueError) as exc:pv.update(state='error',error=str(exc)[:300]);return
+   pv.update(job,state='running',attempts=pv.get('attempts',1)+1,note=str(reason)[:200],failed=[])
   if pv is None:
    ready=parallax_video.scenes_ready(w.folder/SEPARATED)
    if not ready:pv={'state':'none'}
@@ -166,6 +172,7 @@ def step(w,s,engine=None,fetch=fetch_image):
     made=int(info.get('done') or 0)+int(info.get('skipped') or 0);pct=int(info.get('percent') or 0)
     now_doing=', '.join(info.get('current') or [])[:120]
     msg='Đang khởi động Parallax25D…' if info.get('state')=='starting' else 'Làm video Parallax %d%% (%d/%s cảnh)%s'%(pct,made,info.get('total','?'),(': '+now_doing) if now_doing else '')
+    if pv.get('attempts',1)>1:msg+=' · chạy lại lần %d/%d sau khi bị gián đoạn'%(pv['attempts'],PARALLAX_TRIES)
     return w.wait('parallax:%d:%d'%(made,pct),JOB_LIMIT+600,dict(ctx,studio_stage='Làm video Parallax',studio_message=msg,studio_parallax_percent=pct,studio_folder_parallax=str(w.folder/parallax_video.OUTPUT)))
    if kind=='done':
     scenes=info.get('scenes') or {}
@@ -173,8 +180,12 @@ def step(w,s,engine=None,fetch=fetch_image):
     for name,row in scenes.items():
      row=row or {};state={'done':'COMPLETED','skipped':'SKIPPED','error':'ERROR'}.get(row.get('state'))
      if state:ledger('parallax',name[:200],state,result_path=row.get('video'),**({'error':str(row.get('error'))[:200]} if row.get('error') else {}))
-   else:pv.update(state='error',error=info)
+   else:
+    if pv.get('attempts',1)<PARALLAX_TRIES:relaunch(info)
+    else:pv.update(state='error',error=info)
+   if pv.get('state')=='done' and pv.get('failed') and pv.get('attempts',1)<PARALLAX_TRIES:relaunch('Có %d video lỗi'%len(pv['failed']))
    w.save()
+  if pv.get('state')=='running':return w.wait('parallax:again:%d'%pv.get('attempts',1),JOB_LIMIT+600,dict(ctx,studio_stage='Làm video Parallax',studio_message='Parallax25D chạy lại sau khi bị gián đoạn (lần %d/%d)…'%(pv.get('attempts',1),PARALLAX_TRIES)))
   if pv.get('state')=='error':failed.append('Video Parallax: '+pv.get('error',''))
   failed+=['Video '+n for n in pv.get('failed') or []]
   ctx.update(studio_parallax_made=pv.get('made'),studio_parallax_skipped=pv.get('skipped'),studio_folder_parallax=str(w.folder/parallax_video.OUTPUT) if pv.get('state')=='done' else None,studio_files_failed=failed or None,
