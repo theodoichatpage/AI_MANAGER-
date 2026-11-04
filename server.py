@@ -287,6 +287,13 @@ class Handler(BaseHTTPRequestHandler):
             if not found: return self.send(404,{'error':'Máy này không có ảnh gốc'},cors=True)
             kind={'.png':'image/png','.jpg':'image/jpeg','.webp':'image/webp'}[found.suffix]
             return self.send(200,found.read_bytes(),kind,cors=True)
+        if path=='/api/studio-folder':
+            # Studio saves separated layers into this project's folder (Tach anh) unless the user picks another one.
+            origin=self.headers.get('Origin','')
+            if origin and not STUDIO_ORIGIN.fullmatch(origin): return self.send(403,{'error':'Nguồn không hợp lệ'})
+            folder=studio_project_folder(parse_qs(urlparse(self.path).query).get('sessionId',[''])[0])
+            if not folder: return self.send(404,{'error':'Dự án này chưa nằm trong Manager'},cors=True)
+            return self.send(200,{'folder':folder,'tach_anh':str(Path(folder)/'Tach anh')},cors=True)
         if path=='/api/studio-presence':
             query=parse_qs(urlparse(self.path).query);return self.send(200,PRESENCE.snapshot(query.get('sessionId',[None])[0],query.get('runId',[None])[0]),cors=True)
         self.send(404,{'error':'Không tìm thấy'})

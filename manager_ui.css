@@ -169,3 +169,5 @@ a.mg-btn{text-decoration:none}
 @media (max-width:900px){.mgs-grid,.mgs-tiles{grid-template-columns:1fr}.mgs-st{width:auto}}
 body.mg .mgs-select{min-height:0!important;padding:0 10px!important;font-size:14px}
 body.mg .mgs-modal h1,body.mg .mgs-modal h2{text-transform:none;letter-spacing:0}
+
+.mg-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
