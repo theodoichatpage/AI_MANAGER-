@@ -38,7 +38,7 @@ def normalize(raw):
  motion=raw.get('parallax_motion','random')
  if motion not in ('random','right','left','up','down','zoomin','zoomout','dolly'):raise ValueError('Chuyển động Parallax không hợp lệ')
  if layers not in (3,4):raise ValueError('Tách ảnh: 3 hoặc 4 lớp')
- return {'tasks':[k for k in KINDS if k in selected],'scopes':scopes,'error_policy':policy,'retry_limit':retry,'rerun':bool(raw.get('rerun',False)),'separate_layers':layers,**({'parallax_motion':motion} if 'parallax' in selected else {}),**({'lanes':lanes(raw['lanes'])} if raw.get('lanes') else {})}
+ return {'tasks':[k for k in KINDS if k in selected],'scopes':scopes,'error_policy':policy,'retry_limit':retry,'rerun':bool(raw.get('rerun',False)),**({'tone':True} if raw.get('tone') else {}),'separate_layers':layers,**({'parallax_motion':motion} if 'parallax' in selected else {}),**({'lanes':lanes(raw['lanes'])} if raw.get('lanes') else {})}
 def in_scope(index,scope):
  mode=scope.get('mode','all')
  return scope['from']<=index<=scope['to'] if mode=='range' else index in scope['items'] if mode=='selected' else True

@@ -483,6 +483,11 @@ class Handler(BaseHTTPRequestHandler):
                         if action=='parallax_stop': parallax_video.stop_manual(p['folder']); return self.send(200,{'ok':True})
                         cfg=p.get('work_config') or {}; job=parallax_video.start_manual(p['folder'],'16:9',cfg.get('parallax_motion','random'),bool(data.get('rerun')))
                         return self.send(200,{'ok':True,'pid':job['pid']})
+                    if action in ('tone_apply','tone_restore','tone_reset'):
+                        from automation_agent import tone
+                        if action=='tone_restore': return self.send(200,{'restored':tone.restore(p['folder'])})
+                        if action=='tone_reset': tone.reset(p['folder'])
+                        r=tone.balance_project(p['folder']); return self.send(200,dict(r,target=list(r['target'])))
                     if action=='organize_tach_anh':
                         from automation_agent import tach_anh
                         moved,skipped=tach_anh.organize(p['folder']); return self.send(200,{'moved':moved,'skipped':skipped})

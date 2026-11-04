@@ -11,7 +11,7 @@ from pathlib import Path
 from .studio_images import rows,fetch_image
 from .project_files import layout,image_place,separation_dir,save_scene_image,plain,SEPARATED
 from .work_config import in_scope,validate_extent
-from . import parallax_video,local_engine_boot
+from . import parallax_video,local_engine_boot,tone
 
 ENGINE='http://127.0.0.1:17841'
 PARALLAX_TRIES=3      # Parallax25D is started again after an interruption, up to this many runs in total
@@ -96,7 +96,12 @@ def step(w,s,engine=None,fetch=fetch_image):
   if st['saved'].get(k):continue
   if not has(scene):st['saved'][k]='no-image';ledger('images',k,'SKIPPED',reason='Studio chưa có ảnh cho cảnh này',scene=i);continue
   if time.monotonic()-began>ROUND_SECONDS:break
-  try:st['saved'][k]=save_scene_image(w.folder,w.sid,lay,k,scene['imageResults'][0],i,fetch=fetch);ledger('images',k,'COMPLETED',result_path=st['saved'][k],scene=i)
+  try:
+   st['saved'][k]=save_scene_image(w.folder,w.sid,lay,k,scene['imageResults'][0],i,fetch=fetch)
+   if cfg.get('tone'):
+    try:tone.balance_file(w.folder,st['saved'][k])
+    except Exception:pass  # a picture that cannot be evened out stays as downloaded
+   ledger('images',k,'COMPLETED',result_path=st['saved'][k],scene=i)
   except Exception as exc:
    tries=st.setdefault('save_tries',{});tries[k]=tries.get(k,0)+1
    if tries[k]>=limit:st['saved'][k]='error';ledger('images',k,'ERROR',error='Không tải được ảnh: '+str(exc)[:200],scene=i)
