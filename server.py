@@ -103,7 +103,8 @@ def studio_deploy(data):
         # Deploy an existing project that has no Studio project yet (e.g. a copy).
         p=project_ops.find(projects(include_duplicates=True),str(data['project']))
         if project_ops.load(p['folder']).get('studio_project_id'): raise ValueError('Dự án này đã có Studio; dùng bảng công việc để chạy tiếp')
-        manager().stop(p['id'])
+        # Only a project that is still running/paused/waiting needs stopping; one that is already stopped is ready (stopping it again was an error).
+        if manager().get(p['id'])['status'] in ('running','paused','waiting'): manager().stop(p['id'])
     else:
         p=create_project(name or ('YouTube '+vid if url else ''),script); manager().add(p); manager().stop(p['id'])
     # The project keeps its own inputs (link, prompts, options), so a copy or a new PC can run it again.
