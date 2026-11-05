@@ -1,6 +1,7 @@
 """Single-project Studio orchestration using its existing API. No prompt rewriting."""
 import hashlib,json,os,re,time,urllib.parse,urllib.request,uuid
 from pathlib import Path
+from . import fsutil
 from . import window_manager as wm
 API='https://gqzolyrdhlabcvjewlpo.supabase.co/functions/v1/studio-api'
 ID=re.compile(r'[A-Za-z0-9-]{16,64}')
@@ -12,7 +13,7 @@ SCRIPT_WAIT=600
 def atomic(path,value):
  path=Path(path);path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_suffix('.tmp')
  with tmp.open('w',encoding='utf8') as f:json.dump(value,f,ensure_ascii=False);f.flush();os.fsync(f.fileno())
- tmp.replace(path)
+ fsutil.replace_retry(tmp,path)
 
 class StudioAPI:
  def create(self,sid):

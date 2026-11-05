@@ -1,6 +1,7 @@
 """One-scene image orchestration through existing Studio endpoints and file verification."""
 import hashlib,io,json,urllib.request,urllib.parse
 from pathlib import Path
+from . import fsutil
 from PIL import Image
 
 def rows(session):
@@ -51,7 +52,7 @@ def save_image(folder,sid,key,result,ordinal=0,fetch=fetch_image,name=None,proje
  filename=(name+ext) if name else sid[:8]+'_Scene_'+str(ordinal).zfill(4)+'_'+hashlib.sha256(key.encode()).hexdigest()[:24]+ext;path=folder/filename
  if path.exists() and path.read_bytes()!=data:raise RuntimeError('Ảnh đã có nhưng khác nội dung; không ghi đè')
  from .studio_workflow import atomic
- tmp=Path(str(path)+'.download');tmp.write_bytes(data);tmp.replace(path)
+ tmp=Path(str(path)+'.download');tmp.write_bytes(data);fsutil.replace_retry(tmp,path)
  atomic(record,{'scene_key':key,'file':filename,'sha256':hashlib.sha256(data).hexdigest()})
  return str(path)
 

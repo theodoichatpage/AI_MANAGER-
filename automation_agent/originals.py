@@ -5,6 +5,7 @@ Studio's server, so full-size pictures never travel through Supabase (its egress
 <project>/.vis/goc/<job id>.<ext>; "Tải ảnh" and "Tách ảnh" read from here before downloading anything."""
 import base64,binascii,io,re
 from pathlib import Path
+from . import fsutil
 
 FOLDER=('.vis','goc')
 JOB=re.compile(r'[A-Za-z0-9_-]{6,80}')
@@ -34,7 +35,7 @@ def save(project,job_id,data_url):
  target=folder(project);target.mkdir(parents=True,exist_ok=True);_hide(target.parent)
  path=target/(job_id+EXT[m.group(1)])
  if path.exists() and path.read_bytes()==data:return path
- tmp=path.with_name(path.name+'.tmp');tmp.write_bytes(data);tmp.replace(path)
+ tmp=path.with_name(path.name+'.tmp');tmp.write_bytes(data);fsutil.replace_retry(tmp,path)
  return path
 
 def find(project,result):
