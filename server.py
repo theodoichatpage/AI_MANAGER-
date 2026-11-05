@@ -477,15 +477,6 @@ class Handler(BaseHTTPRequestHandler):
                     if action=='delete': return self.send(200,project_ops.delete(p,q,config()['root']))
                     if action=='update': return self.send(200,project_ops.update(p,data,atomic))
                     if action=='open': os.startfile(p['folder']); return self.send(200,{'ok':True})
-                    if action in ('parallax_now','parallax_stop','parallax_open'):
-                        from automation_agent import parallax_video
-                        if action=='parallax_open': return self.send(200,{'ok':True,'exe':parallax_video.open_program()})
-                        if action=='parallax_stop': parallax_video.stop_manual(p['folder']); return self.send(200,{'ok':True})
-                        cfg=p.get('work_config') or {}; job=parallax_video.start_manual(p['folder'],'16:9',cfg.get('parallax_motion','random'),bool(data.get('rerun')))
-                        return self.send(200,{'ok':True,'pid':job['pid']})
-                    if action=='organize_tach_anh':
-                        from automation_agent import tach_anh
-                        moved,skipped=tach_anh.organize(p['folder']); return self.send(200,{'moved':moved,'skipped':skipped})
                     raise ValueError('Thao tác không hợp lệ')
                 if path=='/api/studio-deploy': return self.send(201,studio_deploy(data))
                 if path=='/api/root':
