@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sản xuất truyện · AI Manager</title>
+<style>
+:root{--bg:#0b0b0c;--card:#141416;--line:#26262a;--text:#f2f2f2;--muted:#8b8b90;--accent:#ff5a1f;--ok:#4ade80;--bad:#ffb59c}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Arial,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px}h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0 0 10px}
+p.sub{color:var(--muted);margin:0 0 20px}a{color:var(--accent)}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:16px}@media(max-width:860px){.grid{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--line);padding:16px;margin-bottom:16px}
+label{display:block;color:var(--muted);font-size:12px;margin:8px 0 3px}input,select,textarea{width:100%;background:#0f0f11;color:var(--text);border:1px solid var(--line);padding:7px 8px;font:inherit}
+.row{display:flex;gap:8px}.row>*{flex:1}
+button{height:32px;padding:0 12px;background:#1d1d20;color:var(--text);border:1px solid var(--line);cursor:pointer;font:inherit}button.primary{background:var(--accent);border-color:var(--accent);color:#0b0b0c;font-weight:700}
+.code{font:700 28px/1 monospace;letter-spacing:4px;color:var(--accent);margin:8px 0}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--muted)}.dot.ok{background:var(--ok)}
+table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:top}th{color:var(--muted);font-weight:400;font-size:12px}
+.tag{display:inline-block;padding:1px 7px;border:1px solid var(--line);font-size:12px}.tag.running,.tag.accepted{border-color:var(--accent);color:var(--accent)}.tag.done{border-color:var(--ok);color:var(--ok)}.tag.rejected,.tag.partially_done{color:var(--bad)}
+.muted{color:var(--muted)}#msg{min-height:20px;color:var(--bad)}.chap{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body><main>
+<h1>Sản xuất truyện</h1>
+<p class="sub">Gửi lệnh viết chương sang Xưởng Nội Dung qua extension Sudowrite Adapter. Chương được lưu trong Xưởng; trang này chỉ theo dõi tiến độ. <a href="/">← Về AI Manager</a></p>
+<div class="grid">
+<div>
+ <section><h2>Kết nối Sudowrite Adapter</h2><div id="pair"></div></section>
+ <section><h2>Lệnh sản xuất mới</h2>
+  <label>Mã truyện trong Xưởng (project_id)</label><input id="project_id" placeholder="Xưởng → Sudowrite Adapter → Sao chép mã truyện">
+  <label>Tên truyện (để dễ nhận)</label><input id="project_title">
+  <div class="row"><div><label>Từ chương</label><input id="chapter_start" type="number" min="1" value="1"></div><div><label>Số chương</label><input id="chapter_count" type="number" min="1" max="50" value="5"></div></div>
+  <div class="row"><div><label>Phiên bản Story Bible</label><input id="story_bible_version" type="number" min="1" value="1"></div><div><label>Số chữ / chương</label><input id="target_word_count" type="number" min="300" max="10000" value="2000"></div></div>
+  <div class="row"><div><label>Ai viết</label><select id="writer"><option value="chatgpt">ChatGPT</option><option value="sudowrite">Sudowrite (bán tự động)</option></select></div><div><label>Ai sửa</label><select id="reviser"><option value="chatgpt">ChatGPT</option><option value="sudowrite">Sudowrite (bán tự động)</option></select></div></div>
+  <div class="row"><div><label>Điểm đạt</label><input id="approval_threshold" type="number" min="50" max="100" value="85"></div><div><label>Số vòng sửa tối đa</label><input id="max_revision_rounds" type="number" min="0" max="3" value="3"></div></div>
+  <div class="row"><div><label>Ngôn ngữ</label><input id="writing_language" value="en"></div></div>
+  <label>Văn phong (tùy chọn)</label><textarea id="writing_style" rows="2"></textarea>
+  <p id="msg"></p><button class="primary" id="create">Gửi lệnh</button>
+ </section>
+</div>
+<section><h2>Lệnh đã gửi</h2><div id="orders" class="muted">Đang tải…</div></section>
+</div>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LABEL={queued:'Chờ Adapter nhận',accepted:'Xưởng đã nhận',running:'Đang chạy',done:'Xong',partially_done:'Xong một phần',cancelled:'Đã hủy',rejected:'Xưởng từ chối'};
+const CH={queued:'chờ',writing:'đang viết',waiting_user:'chờ bạn viết trên Sudowrite',reviewing:'đang chấm',revising:'đang sửa',review_passed:'đạt, chờ duyệt',human_review:'cần bạn xem',approved:'đã duyệt',ready_to_publish:'chờ đăng',published:'đã đăng',publish_failed:'đăng lỗi',failed:'lỗi',paused:'tạm dừng',cancelled:'đã hủy',skipped_existing:'bỏ qua (đã có)'};
+let code=null,open=new Set;
+async function api(method,path,body){const r=await fetch('/api/story/'+path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(!r.ok||d.ok===false)throw Error(d.message||('Lỗi '+r.status));return d}
+function pairHTML(p){if(p.paired)return `<p><span class="dot ok"></span>Đã ghép đôi${p.extension_version?' · Adapter '+esc(p.extension_version):''}</p><p class="muted">Lần cuối liên lạc: ${esc(p.last_seen?new Date(p.last_seen).toLocaleString('vi-VN'):'—')}</p><button id="revoke">Thu hồi kết nối</button>`;
+ return `<p><span class="dot"></span>Chưa ghép đôi</p>${code?`<div class="code">${esc(code.code)}</div><p class="muted">Mở popup Sudowrite Adapter → nhập mã này. Hết hạn lúc ${esc(new Date(code.expires_at).toLocaleTimeString('vi-VN'))}.</p>`:''}<button class="primary" id="newcode">${code?'Tạo mã khác':'Tạo mã ghép đôi'}</button>`}
+async function chapters(oid){const d=await api('GET','orders/'+encodeURIComponent(oid));return d.chapters.map(c=>`Ch.${c.chapter_no}: ${esc(CH[c.state]||c.state)}${c.score!=null?' · '+c.score+'/100':''}${c.round?' · vòng '+c.round:''}${c.message?' · '+esc(c.message):''}`).join('<br>')||'Chưa có tiến độ'}
+async function render(){try{const s=await api('GET','state');if(s.pairing.paired)code=null;$('pair').innerHTML=pairHTML(s.pairing);
+ $('newcode')&&($('newcode').onclick=async()=>{code=await api('POST','pairing-code');render()});
+ $('revoke')&&($('revoke').onclick=async()=>{if(confirm('Thu hồi kết nối với Sudowrite Adapter? Adapter phải ghép đôi lại.')){await api('POST','revoke');render()}});
+ if(!s.orders.length){$('orders').innerHTML='Chưa có lệnh nào.';return}
+ const rows=await Promise.all(s.orders.map(async o=>`<tr><td><b>${esc(o.project_title||o.project_id)}</b><div class="chap">${esc(o.order_id)}</div></td><td>Ch.${o.chapter_start}–${o.chapter_start+o.chapter_count-1}<div class="chap">${o.writer==='sudowrite'?'Sudowrite':'ChatGPT'} viết · đạt ${o.approval_threshold}</div></td><td><span class="tag ${esc(o.status)}">${esc(LABEL[o.status]||o.status)}</span>${o.reason?`<div class="chap">${esc(o.reason)}</div>`:''}<div class="chap">${['accepted','running','done','partially_done'].includes(o.status)?await chapters(o.order_id):''}</div></td><td>${['queued','accepted','running'].includes(o.status)?`<button data-c="pause" data-o="${esc(o.order_id)}">Tạm dừng</button> <button data-c="resume" data-o="${esc(o.order_id)}">Tiếp tục</button> <button data-c="cancel" data-o="${esc(o.order_id)}">Hủy</button>`:''}</td></tr>`));
+ $('orders').innerHTML=`<table><thead><tr><th>Truyện</th><th>Chương</th><th>Trạng thái</th><th></th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+ document.querySelectorAll('[data-c]').forEach(b=>b.onclick=async()=>{if(b.dataset.c==='cancel'&&!confirm('Hủy lệnh này?'))return;await api('POST','orders/'+encodeURIComponent(b.dataset.o)+'/control',{action:b.dataset.c});render()})}catch(e){$('orders').textContent=e.message}}
+$('create').onclick=async()=>{$('msg').textContent='';try{const n=id=>Number($(id).value);await api('POST','orders',{project_id:$('project_id').value.trim(),project_title:$('project_title').value.trim(),chapter_start:n('chapter_start'),chapter_count:n('chapter_count'),story_bible_version:n('story_bible_version'),target_word_count:n('target_word_count'),writer:$('writer').value,reviser:$('reviser').value,approval_threshold:n('approval_threshold'),max_revision_rounds:n('max_revision_rounds'),writing_language:$('writing_language').value.trim(),writing_style:$('writing_style').value});render()}catch(e){$('msg').textContent=e.message}};
+render();setInterval(render,10000);
+</script>
+</body></html>

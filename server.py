@@ -264,6 +264,14 @@ def synchronized_state(q):
     engine=local_engine()
     return {'engine':engine,'studio_batch':batch,'application_paths':application_paths,'version':VERSION,'download_url':DOWNLOAD_URL,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot(),'extension_update':EXT_UPDATER.snapshot()}
 
+import story_orders
+_STORY=None
+def story_store():
+    global _STORY
+    with LOCK:
+        if _STORY is None: _STORY=story_orders.StoryStore(BASE/'story'/'story.sqlite3')
+        return _STORY
+
 def render_index():
     page=(Path(__file__).parent/'index.html').read_text(encoding='utf-8')
     page=re.sub(r'Phiên bản\s+[^<·]+\s+\(v[^)]+\)',f'Phiên bản {VERSION} (v{VERSION})',page, count=1)
@@ -284,6 +292,8 @@ class Handler(BaseHTTPRequestHandler):
         if path in ('/manager_ui.js','/manager_ui.css','/manager_settings.js'): return self.send(200,(Path(__file__).parent/path[1:]).read_bytes(),('application/javascript' if path.endswith('.js') else 'text/css')+'; charset=utf-8')
         if path in ('/logo.svg','/favicon.ico'): return self.send(200,(Path(__file__).parent/'assets'/('logo.svg' if path=='/logo.svg' else 'ai_manager.ico')).read_bytes(),'image/svg+xml' if path=='/logo.svg' else 'image/x-icon')
         if path=='/theme.css': return self.send(200,(Path(__file__).parent/'theme.css').read_bytes(),'text/css; charset=utf-8')
+        if path=='/story': return self.send(200,(Path(__file__).parent/'story.html').read_bytes(),'text/html; charset=utf-8')
+        if path.startswith('/api/story/'): return self.story('GET',None)
         if path=='/work_board.js':return self.send(200,(Path(__file__).parent/'work_board.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/ui_shell.js': return self.send(200,(Path(__file__).parent/'ui_shell.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/automation.css': return self.send(200,(Path(__file__).parent/'automation.css').read_bytes(),'text/css; charset=utf-8')
@@ -317,7 +327,15 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/api/studio-presence':
             query=parse_qs(urlparse(self.path).query);return self.send(200,PRESENCE.snapshot(query.get('sessionId',[None])[0],query.get('runId',[None])[0]),cors=True)
         self.send(404,{'error':'Không tìm thấy'})
+    def story(self,method,body):
+        # Story production orders for the Sudowrite Adapter (see story_orders.py).
+        u=urlparse(self.path); status,data=story_orders.handle(story_store(),method,u.path,u.query,self.headers,body,VERSION)
+        return self.send(status,data)
     def do_POST(self):
+        if urlparse(self.path).path.startswith('/api/story/'):
+            length=int(self.headers.get('Content-Length','0') or 0)
+            if length>story_orders.MAX_BODY: return self.send(413,{'ok':False,'error':'too_large','message':'Dữ liệu quá lớn'})
+            return self.story('POST',self.rfile.read(length))
         try:
             path=urlparse(self.path).path; length=int(self.headers.get('Content-Length','0'))
             if length>(12_000_000 if path=='/api/studio-image' else 5_000_000): raise ValueError('Dữ liệu quá lớn')
