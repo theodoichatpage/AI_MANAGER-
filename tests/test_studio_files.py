@@ -167,6 +167,8 @@ class Parallax(unittest.TestCase):
   w=W(self.tmp.name,['parallax']);r=studio_files.step(w,SESSION,engine=FakeEngine(),fetch=lambda u:PNG)
   self.assertNotIn('waiting',r);self.assertEqual(r['context']['studio_message'],'Chưa có cảnh đã tách để làm video Parallax')
 
+PARALLAX_BATCH_FOR_TEST=studio_files.PARALLAX_BATCH
+
 class Streaming(unittest.TestCase):
  """While pictures are still being made, separation and Parallax follow the ones that exist (partial=True)."""
  def setUp(self):self.tmp=tempfile.TemporaryDirectory()
@@ -198,6 +200,19 @@ class Streaming(unittest.TestCase):
    state['v']=('done',{'state':'done','done':3,'skipped':0,'scenes':{}})
    ctx=studio_files.step(w,SESSION,engine=engine,fetch=lambda u:PNG,partial=True)
    self.assertEqual(launched,[3],'nothing new: no second run')
+ def test_parallax_does_not_wait_for_the_separation_job_in_flight(self):
+  from unittest.mock import patch
+  from automation_agent import parallax_video
+  w=W(self.tmp.name,['separate','parallax']);launched=[]
+  for n in range(PARALLAX_BATCH_FOR_TEST):
+   d=Path(self.tmp.name)/'Tach anh'/'Phan 1'/('Canh %d'%n);d.mkdir(parents=True);(d/'01_bg.png').write_bytes(b'x')
+  w.j['files']={'saved':{},'sep':{},'job':{'key':'pa:0','ordinal':1,'id':'j0','at':w.now}}
+  engine=FakeEngine();engine.jobs['j0']='processing'
+  def start(project,ratio,motion,rerun):
+   launched.append(1);return {'pid':1,'at':w.now,'status':'s'}
+  with patch.object(parallax_video,'start',start),patch.object(parallax_video,'check',lambda job:('running',{'state':'running','percent':5,'done':0,'total':8})):
+   ctx=studio_files.step(w,SESSION,engine=engine,fetch=lambda u:PNG,partial=True)
+  self.assertEqual(launched,[1],'one run although a separation job is still in flight');self.assertEqual(ctx['studio_parallax_percent'],5)
  def test_lanes_call_it_every_round_when_separation_is_on(self):
   from unittest.mock import patch
   from automation_agent import studio_lanes

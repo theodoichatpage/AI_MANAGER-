@@ -159,7 +159,7 @@ def step(w,s,engine=None,fetch=fetch_image,partial=False):
  seps_left=any((sep.get(k) or {}).get('state') not in ('done','error','no-image') for _,k,_ in seps)
  # 4. Parallax videos: after every picture is downloaded and separated, or (partial) as soon as a batch of scenes is separated.
  more_sep=any(has(scene) and (sep.get(k) or {}).get('state') not in ('done','error','no-image') for _,k,scene in seps)
- if 'parallax' in tasks and not st.get('job') and (partial or (not downloads_left and not seps_left)):
+ if 'parallax' in tasks and (partial or (not st.get('job') and not downloads_left and not seps_left)):  # while pictures are made, Parallax runs beside the separation job
   pv=st.get('parallax')
   ready_now=parallax_video.scenes_ready(w.folder/SEPARATED);new_scenes=ready_now-int(st.get('parallax_seen') or 0)
   go=new_scenes>0 and (not partial or new_scenes>=PARALLAX_BATCH or not more_sep)
