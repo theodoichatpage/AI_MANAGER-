@@ -167,6 +167,51 @@ class Parallax(unittest.TestCase):
   w=W(self.tmp.name,['parallax']);r=studio_files.step(w,SESSION,engine=FakeEngine(),fetch=lambda u:PNG)
   self.assertNotIn('waiting',r);self.assertEqual(r['context']['studio_message'],'Chưa có cảnh đã tách để làm video Parallax')
 
+class Streaming(unittest.TestCase):
+ """While pictures are still being made, separation and Parallax follow the ones that exist (partial=True)."""
+ def setUp(self):self.tmp=tempfile.TemporaryDirectory()
+ def tearDown(self):self.tmp.cleanup()
+ def test_separation_follows_existing_pictures_and_waits_for_the_others(self):
+  w=W(self.tmp.name,['separate']);engine=FakeEngine()
+  for _ in range(8):
+   ctx=studio_files.step(w,SESSION,engine=engine,fetch=lambda u:PNG,partial=True);engine.finish()
+  self.assertNotIn('waiting',ctx,'partial returns the board context, never a wait');self.assertEqual(ctx['studio_separated'],3)
+  self.assertNotIn('no-image',[v.get('state') for v in w.j['files']['sep'].values()],'a scene with no picture yet is not given up')
+  self.assertEqual(len(engine.sent),3)
+  later={'parts':[dict(SESSION['parts'][0]),{'id':'pb','title':'Bắt đầu','scenes':[{'title':'Lương thực','imageStatus':'complete','imageResults':[{'url':'https://x/3'}]},SESSION['parts'][1]['scenes'][1]]}]}
+  for _ in range(4):
+   ctx=studio_files.step(w,later,engine=engine,fetch=lambda u:PNG,partial=True);engine.finish()
+  self.assertEqual(ctx['studio_separated'],4,'the picture that arrived later is separated too')
+ def test_parallax_starts_for_a_batch_then_again_for_new_scenes(self):
+  from unittest.mock import patch
+  from automation_agent import parallax_video
+  w=W(self.tmp.name,['separate','parallax']);engine=FakeEngine();launched=[]
+  def start(project,ratio,motion,rerun):
+   launched.append(parallax_video.scenes_ready(Path(project)/'Tach anh'));return {'pid':len(launched),'at':w.now,'status':'s'}
+  state={'v':('running',{'state':'running','percent':10,'done':0,'total':3})}
+  with patch.object(parallax_video,'start',start),patch.object(parallax_video,'check',lambda job:state['v']):
+   ctx=studio_files.step(w,SESSION,engine=engine,fetch=lambda u:PNG,partial=True)
+   self.assertEqual(launched,[],'no separated scene yet: nothing to start')
+   for _ in range(8):ctx=studio_files.step(w,SESSION,engine=engine,fetch=lambda u:PNG,partial=True);engine.finish()
+   self.assertEqual(launched,[3],'3 scenes are separated and no picture is left to separate: one run starts')
+   self.assertEqual(ctx['studio_parallax_percent'],10);self.assertNotIn('waiting',ctx)
+   state['v']=('done',{'state':'done','done':3,'skipped':0,'scenes':{}})
+   ctx=studio_files.step(w,SESSION,engine=engine,fetch=lambda u:PNG,partial=True)
+   self.assertEqual(launched,[3],'nothing new: no second run')
+ def test_lanes_call_it_every_round_when_separation_is_on(self):
+  from unittest.mock import patch
+  from automation_agent import studio_lanes
+  import tests.test_studio_lanes as tl
+  st=tl.FakeStudio(parts=1,scenes=2);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'} for _ in range(2)])
+  w=tl.W(st,[tl.worker('laneA')],tasks=('images','separate'));calls=[]
+  with patch('automation_agent.studio_files.step',lambda *a,**k:calls.append(k.get('partial')) or {'studio_separated':1,'studio_separate_total':2,'studio_message':'Đang tách'}):
+   studio_lanes.step(w,st.s,post=st.post)
+  self.assertEqual(calls,[True])
+  w2=tl.W(st,[tl.worker('laneA')],tasks=('images',))
+  with patch('automation_agent.studio_files.step',lambda *a,**k:calls.append('no')):
+   studio_lanes.step(w2,st.s,post=st.post)
+  self.assertEqual(calls,[True],'not called when neither separation nor Parallax is on')
+
 class Actions(unittest.TestCase):
  def test_files_only_needs_no_browser_and_separation_runs_last(self):
   sid='a'*32

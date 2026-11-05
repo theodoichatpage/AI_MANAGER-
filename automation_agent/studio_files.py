@@ -14,6 +14,7 @@ from .work_config import in_scope,validate_extent
 from . import parallax_video,local_engine_boot
 
 ENGINE='http://127.0.0.1:17841'
+PARALLAX_BATCH=8       # while pictures are still being made, a Parallax run starts once this many new scenes are separated
 PARALLAX_TRIES=3      # Parallax25D is started again after an interruption, up to this many runs in total
 JOB_LIMIT=1800        # one picture may take this long in the Local Engine
 ROUND_SECONDS=20      # downloads per round stop after this, so STOP stays responsive
@@ -79,7 +80,10 @@ def unpack_layers(data,dest,backups):
  tmp.rename(dest)
  return str(dest)
 
-def step(w,s,engine=None,fetch=fetch_image):
+def step(w,s,engine=None,fetch=fetch_image,partial=False):
+ """partial=True: called in every round of the image lanes, so separation and Parallax start on the pictures that already exist
+ instead of waiting for the last one. Pictures are saved by the lanes themselves; a scene without a picture is simply not ready
+ yet (it is not marked 'no-image'); it returns the board context instead of a wait/finish."""
  engine=engine or Engine()
  cfg=w.c['work_config'];tasks=cfg['tasks'];limit=int(cfg.get('retry_limit',2))+1;now=w.clock()
  allrows=rows(s);lay=layout(s);st=w.j.setdefault('files',{'saved':{},'sep':{},'job':None})
@@ -88,7 +92,7 @@ def step(w,s,engine=None,fetch=fetch_image):
   sc=cfg['scopes'].get(kind,{'mode':'all'});validate_extent(sc,len(allrows))
   return [(i,k,scene) for i,(k,scene) in enumerate(allrows,1) if in_scope(i,sc)]
  has=lambda scene:scene.get('imageStatus')=='complete' and bool(scene.get('imageResults'))
- saves=scope('sync');seps=scope('separate');run=w.c.get('studio_run_id') or 'run'
+ saves=[] if partial else scope('sync');seps=scope('separate');run=w.c.get('studio_run_id') or 'run'
  ledger=lambda kind,key,state,**v:w.ledger.update(kind,key,state,**v) if w.ledger else None
  # 1. Downloads (a few per round).
  began=time.monotonic()
@@ -128,7 +132,9 @@ def step(w,s,engine=None,fetch=fetch_image):
    dest=separation_dir(w.folder,lay,k)
    if not cfg.get('rerun') and (dest/'vi_tri.json').exists():
     sep[k]={'state':'done','path':str(dest),'existing':True};ledger('separate',k,'SKIPPED',reason='Đã tách trước đó',result_path=str(dest),scene=i);continue
-   if not has(scene):sep[k]={'state':'no-image'};ledger('separate',k,'SKIPPED',reason='Studio chưa có ảnh',scene=i);continue
+   if not has(scene):
+    if not partial:sep[k]={'state':'no-image'};ledger('separate',k,'SKIPPED',reason='Studio chưa có ảnh',scene=i)
+    continue
    try:
     saved=st['saved'].get(k)
     from . import originals
@@ -151,45 +157,52 @@ def step(w,s,engine=None,fetch=fetch_image):
       'studio_files_failed':failed or None,'studio_message':message,'studio_folder_images':str(w.folder/'Anh') if saves else None,'studio_folder_separated':str(w.folder/SEPARATED) if seps else None}
  downloads_left=any(not st['saved'].get(k) for _,k,_ in saves)
  seps_left=any((sep.get(k) or {}).get('state') not in ('done','error','no-image') for _,k,_ in seps)
- # 4. Parallax videos, after every picture is downloaded and separated.
- if 'parallax' in tasks and not downloads_left and not seps_left and not st.get('job'):
+ # 4. Parallax videos: after every picture is downloaded and separated, or (partial) as soon as a batch of scenes is separated.
+ more_sep=any(has(scene) and (sep.get(k) or {}).get('state') not in ('done','error','no-image') for _,k,scene in seps)
+ if 'parallax' in tasks and not st.get('job') and (partial or (not downloads_left and not seps_left)):
   pv=st.get('parallax')
+  ready_now=parallax_video.scenes_ready(w.folder/SEPARATED);new_scenes=ready_now-int(st.get('parallax_seen') or 0)
+  go=new_scenes>0 and (not partial or new_scenes>=PARALLAX_BATCH or not more_sep)
+  if pv and pv.get('state') in ('done','none') and go:pv=None  # scenes were separated since the last run: make their videos too
   def relaunch(reason):
    """Parallax25D stopped half way or some videos failed: start it again, it only makes the missing videos."""
    try:job=parallax_video.start(w.folder,w.c.get('studio_ratio','16:9'),cfg.get('parallax_motion','random'),False)
    except (OSError,ValueError) as exc:pv.update(state='error',error=str(exc)[:300]);return
    pv.update(job,state='running',attempts=pv.get('attempts',1)+1,note=str(reason)[:200],failed=[])
-  if pv is None:
-   ready=parallax_video.scenes_ready(w.folder/SEPARATED)
-   if not ready:pv={'state':'none'}
+  if pv is None and (go or not partial):
+   if not ready_now:pv={'state':'none'}
    else:
-    try:pv=dict(parallax_video.start(w.folder,w.c.get('studio_ratio','16:9'),cfg.get('parallax_motion','random'),bool(cfg.get('rerun'))),state='running',scenes=ready)
+    try:pv=dict(parallax_video.start(w.folder,w.c.get('studio_ratio','16:9'),cfg.get('parallax_motion','random'),bool(cfg.get('rerun'))),state='running',scenes=ready_now)
     except (OSError,ValueError) as exc:pv={'state':'error','error':str(exc)[:300]}
+    st['parallax_seen']=ready_now
    st['parallax']=pv;w.save()
-  if pv.get('state')=='running':
-   kind,info=parallax_video.check(pv)
-   if kind=='running':
-    made=int(info.get('done') or 0)+int(info.get('skipped') or 0);pct=int(info.get('percent') or 0)
-    now_doing=', '.join(info.get('current') or [])[:120]
-    msg='Đang khởi động Parallax25D…' if info.get('state')=='starting' else 'Làm video Parallax %d%% (%d/%s cảnh)%s'%(pct,made,info.get('total','?'),(': '+now_doing) if now_doing else '')
-    if pv.get('attempts',1)>1:msg+=' · chạy lại lần %d/%d sau khi bị gián đoạn'%(pv['attempts'],PARALLAX_TRIES)
-    return w.wait('parallax:%d:%d'%(made,pct),JOB_LIMIT+600,dict(ctx,studio_stage='Làm video Parallax',studio_message=msg,studio_parallax_percent=pct,studio_folder_parallax=str(w.folder/parallax_video.OUTPUT)))
-   if kind=='done':
-    scenes=info.get('scenes') or {}
-    pv.update(state='done',made=int(info.get('done') or 0),skipped=int(info.get('skipped') or 0),failed=[n for n,r in scenes.items() if (r or {}).get('state')=='error'])
-    for name,row in scenes.items():
-     row=row or {};state={'done':'COMPLETED','skipped':'SKIPPED','error':'ERROR'}.get(row.get('state'))
-     if state:ledger('parallax',name[:200],state,result_path=row.get('video'),**({'error':str(row.get('error'))[:200]} if row.get('error') else {}))
-   else:
-    if pv.get('attempts',1)<PARALLAX_TRIES:relaunch(info)
-    else:pv.update(state='error',error=info)
-   if pv.get('state')=='done' and pv.get('failed') and pv.get('attempts',1)<PARALLAX_TRIES:relaunch('Có %d video lỗi'%len(pv['failed']))
-   w.save()
-  if pv.get('state')=='running':return w.wait('parallax:again:%d'%pv.get('attempts',1),JOB_LIMIT+600,dict(ctx,studio_stage='Làm video Parallax',studio_message='Parallax25D chạy lại sau khi bị gián đoạn (lần %d/%d)…'%(pv.get('attempts',1),PARALLAX_TRIES)))
-  if pv.get('state')=='error':failed.append('Video Parallax: '+pv.get('error',''))
-  failed+=['Video '+n for n in pv.get('failed') or []]
-  ctx.update(studio_parallax_made=pv.get('made'),studio_parallax_skipped=pv.get('skipped'),studio_folder_parallax=str(w.folder/parallax_video.OUTPUT) if pv.get('state')=='done' else None,studio_files_failed=failed or None,
-             studio_message='Chưa có cảnh đã tách để làm video Parallax' if pv.get('state')=='none' else ctx.get('studio_message'))
+  if pv is not None:
+   if pv.get('state')=='running':
+    kind,info=parallax_video.check(pv)
+    if kind=='running':
+     made=int(info.get('done') or 0)+int(info.get('skipped') or 0);pct=int(info.get('percent') or 0)
+     now_doing=', '.join(info.get('current') or [])[:120]
+     msg='Đang khởi động Parallax25D…' if info.get('state')=='starting' else 'Làm video Parallax %d%% (%d/%s cảnh)%s'%(pct,made,info.get('total','?'),(': '+now_doing) if now_doing else '')
+     if pv.get('attempts',1)>1:msg+=' · chạy lại lần %d/%d sau khi bị gián đoạn'%(pv['attempts'],PARALLAX_TRIES)
+     ctx.update(studio_parallax_percent=pct,studio_folder_parallax=str(w.folder/parallax_video.OUTPUT),studio_message=msg,studio_stage='Làm video Parallax')
+     if not partial:return w.wait('parallax:%d:%d'%(made,pct),JOB_LIMIT+600,ctx)
+    elif kind=='done':
+     scenes=info.get('scenes') or {}
+     pv.update(state='done',made=int(info.get('done') or 0),skipped=int(info.get('skipped') or 0),failed=[n for n,r in scenes.items() if (r or {}).get('state')=='error'])
+     for name,row in scenes.items():
+      row=row or {};state={'done':'COMPLETED','skipped':'SKIPPED','error':'ERROR'}.get(row.get('state'))
+      if state:ledger('parallax',name[:200],state,result_path=row.get('video'),**({'error':str(row.get('error'))[:200]} if row.get('error') else {}))
+    else:
+     if pv.get('attempts',1)<PARALLAX_TRIES:relaunch(info)
+     else:pv.update(state='error',error=info)
+    if pv.get('state')=='done' and pv.get('failed') and pv.get('attempts',1)<PARALLAX_TRIES:relaunch('Có %d video lỗi'%len(pv['failed']))
+    w.save()
+   if pv.get('state')=='running' and not partial:return w.wait('parallax:again:%d'%pv.get('attempts',1),JOB_LIMIT+600,dict(ctx,studio_stage='Làm video Parallax',studio_message='Parallax25D chạy lại sau khi bị gián đoạn (lần %d/%d)…'%(pv.get('attempts',1),PARALLAX_TRIES)))
+   if pv.get('state')=='error':failed.append('Video Parallax: '+pv.get('error',''))
+   failed+=['Video '+n for n in pv.get('failed') or []]
+   ctx.update(studio_parallax_made=pv.get('made'),studio_parallax_skipped=pv.get('skipped'),studio_folder_parallax=str(w.folder/parallax_video.OUTPUT) if pv.get('state')=='done' else ctx.get('studio_folder_parallax'),studio_files_failed=failed or None,
+              studio_message=('Chưa có cảnh đã tách để làm video Parallax' if pv.get('state')=='none' else ctx.get('studio_message')))
+ if partial:return ctx
  if not downloads_left and not seps_left and not st.get('job'):
   if failed and cfg.get('error_policy')=='stop':raise RuntimeError('Dừng: %d mục lỗi (%s)'%(len(failed),', '.join(failed[:5])))
   label='Hoàn tất tải ảnh / tách ảnh'+(' / video Parallax' if 'parallax' in tasks else '')

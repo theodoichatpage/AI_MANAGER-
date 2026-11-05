@@ -231,6 +231,14 @@ def step(w,s,post=None):
   'studio_total_scenes':sum(len(p.get('scenes') or []) for p in parts),'studio_scope_total':len(images),'studio_images_saved':done_images,
   'studio_images_generated':sum(1 for _,_,sc in images if sc.get('imageStatus')=='complete'),'studio_lanes':lanes_view,'studio_warnings':warnings(workers),
   'studio_attention':attention or None,'studio_failed_items':failed_items or None}
+ # Separation and Parallax follow the pictures already made, one step per round, instead of waiting for the last picture.
+ if images and ('separate' in tasks or 'parallax' in tasks):
+  try:
+   from . import studio_files
+   part=studio_files.step(w,s,partial=True)
+   ctx.update({k:v for k,v in part.items() if k.startswith(('studio_separat','studio_parallax','studio_folder_parallax','studio_folder_separated')) or k=='studio_files_failed'})
+   if part.get('studio_message'):ctx['studio_stream']=part['studio_message']
+  except Exception as exc:attention.append('Tách ảnh / Parallax chưa chạy được vòng này: '+str(exc)[:120]);ctx['studio_attention']=attention
  atomic(w.folder/'analysis'/'studio_lanes.json',dict(ctx,items=items,updated_at=now))
  in_flight=any(open_item(k) for k in items)
  scenes_done='scenes' not in tasks or not parts_left
