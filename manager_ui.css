@@ -171,3 +171,15 @@ body.mg .mgs-select{min-height:0!important;padding:0 10px!important;font-size:14
 body.mg .mgs-modal h1,body.mg .mgs-modal h2{text-transform:none;letter-spacing:0}
 
 .mg-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.mg-item .kind{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;flex:none}
+.mg-item .kind svg,.mg-kind-btn .kind svg{width:18px;height:18px}
+.kind.studio{background:#16222b;color:#6cc4ff}.kind.story{background:#2b2116;color:#ffb35c}
+.mg-item.sel .kind.studio{color:#6cc4ff}.mg-item.sel .kind.story{color:#ffb35c}
+.mg-item.sel>.kind svg{color:inherit}
+.mg-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;z-index:50}
+.mg-dialog{background:#1c1c1f;border:1px solid var(--mg-line);border-radius:14px;padding:18px;min-width:340px;display:grid;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.mg-dialog h3{margin:0 0 4px}
+.mg-kind-btn{display:flex;align-items:center;gap:12px;text-align:left;padding:12px;border-radius:10px;border:1px solid var(--mg-line);background:var(--mg-panel2);color:var(--mg-text);cursor:pointer}
+.mg-kind-btn:hover{border-color:var(--mg-accent)}
+.mg-kind-btn .kind{display:grid;place-items:center;width:36px;height:36px;border-radius:10px}
+.mg-kind-btn small{display:block;color:var(--mg-muted);font-size:12px}

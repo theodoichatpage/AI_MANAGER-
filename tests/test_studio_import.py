@@ -21,3 +21,13 @@ class StudioImportTests(unittest.TestCase):
       with urllib.request.urlopen(req) as r:self.assertEqual(json.load(r)['id'],old['id'])
      self.assertEqual(len(server.projects()),1);self.assertEqual(len(server.projects(include_duplicates=True)),2);self.assertEqual(q.get(old['id'])['status'],'completed');self.assertTrue(Path(duplicate['folder']).exists());self.assertEqual(json.loads((Path(duplicate['folder'])/'project.json').read_text())['studio_duplicate_of'],old['id'])
    finally:http.shutdown();http.server_close();thread.join();q.close()
+
+
+class LinkedAfterDeploy(unittest.TestCase):
+ def test_a_studio_attached_later_matches_its_own_project(self):
+  from studio_catalog import matches
+  src={'id':'a'*32,'origin':'https://s','browser':'edge','profile':'Default'}
+  p={'studio_source':src,'studio_import_id':'a'*32,'studio_project_id':'b'*32}
+  self.assertTrue(matches(p,dict(src,id='b'*32)))
+  self.assertTrue(matches(p,src))
+  self.assertFalse(matches(p,dict(src,id='c'*32)))

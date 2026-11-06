@@ -2,7 +2,7 @@
    Layout follows the user's mockup: header, "Quản lý dự án" on the left, "Tạo / Chỉnh sửa dự án" on the right,
    progress of the selected project below. Everything else (scenes, images, separation details) belongs to Studio.
    Settings (gear) open a popup: manager_settings.js. */
-let mgSel='',mgForms={},mgSearch='',mgMenu='',mgBusy='',mgMsg='',mgErr='',mgProfilesAsked=false;
+let mgPickKind=false,mgSel='',mgForms={},mgSearch='',mgMenu='',mgBusy='',mgMsg='',mgErr='',mgProfilesAsked=false;
 const MG_ICONS={
  doc:'M7 3h7l5 5v13H7z M14 3v5h5 M10 12h6 M10 16h6',
  link:'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
@@ -16,7 +16,8 @@ const MG_ICONS={
  gear:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
  dots:'M12 5h.01 M12 12h.01 M12 19h.01',
  pen:'M4 20h4L19 9l-4-4L4 16z',copy:'M9 9h11v11H9z M5 15H4V4h11v1',trash:'M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13',
- back:'M15 18l-6-6 6-6'};
+ back:'M15 18l-6-6 6-6',
+ book:'M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z M5 17a3 3 0 0 1 3-3h10 M9 8h5',film:'M4 5h16v14H4z M8 5v14 M16 5v14 M4 9h4 M4 15h4 M16 9h4 M16 15h4'};
 function mgSvg(n,fill){return `<svg viewBox="0 0 24 24"${fill?' style="fill:currentColor;stroke:none"':''}><path d="${MG_ICONS[n]}"/></svg>`}
 function mgProjects(){return (state.projects||[]).filter(p=>!p.simulation_test_key).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')))}
 function mgDate(v){const d=new Date(v||0);return isNaN(d)||!v?'':d.toLocaleDateString('vi-VN',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}
@@ -43,7 +44,7 @@ function mgHeader(){
 }
 function mgListHTML(){
  const q=mgSearch.trim().toLowerCase(),list=mgProjects().filter(p=>!q||p.name.toLowerCase().includes(q));
- return list.map(p=>`<div class="mg-item ${p.id===mgSel?'sel':''}" onclick="mgPick('${p.id}')">${mgSvg('doc')}<div class="t"><div class="n" title="${autoAttr(p.name)}">${esc(p.name)}</div><div class="d">${esc(mgDate(p.created_at))}</div></div><button class="k" title="Tuỳ chọn" onclick="event.stopPropagation();mgMenu=mgMenu==='${p.id}'?'':'${p.id}';render()">${mgSvg('dots')}</button>${mgMenu===p.id?`<div class="mg-menu" onclick="event.stopPropagation()"><button onclick="mgRename('${p.id}')">${mgSvg('pen')} Sửa tên</button><button onclick="mgCopy('${p.id}')">${mgSvg('copy')} Sao chép</button><button class="del" onclick="mgDelete('${p.id}')">${mgSvg('trash')} Xóa</button></div>`:''}</div>`).join('')||`<div class="mg-note" style="padding:10px">${q?'Không có dự án khớp.':'Chưa có dự án.'}</div>`;
+ return list.map(p=>`<div class="mg-item ${p.id===mgSel?'sel':''}" onclick="mgPick('${p.id}')"><span class="kind ${p.kind==='story'?'story':'studio'}" title="${p.kind==='story'?'Dự án cho Xưởng Nội Dung':'Dự án cho Studio'}">${mgSvg(p.kind==='story'?'book':'film')}</span><div class="t"><div class="n" title="${autoAttr(p.name)}">${esc(p.name)}</div><div class="d">${esc(mgDate(p.created_at))}</div></div><button class="k" title="Tuỳ chọn" onclick="event.stopPropagation();mgMenu=mgMenu==='${p.id}'?'':'${p.id}';render()">${mgSvg('dots')}</button>${mgMenu===p.id?`<div class="mg-menu" onclick="event.stopPropagation()"><button onclick="mgRename('${p.id}')">${mgSvg('pen')} Sửa tên</button><button onclick="mgCopy('${p.id}')">${mgSvg('copy')} Sao chép</button><button class="del" onclick="mgDelete('${p.id}')">${mgSvg('trash')} Xóa</button></div>`:''}</div>`).join('')||`<div class="mg-note" style="padding:10px">${q?'Không có dự án khớp.':'Chưa có dự án.'}</div>`;
 }
 function mgFormHTML(p){
  if(!p)return `<section class="mg-card"><h2>${mgSvg('doc')} Tạo / Chỉnh sửa dự án</h2><div class="mg-note">Bấm “Tạo dự án mới” để bắt đầu.</div></section>`;
@@ -101,11 +102,13 @@ function mgHTML(){
  const p=mgCurrent();
  return `${mgHeader()}<div class="mg-body"><div class="mg-card mg-side"><h2>${mgSvg('doc')} Quản lý dự án</h2><button class="mg-btn primary wide" onclick="mgNew()">${mgSvg('plus')} Tạo dự án mới</button>
  <div class="mg-search">${mgSvg('search')}<input id="neo_mg_search" placeholder="Tìm dự án..." value="${autoAttr(mgSearch)}" oninput="mgSearch=this.value;document.querySelector('.mg-list').innerHTML=mgListHTML()"></div><div class="mg-list" data-scroll-key="mg-list">${mgListHTML()}</div></div>
- <div class="mg-main">${mgFormHTML(p)}${mgStatusHTML(p)}</div></div>`;
+ <div class="mg-main">${p&&p.kind==='story'?`<section class="mg-card"><h2>${mgSvg('book')} Dự án cho Xưởng Nội Dung</h2><div class="mg-note">Dự án này nhận lệnh viết chương từ Xưởng Nội Dung (Sudowrite Adapter). Không có bước ảnh/Parallax của Studio.</div></section>`:`${mgFormHTML(p)}${mgStatusHTML(p)}`}</div></div>${mgKindPopup()}`;
 }
 function mgPick(id){mgSel=id;mgMenu='';mgMsg='';mgErr='';render()}
 async function mgRun(kind,fn){mgBusy=kind;mgErr='';mgMsg='';render();try{await fn()}catch(e){mgErr=e.message}finally{mgBusy='';await refresh().catch(()=>{});render()}}
-function mgNew(){const name=prompt('Tên dự án mới:','');if(!name||!name.trim())return;mgRun('new',async()=>{const p=await api('/api/project',{name:name.trim(),script:''});mgSel=p.id;mgMsg='Đã tạo “'+p.name+'”. Nhập link hoặc kịch bản rồi bấm Triển khai toàn bộ.'})}
+function mgNew(){mgPickKind=true;render()}
+function mgNewKind(kind){mgPickKind=false;if(!kind){render();return}const name=prompt(kind==='story'?'Tên dự án cho Xưởng Nội Dung:':'Tên dự án cho Studio:','');if(!name||!name.trim()){render();return}mgRun('new',async()=>{const p=await api('/api/project',{name:name.trim(),script:'',kind});mgSel=p.id;mgMsg=kind==='story'?'Đã tạo “'+p.name+'” cho Xưởng Nội Dung.':'Đã tạo “'+p.name+'”. Nhập link hoặc kịch bản rồi bấm Triển khai toàn bộ.'})}
+function mgKindPopup(){return mgPickKind?`<div class="mg-overlay" onclick="mgNewKind('')"><div class="mg-dialog" onclick="event.stopPropagation()"><h3>Tạo dự án cho…</h3><button class="mg-kind-btn" onclick="mgNewKind('studio')"><span class="kind studio">${mgSvg('film')}</span><span><b>Studio</b><small>Video: kịch bản, ảnh, tách ảnh, Parallax</small></span></button><button class="mg-kind-btn" onclick="mgNewKind('story')"><span class="kind story">${mgSvg('book')}</span><span><b>Xưởng Nội Dung</b><small>Truyện: viết chương theo lệnh sản xuất</small></span></button><button class="mg-btn outline" onclick="mgNewKind('')">Hủy</button></div></div>`:''}
 function mgRename(id){mgMenu='';const p=state.projects.find(x=>x.id===id);const name=prompt('Tên mới:',p?.name||'');if(!name||!name.trim()||name.trim()===p?.name){render();return}mgRun('rename',async()=>{await api('/api/project-action',{id,action:'rename',name:name.trim()});mgMsg='Đã đổi tên'+(p?.studio_project_id?'; Studio nhận tên mới khi tab Studio mở':'')})}
 function mgCopy(id){mgMenu='';mgRun('copy',async()=>{const r=await api('/api/project-action',{id,action:'copy'});mgSel=r.id;mgMsg='Đã sao chép thành “'+r.name+'”.'})}
 function mgDelete(id){mgMenu='';const p=state.projects.find(x=>x.id===id);if(!confirm('Xóa dự án “'+(p?.name||'')+'”?\n\nThư mục được chuyển vào _Thung_rac trong thư mục dự án, không bị xóa hẳn.')){render();return}mgRun('delete',async()=>{await api('/api/project-action',{id,action:'delete'});delete mgForms[id];mgSel='';mgMsg='Đã chuyển vào thùng rác.'})}

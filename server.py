@@ -158,7 +158,7 @@ def projects(include_duplicates=False):
                 if data.get('schema')=='ai-manager-1' and (include_duplicates or not data.get('studio_duplicate_of')): result.append(data)
             except (OSError,ValueError): continue
     return result
-def create_project(name, script, test_key=None):
+def create_project(name, script, test_key=None, kind='studio'):
     name=name.strip() or next((x.strip() for x in script.splitlines() if x.strip()),'')[:100]
     if not name: raise ValueError('Nhập tên dự án hoặc kịch bản.')
     root=Path(config()['root']); root.mkdir(parents=True,exist_ok=True); used=[int(m.group(1)) for p in root.iterdir() if (m:=re.match(r'^(\d+)_',p.name))]; n=max(used,default=0)+1
@@ -168,6 +168,7 @@ def create_project(name, script, test_key=None):
         except FileExistsError: n+=1
     now=datetime.now(timezone.utc).isoformat(); project={'schema':'ai-manager-1','id':str(uuid.uuid4()),'name':name,'folder':str(folder),'created_at':now,'status':'Chưa bắt đầu','script':script,'parts':0,'scenes':0,'images':0,'errors':0,'browser':'chrome','browser_profile':'Default','browser_profile_name':'Default'}
     if test_key: project['simulation_test_key']=test_key
+    if kind=='story': project['kind']='story'  # a project for the Xưởng Nội Dung; every other project is for Studio
     for d in ('analysis','scenes','prompts','images','logs'): (folder/d).mkdir()
     atomic(folder/'project.json',project); (folder/'logs'/'activity.log').write_text(f'{now} – Đã tạo dự án\n',encoding='utf-8'); return project
 
@@ -444,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not any(x['id']==p['id'] for x in q.list()):
                         q.add(p);q.stop(p['id'])
                     return self.send(200,p)
-                if path=='/api/project': p=create_project(str(data.get('name','')),str(data.get('script',''))); manager().add(p); return self.send(201,p)
+                if path=='/api/project': p=create_project(str(data.get('name','')),str(data.get('script','')),kind='story' if data.get('kind')=='story' else 'studio'); manager().add(p); return self.send(201,p)
                 if path=='/api/app':
                     import app_tools, install_app
                     action=data.get('action'); busy=any(x.get('status') in ('running','paused') for x in manager().list())
