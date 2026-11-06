@@ -34,6 +34,10 @@ class QueueManager:
  def _enabled(self,value=None):
   if value is not None: self.db.execute("INSERT OR REPLACE INTO settings VALUES('enabled',?)",('1' if value else '0',))
   r=self.db.execute("SELECT value FROM settings WHERE key='enabled'").fetchone(); return bool(r and r[0]=='1')
+ def _single(self,value=None):
+  if value is not None:self.db.execute("INSERT OR REPLACE INTO settings VALUES('single_project',?)",(value,))
+  row=self.db.execute("SELECT value FROM settings WHERE key='single_project'").fetchone()
+  return row[0] if row else ''
  def _log(self,pid,message): self.db.execute('INSERT INTO log(at,project_id,message) VALUES(?,?,?)',(now(),pid,message))
  def logs(self):
   with self.lock: return [dict(x) for x in self.db.execute('SELECT log.*, projects.name FROM log LEFT JOIN projects ON projects.id=log.project_id ORDER BY log.id DESC LIMIT 500')]
@@ -70,14 +74,22 @@ class QueueManager:
   if not self._enabled() or self._running(): return
   # A paused project blocks automatic advancement until explicitly resumed/stopped.
   if self.db.execute("SELECT 1 FROM projects WHERE status='paused'").fetchone(): return
-  p=self.db.execute("SELECT * FROM projects WHERE status='waiting' ORDER BY position LIMIT 1").fetchone()
-  if p: self._launch(dict(p))
+  single=self._single()
+  p=self.db.execute("SELECT * FROM projects WHERE status='waiting' AND (?='' OR id=?) ORDER BY position LIMIT 1",(single,single)).fetchone()
+  if p:self._launch(dict(p))
+  elif single:
+   selected=self.db.execute('SELECT status FROM projects WHERE id=?',(single,)).fetchone()
+   # Keep explicit Retry available after failure; the scope still blocks every other project.
+   if not selected or selected['status']!='failed':self._enabled(False)
  def start_selected(self,pid):
   with self.lock,self.db:
    p=self.get(pid)
    if p['execution_mode']!='automation' or not p['automation_task_id']:raise ValueError('Lưu liên kết Studio trước khi chạy')
    if p['status'] not in ('waiting','stopped'):raise ValueError('Dự án không ở trạng thái chờ/đã dừng')
-   if any(x['id']!=pid and x['status'] in ('waiting','running','paused') for x in self.list()):raise ValueError('Dừng các dự án khác trong hàng đợi trước khi chạy riêng dự án này')
+   blockers=[x['name'] for x in self.list() if x['id']!=pid and x['status'] in ('running','paused')]
+   if blockers:raise ValueError('Dừng hoặc tiếp tục dự án đang chạy/tạm dừng: '+', '.join(blockers))
+   self._single(pid)
+   self.db.execute("INSERT OR REPLACE INTO settings VALUES('studio_batch',?)",(json.dumps([pid]),))
    self._set(pid,status='waiting');self._enabled(True);self._next()
  def order_prepared(self,ids):
   with self.lock,self.db:
@@ -97,7 +109,7 @@ class QueueManager:
    selected=[self.get(pid) for pid in ids]
    invalid=[p['name'] for p in selected if p['execution_mode']!='automation' or not p['automation_task_id'] or p['status'] not in ('waiting','stopped')]
    if invalid:raise ValueError('Chưa chuẩn bị workflow hoặc trạng thái không hợp lệ: '+', '.join(invalid))
-   self._enabled(False)
+   self._enabled(False);self._single('')
    for p in self.list():
     if p['id'] not in ids and p['status']=='waiting':self._set(p['id'],status='stopped')
    for pos,p in enumerate(selected,1):self._set(p['id'],position=pos,status='waiting')
@@ -105,7 +117,7 @@ class QueueManager:
    self.db.execute("INSERT OR REPLACE INTO settings VALUES('studio_batch',?)",(json.dumps(ids),));self._enabled(True);self._next()
  def start_all(self):
   with self.lock,self.db:
-   self._enabled(True)
+   self._single('');self._enabled(True)
    self.db.execute("UPDATE projects SET status='waiting', current_stage='Chờ', updated_at=? WHERE status='stopped'",(now(),)); self._next()
  def pause(self,pid):
   with self.lock,self.db:
