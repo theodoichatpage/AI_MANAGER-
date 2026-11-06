@@ -7,6 +7,19 @@ API='https://gqzolyrdhlabcvjewlpo.supabase.co/functions/v1/studio-api'
 ID=re.compile(r'[A-Za-z0-9-]{16,64}')
 
 LONG_SCRIPT=150000  # characters: above this the structure step cannot go through one ChatGPT reply
+MAX_PARTS=30  # the Studio server keeps at most 30 parts
+def parts_from_sections(secs,limit=MAX_PARTS):
+ """The rewritten sections as Studio parts. While there is room under the limit, the longest part is cut in two at a paragraph break near its middle."""
+ rows=[[str(x.get('title') or '').strip(),str(x['text']).strip()] for x in secs]
+ while len(rows)<limit:
+  i=max(range(len(rows)),key=lambda k:len(rows[k][1]));title,text=rows[i]
+  cuts=[m.end() for m in re.finditer(r'\n\s*\n',text)]
+  if len(text)<4000 or not cuts:break
+  at=min(cuts,key=lambda c:abs(c-len(text)/2))
+  if at<500 or len(text)-at<500:break
+  rows[i:i+1]=[[title,text[:at].strip()],[title+' (tiếp)',text[at:].strip()]]
+ return [{'title':'Phần %d - %s'%(n+1,t[:120]),'range':t[:200],'content':c} for n,(t,c) in enumerate(rows)]
+
 class StudioReviewRequired(RuntimeError):pass
 class StudioScriptMissing(ValueError):pass
 SCRIPT_WAIT=600
@@ -279,7 +292,7 @@ class StudioStep:
     if job and len(script)>LONG_SCRIPT and 2<=len(secs)<=30 and all(str(x.get('text') or '').strip() for x in secs) and len(script)<=sum(len(str(x['text']).strip())+2 for x in secs):
      # ChatGPT is asked to return the whole script word for word, split into parts: impossible for a very long script (the tab hangs).
      # The rewritten sections already are that split, so they become the parts.
-     parts=[{'title':'Phần %d - %s'%(i+1,str(x.get('title') or '').strip()[:120]),'range':str(x.get('title') or '')[:200],'content':str(x['text']).strip()} for i,x in enumerate(secs)]
+     parts=parts_from_sections(secs)
      from . import studio_cache
      studio_cache.call('bridge/'+self.sid+'/event',{'jobId':job,'state':'completed','text':json.dumps({'parts':parts},ensure_ascii=False)},reply='lean')
      if self.ledger:self.ledger.update('analysis','structure','COMPLETED',reason='Kịch bản dài ('+str(len(script))+' ký tự): dùng '+str(len(parts))+' phần viết lại làm cấu trúc, không gửi ChatGPT')
