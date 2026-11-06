@@ -6,6 +6,7 @@ from . import window_manager as wm
 API='https://gqzolyrdhlabcvjewlpo.supabase.co/functions/v1/studio-api'
 ID=re.compile(r'[A-Za-z0-9-]{16,64}')
 
+LONG_SCRIPT=150000  # characters: above this the structure step cannot go through one ChatGPT reply
 class StudioReviewRequired(RuntimeError):pass
 class StudioScriptMissing(ValueError):pass
 SCRIPT_WAIT=600
@@ -273,6 +274,16 @@ class StudioStep:
      return self.script_wait(name,s,actual,reconcile(s,self.presence()))
     self.script_checkpoint(script)
     s=self.send('structure','/analysis',{'script':script,'confirmReset':False,'expectedWorkEpoch':s.get('workEpoch',0)},s)
+    secs=(s.get('rewrite') or {}).get('sections') or []
+    job=(s.get('activeJob') or {}).get('id')
+    if job and len(script)>LONG_SCRIPT and 2<=len(secs)<=30 and all(str(x.get('text') or '').strip() for x in secs) and len(script)<=sum(len(str(x['text']).strip())+2 for x in secs):
+     # ChatGPT is asked to return the whole script word for word, split into parts: impossible for a very long script (the tab hangs).
+     # The rewritten sections already are that split, so they become the parts.
+     parts=[{'title':'Phần %d - %s'%(i+1,str(x.get('title') or '').strip()[:120]),'range':str(x.get('title') or '')[:200],'content':str(x['text']).strip()} for i,x in enumerate(secs)]
+     from . import studio_cache
+     studio_cache.call('bridge/'+self.sid+'/event',{'jobId':job,'state':'completed','text':json.dumps({'parts':parts},ensure_ascii=False)},reply='lean')
+     if self.ledger:self.ledger.update('analysis','structure','COMPLETED',reason='Kịch bản dài ('+str(len(script))+' ký tự): dùng '+str(len(parts))+' phần viết lại làm cấu trúc, không gửi ChatGPT')
+     return self.wait(name,60,dict(actual,studio_stage='Phân tích cấu trúc'))
    return self.wait(name,1800,dict(actual,studio_stage='Phân tích cấu trúc'))
   if name=='STUDIO_IMAGES':
    from .studio_images import step
