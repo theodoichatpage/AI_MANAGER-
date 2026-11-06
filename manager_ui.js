@@ -126,7 +126,9 @@ function mgDeploy(id){mgRun('deploy',async()=>{
   if(!link&&!script.trim())throw Error('Tích và nhập Link tham khảo hoặc Kịch bản');
   await api('/api/studio-deploy',{project:id,youtube_url:link,script:link?'':script,rewrite:f.use_rewrite,rewrite_style:f.use_rewrite?f.rewrite_style:'',image_style:f.use_image?f.image_style:'',tasks,lanes});
  }else{
-  await api('/api/automation',{command:'studio_attach',project:id,studio_project_id:p.studio_project_id,studio_url:p.studio_url,browser:'edge',browser_profile:lanes[0]?.profile||p.browser_profile||'Default',work_config:{tasks,scopes:{},error_policy:'continue',retry_limit:2,rerun:false,lanes,separate_layers:p.separate_layers||3}});
+  // The run needs the link and the rewrite prompt again, otherwise it cannot get the transcript or turn it into the script by itself.
+  const extra=link?{studio_youtube_url:link,studio_rewrite:Boolean(f.use_rewrite),studio_language:p.language==='en'?'en':'vi',...(f.use_rewrite&&String(f.rewrite_style||'').trim()?{studio_rewrite_style:String(f.rewrite_style).trim().slice(0,20000)}:{})}:{};
+  await api('/api/automation',{command:'studio_attach',project:id,studio_project_id:p.studio_project_id,studio_url:p.studio_url,browser:'edge',browser_profile:lanes[0]?.profile||p.browser_profile||'Default',studio_extra:extra,work_config:{tasks,scopes:{},error_policy:'continue',retry_limit:2,rerun:false,lanes,separate_layers:p.separate_layers||3}});
   await api('/api/queue',{action:'start_batch',ids:[id]});
  }
  delete mgForms[id];mgMsg=filesOnly?'Đã triển khai: chỉ '+[f.download?'tải ảnh':'',f.separate?'tách ảnh':'',f.parallax?'làm video Parallax':''].filter(Boolean).join(', ')+' từ ảnh đã có.':'Đã triển khai. Manager đang mở Studio và ChatGPT.';
