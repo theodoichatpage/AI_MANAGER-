@@ -58,13 +58,14 @@ def lane_url(base,sid,run,name,lane=None):
  return base+'?'+urllib.parse.urlencode({'managerProject':sid,'managerRun':run,'managerStage':'analysis','managerLane':'1','managerName':name or 'Dự án AI MANAGER',**({'managerLaneId':lane_id(lane['browser'],lane['profile'])} if lane else {})})
 
 def open_lane(lane,url,launch=None):
- """Open ChatGPT + this project's Studio tab in another browser profile. Never closes anything."""
+ """Open ChatGPT + this project's Studio tab in another browser profile, as tabs of the window that profile already has (no new window). Never closes anything."""
  if launch:return launch(lane,url)
  from . import window_manager as wm
  exe=wm.executable(lane['browser'])
- subprocess.Popen([exe,'--profile-directory='+lane['profile'],'--new-window','https://chatgpt.com/',url],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_BREAKAWAY_FROM_JOB',0))
+ subprocess.Popen([exe,'--profile-directory='+lane['profile'],'https://chatgpt.com/',url],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_BREAKAWAY_FROM_JOB',0))
 
 REOPEN_GAP=600
+REOPEN_MAX=3  # per lane and run: a lane that stays unconnected is not opened again and again (each time added tabs/windows)
 def ensure_lanes(w,live,launch=None):
  """Open each extra lane that is not connected; again at most every 10 minutes (Edge was closed, tab lost)."""
  st=w.j.setdefault('lanes',{'items':{},'cooldown':{},'seen':{},'opened':{}});st.setdefault('opened',{})
@@ -72,9 +73,11 @@ def ensure_lanes(w,live,launch=None):
   key=lane['browser']+':'+lane['profile']
   if lane_id(lane['browser'],lane['profile']) in live:continue
   if w.clock()-float(st['opened'].get(key) or 0)<REOPEN_GAP:continue
+  counts=st.setdefault('opened_n',{})
+  if counts.get(key,0)>=REOPEN_MAX:continue
   try:open_lane(lane,lane_url(w.c['studio_origin']+'/',w.sid,w.c['studio_run_id'],w.c.get('project_name'),lane),launch)
   except Exception:continue
-  st['opened'][key]=w.clock();w.save()
+  st['opened'][key]=w.clock();counts[key]=counts.get(key,0)+1;w.save()
 
 def open_step(w,launch=None):
  """STUDIO_LANES: open every extra lane, then wait (bounded) until they connect."""
