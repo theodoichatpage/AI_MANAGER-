@@ -183,3 +183,8 @@ body.mg .mgs-modal h1,body.mg .mgs-modal h2{text-transform:none;letter-spacing:0
 .mg-kind-btn:hover{border-color:var(--mg-accent)}
 .mg-kind-btn .kind{display:grid;place-items:center;width:36px;height:36px;border-radius:10px}
 .mg-kind-btn small{display:block;color:var(--mg-muted);font-size:12px}
+.mg-fl{display:grid;gap:6px;color:var(--mg-muted);font-size:12px}
+.mg-name{background:#111113;border:1px solid var(--mg-line);border-radius:8px;padding:9px 10px;color:var(--mg-text);font-size:14px}
+.mg-name:focus{outline:none;border-color:var(--mg-accent)}.mg-name.bad{border-color:#e5484d}
+.mg-kind-btn.on{border-color:var(--mg-accent);background:#16180f}
+.mg-dlg-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
