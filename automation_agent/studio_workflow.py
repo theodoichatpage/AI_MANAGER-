@@ -20,6 +20,16 @@ def parts_from_sections(secs,limit=MAX_PARTS):
   rows[i:i+1]=[[title,text[:at].strip()],[title+' (tiếp)',text[at:].strip()]]
  return [{'title':'Phần %d - %s'%(n+1,t[:120]),'range':t[:200],'content':c} for n,(t,c) in enumerate(rows)]
 
+def parts_from_script(script,limit=MAX_PARTS):
+ """A script cut into at most `limit` parts of about equal length, only at paragraph breaks (used when Aprilynne changed the rewritten sections)."""
+ paras=[p.strip() for p in re.split(r'\n\s*\n',script) if p.strip()]
+ target=max(1,-(-sum(len(p) for p in paras)//limit));rows=[];cur=[];size=0
+ for p in paras:
+  cur.append(p);size+=len(p)
+  if size>=target and len(rows)<limit-1:rows.append('\n\n'.join(cur));cur=[];size=0
+ if cur:rows.append('\n\n'.join(cur))
+ return [{'title':'Phần %d - %s'%(n+1,t[:80]),'range':t[:200],'content':t} for n,t in enumerate(rows)]
+
 class StudioReviewRequired(RuntimeError):pass
 class StudioScriptMissing(ValueError):pass
 SCRIPT_WAIT=600
@@ -192,6 +202,21 @@ class StudioStep:
   key='transcript:'+(str(pipeline.get('stage'))+':'+str(pipeline.get('done',0)) if mine else 'sent')
   if extra.get('studio_rewrite_total'):key='transcript:parallel:'+str(extra['studio_rewrite_done'])
   return self.wait(key,1200,dict(actual,studio_stage='Transcript',studio_message=stage,studio_reconcile=facts,**extra))
+ def aprilynne_gate(self,name,actual):
+  """The rewritten script is checked against the Aprilynne formula in the Studio tab (check, rewrite what fails, repeat) before it is split into parts and scenes."""
+  if self.c.get('studio_aprilynne',True) is False or self.j.get('aprilynne_done'):return None
+  epoch=self.c.get('studio_retry_epoch',0);cmd=self.j.get('aprilynne_command')
+  if not cmd or cmd.get('epoch')!=epoch:
+   cmd={'type':'aprilynne_analysis','id':'apr-'+self.c['studio_run_id'][:20]+'-'+str(epoch),'epoch':epoch};self.j['aprilynne_command']=cmd;self.save()
+  self.post_command({k:v for k,v in cmd.items() if k!='epoch'})
+  st=(self.presence().get('project_state') or {}).get('aprilynne') or {}
+  mine=st.get('id')==cmd['id']
+  if mine and st.get('stage')=='error':raise RuntimeError('Kịch bản chưa đạt Aprilynne: '+str(st.get('error') or 'không rõ')+'. Xử lý trong tab Phân tích của Studio (nút Viết lại tất cả phần chưa đạt) rồi chạy lại.')
+  if mine and st.get('stage')=='done':
+   self.j['aprilynne_done']=True;self.save();return None
+  note=(' · đạt '+str(st.get('done',0))+'/'+str(st.get('total',0))) if mine and st.get('total') else ''
+  key='aprilynne:'+(str(st.get('stage'))+':'+str(st.get('done',0)) if mine else 'sent')
+  return self.wait(key,3600,dict(actual,studio_stage='Phân tích Aprilynne',studio_message='Đang chấm và sửa kịch bản theo công thức Aprilynne'+note))
  def post_command(self,command):
   body=json.dumps({'sessionId':self.sid,'runId':self.c['studio_run_id'],'command':command}).encode()
   try:urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8765/api/studio-command',body,{'Content-Type':'application/json'},method='POST'),timeout=3).read()
@@ -285,14 +310,20 @@ class StudioStep:
     if not script:
      from .studio_reconcile import reconcile
      return self.script_wait(name,s,actual,reconcile(s,self.presence()))
+    gate=self.aprilynne_gate(name,actual)
+    if gate is not None:return gate
+    # Studio saved the approved script on its server; read it again.
+    script=str(self.api.request(self.sid).get('script') or script).strip()
     self.script_checkpoint(script)
     s=self.send('structure','/analysis',{'script':script,'confirmReset':False,'expectedWorkEpoch':s.get('workEpoch',0)},s)
     secs=(s.get('rewrite') or {}).get('sections') or []
     job=(s.get('activeJob') or {}).get('id')
-    if job and len(script)>LONG_SCRIPT and 2<=len(secs)<=30 and all(str(x.get('text') or '').strip() for x in secs) and len(script)<=sum(len(str(x['text']).strip())+2 for x in secs):
+    texts=[str(x.get('text') or '').strip() for x in secs]
+    unchanged=2<=len(secs)<=30 and all(texts) and '\n\n'.join(texts)==script
+    if job and len(script)>LONG_SCRIPT and (unchanged or (2<=len(secs)<=30 and all(texts) and len(script)<=sum(len(t)+2 for t in texts))) or (job and len(script)>LONG_SCRIPT and self.j.get('aprilynne_done')):
      # ChatGPT is asked to return the whole script word for word, split into parts: impossible for a very long script (the tab hangs).
      # The rewritten sections already are that split, so they become the parts.
-     parts=parts_from_sections(secs)
+     parts=parts_from_sections(secs) if unchanged else parts_from_script(script)
      from . import studio_cache
      studio_cache.call('bridge/'+self.sid+'/event',{'jobId':job,'state':'completed','text':json.dumps({'parts':parts},ensure_ascii=False)},reply='lean')
      if self.ledger:self.ledger.update('analysis','structure','COMPLETED',reason='Kịch bản dài ('+str(len(script))+' ký tự): dùng '+str(len(parts))+' phần viết lại làm cấu trúc, không gửi ChatGPT')

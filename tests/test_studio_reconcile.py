@@ -18,7 +18,7 @@ def tab(**state):
 class ScriptReconcileTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.now=1000.0
-  self.c={'studio_project_id':SID,'studio_run_id':'run','studio_origin':'https://video-image-studio.vercel.app','studio_folder':self.tmp.name,'studio_script':''}
+  self.c={'studio_project_id':SID,'studio_run_id':'run','studio_origin':'https://video-image-studio.vercel.app','studio_aprilynne':False,'studio_folder':self.tmp.name,'studio_script':''}
   self.presence=tab()
  def tearDown(self):self.tmp.cleanup()
  def step(self,api):return StudioStep(self.c,api,lambda:self.presence,clock=lambda:self.now)
@@ -84,7 +84,7 @@ class ManualStudioWorkTests(unittest.TestCase):
  """The user runs analysis by hand in Studio: Manager observes, never sends, then continues."""
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.now=1000.0
-  self.c={'studio_project_id':SID,'studio_run_id':'run','studio_origin':'https://video-image-studio.vercel.app','studio_folder':self.tmp.name,'studio_script':''}
+  self.c={'studio_project_id':SID,'studio_run_id':'run','studio_origin':'https://video-image-studio.vercel.app','studio_aprilynne':False,'studio_folder':self.tmp.name,'studio_script':''}
  def tearDown(self):self.tmp.cleanup()
  def step(self,api):return StudioStep(self.c,api,lambda:tab(),clock=lambda:self.now)
  def test_user_structure_job_is_observed_then_manager_continues_with_parts(self):

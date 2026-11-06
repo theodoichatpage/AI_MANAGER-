@@ -10,7 +10,7 @@ class FakeAPI:
   return copy.deepcopy(self.s)
 class StudioWorkflowTests(unittest.TestCase):
  def setUp(self):
-  self.tmp=tempfile.TemporaryDirectory();self.c={'studio_project_id':SID,'studio_run_id':'run','studio_origin':'https://video-image-studio.vercel.app','studio_folder':self.tmp.name,'studio_script':'Script'}
+  self.tmp=tempfile.TemporaryDirectory();self.c={'studio_project_id':SID,'studio_run_id':'run','studio_origin':'https://video-image-studio.vercel.app','studio_aprilynne':False,'studio_folder':self.tmp.name,'studio_script':'Script'}
   self.presence=lambda:{'studio_tab_open':True,'chat_connected':True,'session_id':SID,'manager_run_id':'run','origin':self.c['studio_origin']}
  def tearDown(self):self.tmp.cleanup()
  def step(self,api):return StudioStep(self.c,api,self.presence)
@@ -23,6 +23,19 @@ class StudioWorkflowTests(unittest.TestCase):
   self.step(api).step('STUDIO_SCENES');self.assertEqual(api.posts[-1],'/parts/p2/analysis');self.assertTrue(Path(self.tmp.name,'scenes/p1.json').exists())
   api.s['parts'][1].update(status='complete',scenes=[{'prompt':'real2'}]);api.s['activeJob']=None
   result=self.step(api).step('STUDIO_SCENES');self.assertNotIn('waiting',result);self.assertEqual(result['context']['studio_total_scenes'],2)
+ def test_aprilynne_gate_blocks_structure_until_studio_approves(self):
+  self.c.pop('studio_aprilynne');sent=[]
+  api=FakeAPI({'id':SID,'parts':[],'script':'Script'})
+  step=self.step(api);step.post_command=lambda cmd:sent.append(cmd)
+  self.assertTrue(step.step('STUDIO_ANALYZE')['waiting']);self.assertEqual(api.posts,[]);self.assertEqual(sent[0]['type'],'aprilynne_analysis')
+  cid=sent[0]['id'];self.presence=lambda:{'studio_tab_open':True,'chat_connected':True,'session_id':SID,'manager_run_id':'run','origin':self.c['studio_origin'],'project_state':{'aprilynne':{'id':cid,'stage':'running','done':9,'total':14}}}
+  step=self.step(api);step.post_command=lambda cmd:None;self.assertTrue(step.step('STUDIO_ANALYZE')['waiting']);self.assertEqual(api.posts,[])
+  self.presence=lambda:{'studio_tab_open':True,'chat_connected':True,'session_id':SID,'manager_run_id':'run','origin':self.c['studio_origin'],'project_state':{'aprilynne':{'id':cid,'stage':'error','error':'còn 2 tiêu chí'}}}
+  step=self.step(api);step.post_command=lambda cmd:None
+  with self.assertRaises(RuntimeError):step.step('STUDIO_ANALYZE')
+  self.assertEqual(api.posts,[])
+  self.presence=lambda:{'studio_tab_open':True,'chat_connected':True,'session_id':SID,'manager_run_id':'run','origin':self.c['studio_origin'],'project_state':{'aprilynne':{'id':cid,'stage':'done','done':14,'total':14}}}
+  step=self.step(api);step.post_command=lambda cmd:None;step.step('STUDIO_ANALYZE');self.assertEqual(api.posts,['/analysis'])
  def test_uncertain_post_is_not_repeated_after_restart(self):
   api=FakeAPI({'id':SID,'parts':[]});original=api.request
   def broken(*a,**kw):
