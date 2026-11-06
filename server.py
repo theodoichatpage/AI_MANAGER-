@@ -551,6 +551,13 @@ if __name__=='__main__':
     except OSError: print('Cong 8765 dang duoc su dung. Hay dong cua so AI MANAGER cu, sau do mo lai file nay.',flush=True); sys.exit(1)
     print(f'AI MANAGER v{VERSION}: http://127.0.0.1:8765',flush=True)
     service=automation();service.ensure_bridge()
+    def transcript_engine():
+        # Studio's "Lấy Transcript" reads YouTube through the Transcript Engine on this PC: keep it running with Manager, no manual start.
+        try:
+            from automation_agent.studio_workflow import engine_up,start_transcript_engine
+            if not engine_up(): print(start_transcript_engine({},time.time()),flush=True)
+        except Exception as exc: print('Transcript Engine:',exc,flush=True)
+    threading.Thread(target=transcript_engine,daemon=True).start()
     def open_dashboard():
         deadline=time.monotonic()+15
         while sys.platform=='win32' and not service.snapshot().get('online') and time.monotonic()<deadline:time.sleep(.2)
