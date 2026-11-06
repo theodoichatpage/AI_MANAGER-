@@ -148,6 +148,12 @@ class StudioStep:
    # Several ChatGPT tabs: Studio uploads the sections and Manager hands them out to the tabs.
    if len((self.c.get('work_config') or {}).get('lanes') or [])>1:cmd['parallel']=True
    self.j['transcript_command']=cmd;self.save()
+   # A rewrite job left by an earlier run would make Studio refuse the new section list ("Đang viết lại; không thay danh sách phần").
+   # Release it: sections already rewritten with the same prompt are kept, only the unfinished ones are done again.
+   try:
+    for job in (s or {}).get('laneJobs') or []:
+     if job.get('type')=='transcript_rewrite':self.api.request(self.sid,'/lanes/'+str(job['lane'])+'/release',{'jobId':job['id'],'reason':'Việc viết lại cũ của lần chạy trước','expectedWorkEpoch':(s or {}).get('workEpoch',0)})
+   except (OSError,ValueError,KeyError,RuntimeError):pass
   self.post_command({k:v for k,v in cmd.items() if k!='epoch'})
   mine=pipeline.get('id')==cmd['id']
   if mine and pipeline.get('stage')=='error':raise RuntimeError('Lấy transcript/viết lại lỗi: '+str(pipeline.get('error') or 'không rõ')+'. Sửa trong tab Get Transcript của Studio rồi bấm Chạy lại lỗi.')
