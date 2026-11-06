@@ -30,6 +30,11 @@ def parts_from_script(script,limit=MAX_PARTS):
  if cur:rows.append('\n\n'.join(cur))
  return [{'title':'Phần %d - %s'%(n+1,t[:80]),'range':t[:200],'content':t} for n,t in enumerate(rows)]
 
+def engine_up():
+ try:
+  with urllib.request.urlopen('http://127.0.0.1:17841/v1/health',timeout=2) as r:return bool(json.loads(r.read(20000)).get('ok'))
+ except (OSError,ValueError):return False
+
 class StudioReviewRequired(RuntimeError):pass
 class StudioScriptMissing(ValueError):pass
 SCRIPT_WAIT=600
@@ -173,6 +178,11 @@ class StudioStep:
    self.api.request(self.sid,'/script',{'script':text})
    if self.ledger:self.ledger.update('transcript','transcript','COMPLETED',reason='Đã ghép '+str(len(secs))+' phần viết lại thành kịch bản ('+str(len(text))+' ký tự)')
    return self.wait('transcript:assembled',300,dict(actual,studio_stage='Transcript',studio_message='Đã ghép '+str(len(secs))+' phần thành kịch bản',studio_reconcile=facts))
+  # Studio reads the YouTube transcript through the Local Engine on this PC: start it before asking, never let the tab fail on it.
+  if not (s or {}).get('script') and not engine_up():
+   from . import local_engine_boot
+   message=local_engine_boot.ensure(self.j,self.clock());self.save()
+   return self.wait('transcript:engine',600,dict(actual,studio_stage='Transcript',studio_message=message,studio_reconcile=facts))
   cmd=self.j.get('transcript_command')
   if not cmd or cmd.get('epoch')!=self.c.get('studio_retry_epoch',0):
    cmd={'type':'transcript_pipeline','id':self.c['studio_run_id'][:20]+'-'+str(self.c.get('studio_retry_epoch',0)),'url':self.c['studio_youtube_url'],'language':self.c.get('studio_language','vi'),'rewrite':bool(self.c.get('studio_rewrite',True)),'epoch':self.c.get('studio_retry_epoch',0)}
