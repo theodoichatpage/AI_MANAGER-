@@ -30,10 +30,23 @@ def parts_from_script(script,limit=MAX_PARTS):
  if cur:rows.append('\n\n'.join(cur))
  return [{'title':'Phần %d - %s'%(n+1,t[:80]),'range':t[:200],'content':t} for n,t in enumerate(rows)]
 
+TRANSCRIPT_ENGINE='http://127.0.0.1:8000/health'
+def transcript_engine_dir():return Path(os.environ.get('LOCALAPPDATA') or Path.home())/'VIDEO_IMAGE_STUDIO'/'YouTubeTranscriptEngine'
 def engine_up():
+ """The YouTube Transcript Engine (port 8000) Studio uses to read a video's transcript from this PC."""
  try:
-  with urllib.request.urlopen('http://127.0.0.1:17841/v1/health',timeout=2) as r:return bool(json.loads(r.read(20000)).get('ok'))
+  with urllib.request.urlopen(TRANSCRIPT_ENGINE,timeout=2) as r:return r.status==200
  except (OSError,ValueError):return False
+def start_transcript_engine(state,now):
+ b=state.setdefault('transcript_engine_boot',{'at':0,'tries':0})
+ if b['tries'] and now-float(b['at'])<60:return 'Manager đã bật Transcript Engine, đang chờ nó sẵn sàng.'
+ home=transcript_engine_dir();python=home/'.venv'/'Scripts'/'python.exe'
+ if not python.is_file():raise RuntimeError('Chưa cài Transcript Engine. Trong Studio mở Cài đặt > Cài Transcript Engine, chạy file tải về một lần rồi bấm Chạy lại lỗi.')
+ if b['tries']>=3:raise RuntimeError('Transcript Engine không tự bật được sau 3 lần. Chạy start_transcript_engine.bat trong '+str(home)+' rồi bấm Chạy lại lỗi.')
+ import subprocess
+ subprocess.Popen([str(python),'-m','uvicorn','app.main:app','--host','127.0.0.1','--port','8000'],cwd=str(home),creationflags=0x00000008|0x00000200|0x08000000,close_fds=True,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ b.update(at=now,tries=b['tries']+1)
+ return 'Transcript Engine chưa chạy: Manager đang tự bật (lần %d/3).'%b['tries']
 
 class StudioReviewRequired(RuntimeError):pass
 class StudioScriptMissing(ValueError):pass
@@ -178,10 +191,9 @@ class StudioStep:
    self.api.request(self.sid,'/script',{'script':text})
    if self.ledger:self.ledger.update('transcript','transcript','COMPLETED',reason='Đã ghép '+str(len(secs))+' phần viết lại thành kịch bản ('+str(len(text))+' ký tự)')
    return self.wait('transcript:assembled',300,dict(actual,studio_stage='Transcript',studio_message='Đã ghép '+str(len(secs))+' phần thành kịch bản',studio_reconcile=facts))
-  # Studio reads the YouTube transcript through the Local Engine on this PC: start it before asking, never let the tab fail on it.
+  # Studio reads the YouTube transcript through the Transcript Engine on this PC: start it before asking, never let the tab fail on it.
   if not (s or {}).get('script') and not engine_up():
-   from . import local_engine_boot
-   message=local_engine_boot.ensure(self.j,self.clock());self.save()
+   message=start_transcript_engine(self.j,self.clock());self.save()
    return self.wait('transcript:engine',600,dict(actual,studio_stage='Transcript',studio_message=message,studio_reconcile=facts))
   cmd=self.j.get('transcript_command')
   if not cmd or cmd.get('epoch')!=self.c.get('studio_retry_epoch',0):
