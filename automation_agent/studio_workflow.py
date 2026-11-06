@@ -141,6 +141,14 @@ class StudioStep:
   if self.ledger:self.ledger.update('analysis','script','COMPLETED',result_path=str(path),characters=len(script))
  def transcript_pipeline(self,name,actual,facts,pipeline,s=None):
   """Ask the Studio tab to get the YouTube transcript (and rewrite it in the saved style), then watch its progress."""
+  # Every section is already rewritten on the Studio server (the tab that assembles them was closed, reloaded or showed old data):
+  # join them like Studio does (blank line between sections) and save the script, instead of waiting for a click in Studio.
+  secs=((s or {}).get('rewrite') or {}).get('sections') or []
+  if secs and all(x.get('status')=='done' and str(x.get('text') or '').strip() for x in secs) and not str((s or {}).get('script') or '').strip():
+   text='\n\n'.join(str(x['text']).strip() for x in secs)
+   self.api.request(self.sid,'/script',{'script':text})
+   if self.ledger:self.ledger.update('transcript','transcript','COMPLETED',reason='Đã ghép '+str(len(secs))+' phần viết lại thành kịch bản ('+str(len(text))+' ký tự)')
+   return self.wait('transcript:assembled',300,dict(actual,studio_stage='Transcript',studio_message='Đã ghép '+str(len(secs))+' phần thành kịch bản',studio_reconcile=facts))
   cmd=self.j.get('transcript_command')
   if not cmd or cmd.get('epoch')!=self.c.get('studio_retry_epoch',0):
    cmd={'type':'transcript_pipeline','id':self.c['studio_run_id'][:20]+'-'+str(self.c.get('studio_retry_epoch',0)),'url':self.c['studio_youtube_url'],'language':self.c.get('studio_language','vi'),'rewrite':bool(self.c.get('studio_rewrite',True)),'epoch':self.c.get('studio_retry_epoch',0)}
