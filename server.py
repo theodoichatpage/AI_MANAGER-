@@ -67,12 +67,22 @@ def project_state(raw):
     t=raw.get('transcript') if isinstance(raw.get('transcript'),dict) else {}
     return {'script_draft_characters':count(raw.get('scriptDraftChars')),'script_server_characters':count(raw.get('serverScriptChars')),
         'script_sync':str(raw.get('scriptSync',''))[:40] or None,'transcript_exists':bool(t.get('exists')),'transcript_characters':count(t.get('chars')),
-        'transcript_segments':count(t.get('segments')),'transcript_video_id':str(t.get('videoId',''))[:40] or None,'pipeline':pipeline_state(raw.get('pipeline'))}
+        'transcript_segments':count(t.get('segments')),'transcript_video_id':str(t.get('videoId',''))[:40] or None,'pipeline':pipeline_state(raw.get('pipeline')),
+        'analysis_review':review_state(raw.get('analysisReview'))}
 
 def pipeline_state(raw):
     if not isinstance(raw,dict): return None
     num=lambda v: int(v) if isinstance(v,(int,float)) and not isinstance(v,bool) and 0<=v<=100000 else 0
     return {'id':str(raw.get('id',''))[:64],'stage':str(raw.get('stage',''))[:20],'done':num(raw.get('done')),'total':num(raw.get('total')),'attempts':num(raw.get('attempts')),'error':str(raw.get('error',''))[:500] or None}
+
+def review_state(raw):
+    state=pipeline_state(raw)
+    if state is not None:
+        progress=raw.get('progress')
+        state['progress']=progress if isinstance(progress,int) and 0<=progress<=1000000 else 0
+        fingerprint=str(raw.get('fingerprint',''))
+        state['fingerprint']=fingerprint if re.fullmatch(r'[a-f0-9]{64}',fingerprint) else None
+    return state
 
 YOUTUBE=re.compile(r'https://(www\.|m\.)?(youtube\.com/(watch\?v=|shorts/|live/)|youtu\.be/)[A-Za-z0-9_-]{6,}[^\s]*')
 def studio_deploy(data):
@@ -363,7 +373,7 @@ class Handler(BaseHTTPRequestHandler):
                 sid=str(data.get('sessionId','')); run=str(data.get('runId',''))
                 if not re.fullmatch(r'[A-Za-z0-9-]{16,64}',sid) or not re.fullmatch(r'[a-f0-9]{32}',run): return self.send(400,{'error':'Mã dự án/lượt chạy không hợp lệ'})
                 cmd=data.get('command')
-                if cmd is not None and (not isinstance(cmd,dict) or cmd.get('type')!='transcript_pipeline' or len(json.dumps(cmd))>40000): return self.send(400,{'error':'Lệnh không hợp lệ'})
+                if cmd is not None and (not isinstance(cmd,dict) or cmd.get('type') not in ('transcript_pipeline','analysis_review') or len(json.dumps(cmd))>40000): return self.send(400,{'error':'Lệnh không hợp lệ'})
                 PRESENCE.command(sid,run,cmd); return self.send(200,{'ok':True})
             if path=='/api/ext/heartbeat':
                 origin=self.headers.get('Origin','')
