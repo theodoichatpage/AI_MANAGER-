@@ -202,21 +202,21 @@ class StudioStep:
   key='transcript:'+(str(pipeline.get('stage'))+':'+str(pipeline.get('done',0)) if mine else 'sent')
   if extra.get('studio_rewrite_total'):key='transcript:parallel:'+str(extra['studio_rewrite_done'])
   return self.wait(key,1200,dict(actual,studio_stage='Transcript',studio_message=stage,studio_reconcile=facts,**extra))
- def aprilynne_gate(self,name,actual):
-  """The rewritten script is checked against the Aprilynne formula in the Studio tab (check, rewrite what fails, repeat) before it is split into parts and scenes."""
-  if self.c.get('studio_aprilynne',True) is False or self.j.get('aprilynne_done'):return None
+ def aprilynne_gate(self,name,actual,script):
+  """The rewritten script is checked against the Aprilynne formula in the Studio tab (check, rewrite what fails, approve) before it is split into parts and scenes.
+  Studio answers `approved` with the SHA-256 of the script it saved on its server; only that exact script goes on."""
+  if self.c.get('studio_aprilynne',True) is False:return None
   epoch=self.c.get('studio_retry_epoch',0);cmd=self.j.get('aprilynne_command')
   if not cmd or cmd.get('epoch')!=epoch:
-   cmd={'type':'aprilynne_analysis','id':'apr-'+self.c['studio_run_id'][:20]+'-'+str(epoch),'epoch':epoch};self.j['aprilynne_command']=cmd;self.save()
-  self.post_command({k:v for k,v in cmd.items() if k!='epoch'})
-  st=(self.presence().get('project_state') or {}).get('aprilynne') or {}
-  mine=st.get('id')==cmd['id']
-  if mine and st.get('stage')=='error':raise RuntimeError('Kịch bản chưa đạt Aprilynne: '+str(st.get('error') or 'không rõ')+'. Xử lý trong tab Phân tích của Studio (nút Viết lại tất cả phần chưa đạt) rồi chạy lại.')
-  if mine and st.get('stage')=='done':
+   cmd={'type':'analysis_review','source':'script','id':'apr-'+self.c['studio_run_id'][:20]+'-'+str(epoch),'epoch':epoch};self.j['aprilynne_command']=cmd;self.j.pop('aprilynne_done',None);self.save()
+  st=(self.presence().get('project_state') or {}).get('analysis_review') or {}
+  mine=st.get('id')==cmd['id'];stage=str(st.get('stage') or '') if mine else ''
+  want=hashlib.sha256(script.strip().encode('utf8')).hexdigest()
+  if stage=='approved' and st.get('fingerprint')==want:
    self.j['aprilynne_done']=True;self.save();return None
-  note=(' · đạt '+str(st.get('done',0))+'/'+str(st.get('total',0))) if mine and st.get('total') else ''
-  key='aprilynne:'+(str(st.get('stage'))+':'+str(st.get('done',0)) if mine else 'sent')
-  return self.wait(key,3600,dict(actual,studio_stage='Phân tích Aprilynne',studio_message='Đang chấm và sửa kịch bản theo công thức Aprilynne'+note))
+  if stage in ('error','limited','stopped'):raise RuntimeError('Kịch bản chưa đạt Aprilynne ('+stage+'): '+str(st.get('error') or 'xem tab Phân tích của Studio')+'. Bấm Viết lại tất cả phần chưa đạt trong tab Phân tích rồi chạy lại.')
+  self.post_command({k:v for k,v in cmd.items() if k!='epoch'})
+  return self.wait('aprilynne:'+(stage or 'sent')+':'+str(st.get('progress',0)),3600,dict(actual,studio_stage='Phân tích Aprilynne',studio_message='Đang chấm và sửa kịch bản theo công thức Aprilynne'+(' ('+stage+')' if stage else '')))
  def post_command(self,command):
   body=json.dumps({'sessionId':self.sid,'runId':self.c['studio_run_id'],'command':command}).encode()
   try:urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8765/api/studio-command',body,{'Content-Type':'application/json'},method='POST'),timeout=3).read()
@@ -310,7 +310,7 @@ class StudioStep:
     if not script:
      from .studio_reconcile import reconcile
      return self.script_wait(name,s,actual,reconcile(s,self.presence()))
-    gate=self.aprilynne_gate(name,actual)
+    gate=self.aprilynne_gate(name,actual,script)
     if gate is not None:return gate
     # Studio saved the approved script on its server; read it again.
     script=str(self.api.request(self.sid).get('script') or script).strip()

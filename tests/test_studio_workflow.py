@@ -24,18 +24,20 @@ class StudioWorkflowTests(unittest.TestCase):
   api.s['parts'][1].update(status='complete',scenes=[{'prompt':'real2'}]);api.s['activeJob']=None
   result=self.step(api).step('STUDIO_SCENES');self.assertNotIn('waiting',result);self.assertEqual(result['context']['studio_total_scenes'],2)
  def test_aprilynne_gate_blocks_structure_until_studio_approves(self):
+  import hashlib
   self.c.pop('studio_aprilynne');sent=[]
   api=FakeAPI({'id':SID,'parts':[],'script':'Script'})
+  def present(review):return lambda:{'studio_tab_open':True,'chat_connected':True,'session_id':SID,'manager_run_id':'run','origin':self.c['studio_origin'],'project_state':{'analysis_review':review}}
   step=self.step(api);step.post_command=lambda cmd:sent.append(cmd)
-  self.assertTrue(step.step('STUDIO_ANALYZE')['waiting']);self.assertEqual(api.posts,[]);self.assertEqual(sent[0]['type'],'aprilynne_analysis')
-  cid=sent[0]['id'];self.presence=lambda:{'studio_tab_open':True,'chat_connected':True,'session_id':SID,'manager_run_id':'run','origin':self.c['studio_origin'],'project_state':{'aprilynne':{'id':cid,'stage':'running','done':9,'total':14}}}
-  step=self.step(api);step.post_command=lambda cmd:None;self.assertTrue(step.step('STUDIO_ANALYZE')['waiting']);self.assertEqual(api.posts,[])
-  self.presence=lambda:{'studio_tab_open':True,'chat_connected':True,'session_id':SID,'manager_run_id':'run','origin':self.c['studio_origin'],'project_state':{'aprilynne':{'id':cid,'stage':'error','error':'còn 2 tiêu chí'}}}
-  step=self.step(api);step.post_command=lambda cmd:None
+  self.assertTrue(step.step('STUDIO_ANALYZE')['waiting']);self.assertEqual(api.posts,[]);self.assertEqual(sent[0]['type'],'analysis_review');cid=sent[0]['id']
+  fp=hashlib.sha256(b'Script').hexdigest()
+  for review in ({'id':cid,'stage':'running','progress':3},{'id':cid,'stage':'saving','fingerprint':None},{'id':cid,'stage':'approved','fingerprint':'0'*64}):
+   self.presence=present(review);step=self.step(api);step.post_command=lambda cmd:None
+   self.assertTrue(step.step('STUDIO_ANALYZE')['waiting']);self.assertEqual(api.posts,[])
+  self.presence=present({'id':cid,'stage':'limited','error':'còn 2 tiêu chí'});step=self.step(api);step.post_command=lambda cmd:None
   with self.assertRaises(RuntimeError):step.step('STUDIO_ANALYZE')
   self.assertEqual(api.posts,[])
-  self.presence=lambda:{'studio_tab_open':True,'chat_connected':True,'session_id':SID,'manager_run_id':'run','origin':self.c['studio_origin'],'project_state':{'aprilynne':{'id':cid,'stage':'done','done':14,'total':14}}}
-  step=self.step(api);step.post_command=lambda cmd:None;step.step('STUDIO_ANALYZE');self.assertEqual(api.posts,['/analysis'])
+  self.presence=present({'id':cid,'stage':'approved','fingerprint':fp});step=self.step(api);step.post_command=lambda cmd:None;step.step('STUDIO_ANALYZE');self.assertEqual(api.posts,['/analysis'])
  def test_uncertain_post_is_not_repeated_after_restart(self):
   api=FakeAPI({'id':SID,'parts':[]});original=api.request
   def broken(*a,**kw):

@@ -67,14 +67,14 @@ def project_state(raw):
     t=raw.get('transcript') if isinstance(raw.get('transcript'),dict) else {}
     return {'script_draft_characters':count(raw.get('scriptDraftChars')),'script_server_characters':count(raw.get('serverScriptChars')),
         'script_sync':str(raw.get('scriptSync',''))[:40] or None,'transcript_exists':bool(t.get('exists')),'transcript_characters':count(t.get('chars')),
-        'transcript_segments':count(t.get('segments')),'transcript_video_id':str(t.get('videoId',''))[:40] or None,'pipeline':pipeline_state(raw.get('pipeline')),'aprilynne':aprilynne_state(raw.get('aprilynne'))}
+        'transcript_segments':count(t.get('segments')),'transcript_video_id':str(t.get('videoId',''))[:40] or None,'pipeline':pipeline_state(raw.get('pipeline')),'analysis_review':analysis_review_state(raw.get('analysisReview'))}
 
-def aprilynne_state(raw):
-    """Studio's Aprilynne check for the script: running / done / error, how many of the criteria pass."""
+def analysis_review_state(raw):
+    """Studio's Aprilynne review of the script: its stage, a progress counter and, once approved, the SHA-256 of the script Studio saved."""
     if not isinstance(raw,dict): return None
-    num=lambda v: int(v) if isinstance(v,(int,float)) and not isinstance(v,bool) and 0<=v<=1000 else 0
-    stage=str(raw.get('stage',''))
-    return {'id':str(raw.get('id',''))[:64],'stage':stage if stage in ('running','done','error') else 'running','done':num(raw.get('done')),'total':num(raw.get('total')),'error':str(raw.get('error',''))[:500] or None}
+    fp=str(raw.get('fingerprint') or '')
+    return {'id':str(raw.get('id',''))[:64],'stage':str(raw.get('stage',''))[:20],'fingerprint':fp if re.fullmatch(r'[a-f0-9]{64}',fp) else None,
+        'progress':int(raw['progress']) if isinstance(raw.get('progress'),(int,float)) and not isinstance(raw.get('progress'),bool) and 0<=raw['progress']<=10**9 else 0,'error':str(raw.get('error',''))[:500] or None}
 
 def pipeline_state(raw):
     if not isinstance(raw,dict): return None
@@ -371,7 +371,7 @@ class Handler(BaseHTTPRequestHandler):
                 sid=str(data.get('sessionId','')); run=str(data.get('runId',''))
                 if not re.fullmatch(r'[A-Za-z0-9-]{16,64}',sid) or not re.fullmatch(r'[a-f0-9]{32}',run): return self.send(400,{'error':'Mã dự án/lượt chạy không hợp lệ'})
                 cmd=data.get('command')
-                if cmd is not None and (not isinstance(cmd,dict) or cmd.get('type') not in ('transcript_pipeline','aprilynne_analysis') or len(json.dumps(cmd))>40000): return self.send(400,{'error':'Lệnh không hợp lệ'})
+                if cmd is not None and (not isinstance(cmd,dict) or cmd.get('type') not in ('transcript_pipeline','analysis_review') or len(json.dumps(cmd))>40000): return self.send(400,{'error':'Lệnh không hợp lệ'})
                 PRESENCE.command(sid,run,cmd); return self.send(200,{'ok':True})
             if path=='/api/ext/heartbeat':
                 origin=self.headers.get('Origin','')
