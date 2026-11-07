@@ -229,14 +229,20 @@ class StudioStep:
   Studio answers `approved` with the SHA-256 of the script it saved on its server; only that exact script goes on."""
   if self.c.get('studio_aprilynne',True) is False:return None
   epoch=self.c.get('studio_retry_epoch',0);cmd=self.j.get('aprilynne_command')
-  if not cmd or cmd.get('epoch')!=epoch:
+  # A retry after a finished review (not passed / stopped) asks for a new one; after an error it keeps the same review so Studio carries on where it was.
+  if not cmd or (cmd.get('epoch')!=epoch and self.j.get('aprilynne_last_stage') not in ('error','running','paused','')):
    cmd={'type':'analysis_review','source':'script','id':'apr-'+self.c['studio_run_id'][:20]+'-'+str(epoch),'epoch':epoch};self.j['aprilynne_command']=cmd;self.j.pop('aprilynne_done',None);self.save()
   st=(self.presence().get('project_state') or {}).get('analysis_review') or {}
   mine=st.get('id')==cmd['id'];stage=str(st.get('stage') or '') if mine else ''
   want=hashlib.sha256(script.strip().encode('utf8')).hexdigest()
   if stage=='approved' and st.get('fingerprint')==want:
    self.j['aprilynne_done']=True;self.save();return None
-  if stage in ('error','limited','stopped'):raise RuntimeError('Kịch bản chưa đạt Aprilynne ('+stage+'): '+str(st.get('error') or 'xem tab Phân tích của Studio')+'. Bấm Viết lại tất cả phần chưa đạt trong tab Phân tích rồi chạy lại.')
+  if stage:self.j['aprilynne_last_stage']=stage;self.save()
+  if stage=='error':
+   # Studio stopped on a slow or broken ChatGPT reply: it carries on when "Tiếp tục" is pressed in its Analysis tab, so wait instead of failing.
+   self.post_command({k:v for k,v in cmd.items() if k!='epoch'})
+   return self.wait('aprilynne:error:'+str(st.get('progress',0)),7200,dict(actual,studio_stage='Phân tích Aprilynne',studio_message='Studio báo lỗi: '+str(st.get('error') or 'không rõ')+'. Bấm Tiếp tục trong tab Phân tích của Studio.'))
+  if stage in ('limited','stopped'):raise RuntimeError('Kịch bản chưa đạt Aprilynne ('+stage+'): '+str(st.get('error') or 'xem tab Phân tích của Studio')+'. Bấm Viết lại tất cả phần chưa đạt trong tab Phân tích rồi chạy lại.')
   self.post_command({k:v for k,v in cmd.items() if k!='epoch'})
   return self.wait('aprilynne:'+(stage or 'sent')+':'+str(st.get('progress',0)),3600,dict(actual,studio_stage='Phân tích Aprilynne',studio_message='Đang chấm và sửa kịch bản theo công thức Aprilynne'+(' ('+stage+')' if stage else '')))
  def post_command(self,command):
