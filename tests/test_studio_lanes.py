@@ -130,6 +130,7 @@ class Lanes(unittest.TestCase):
   w.now+=901;st.finish('laneB');w.round();self.assertIsNotNone(st.job('laneA'))
 
  def test_rerun_remakes_existing_pictures_and_saves_only_new_ones(self):
+  studio_lanes.IMAGE_LANES=2;self.addCleanup(setattr,studio_lanes,'IMAGE_LANES',1)
   st=FakeStudio(parts=1,scenes=2);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'complete','imageResults':[{'url':'https://x/old'}]} for _ in range(2)])
   w=W(st,[worker('laneA'),worker('laneB')],tasks=('images','sync'));w.c['work_config']['rerun']=True
   sent=[];old=st.post

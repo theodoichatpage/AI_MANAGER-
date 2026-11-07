@@ -11,6 +11,7 @@ from pathlib import Path
 from .studio_images import rows
 from .project_files import layout,image_place,save_scene_image
 
+IMAGE_LANES=1        # tabs making pictures at the same time (one ChatGPT account)
 LANE_LOST=180        # a lane whose Studio tab stopped reporting this long loses its job
 JOB_LIMIT=1800       # one part/image may take this long before it is taken back
 LIMIT_COOLDOWN=900   # ChatGPT said "limit reached": rest this lane's images
@@ -199,14 +200,19 @@ def step(w,s,post=None):
  # 5. Give work to free lanes, main lane first. With 3+ lanes the last one prefers images.
  order=list(live);image_lane=order[-1] if images and len(order)>=3 and parts_left else None
  sent=0
+ # One ChatGPT account makes one picture at a time: a second tab's picture waits, the tab watchdog reloads it and the
+ # picture is made again. So only IMAGE_LANES tabs make pictures at once; the others split scenes.
+ imaging=sum(1 for j in lane_jobs if j.get('type')=='image_generation')
  for lane in order:
   # The server's lane jobs say who is busy; the job id an extension remembers can be an old, finished one.
   if lane in busy:continue
   cool=float(st['cooldown'].get(lane) or 0)>now
   pick=None
-  if lane==image_lane and image_todo and not cool:pick=('image',image_todo.pop(0))
+  room=imaging<IMAGE_LANES
+  if lane==image_lane and image_todo and not cool and room:pick=('image',image_todo.pop(0))
   elif part_todo:pick=('part',part_todo.pop(0))
-  elif image_todo and not cool:pick=('image',image_todo.pop(0))
+  elif image_todo and not cool and room:pick=('image',image_todo.pop(0))
+  if pick and pick[0]=='image':imaging+=1
   if not pick:continue
   if pick[0]=='part':
    part=pick[1];key='part:'+str(part['id']);route='/lanes/'+lane+'/parts/'+urllib.parse.quote(str(part['id']),safe='');body={'expectedWorkEpoch':s.get('workEpoch',0)}
