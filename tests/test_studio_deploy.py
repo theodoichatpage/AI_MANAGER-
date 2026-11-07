@@ -9,7 +9,7 @@ URL='https://video-image-studio.vercel.app'
 class TranscriptPipeline(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory();self.now=1000.0;self.sent=[]
-  self.c={'studio_project_id':SID,'studio_run_id':'r'*32,'studio_origin':URL,'studio_folder':self.tmp.name,'studio_script':'','studio_youtube_url':'https://www.youtube.com/watch?v=abcdefghijk','studio_rewrite':True,'studio_rewrite_style':'Giọng kể chậm'}
+  self.c={'studio_project_id':SID,'studio_run_id':'r'*32,'studio_origin':URL,'studio_aprilynne':False,'studio_folder':self.tmp.name,'studio_script':'','studio_youtube_url':'https://www.youtube.com/watch?v=abcdefghijk','studio_rewrite':True,'studio_rewrite_style':'Giọng kể chậm'}
   self.presence=tab()
  def tearDown(self):self.tmp.cleanup()
  def step(self,api):
