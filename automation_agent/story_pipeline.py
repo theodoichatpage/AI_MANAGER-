@@ -260,8 +260,10 @@ class Story:
     if got is None:return self.wait('review:busy','Chờ tab ChatGPT rảnh')
     for (g,ids),t in zip(todo,tasks):
      if g in got_rows:continue
-     r=got.get(t['id']) or {};base='rv%d-%s'%(d['round'],g)
-     if r.get('status')=='error':self.retry(base,r.get('error'));continue
+     base='rv%d-%s'%(d['round'],g)
+     # Any try of this group that came back is used; a tab error is re-sent by the lane round itself (same task, list unchanged).
+     r=next((x for k,x in got.items() if str(k).startswith(base+'-t') and x.get('status')=='done'),None) or got.get(t['id']) or {}
+     if r.get('status')=='error' and t['id'] in ((self.lanes or {}).get('studio_failed_items') or []):self.retry(base,r.get('error'));continue
      if r.get('status')!='done':continue
      try:got_rows[g]=accept_group(r.get('text'),ids,n)
      except (ValueError,KeyError,TypeError) as e:self.retry(base,e)
