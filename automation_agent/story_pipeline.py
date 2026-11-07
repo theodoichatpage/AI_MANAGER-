@@ -11,8 +11,8 @@ from pathlib import Path
 THRESHOLD=8
 ROUNDS=3
 PASS_AFTER_ROUNDS=10   # rounds used up: go on with the best version when it passes at least this many criteria
-TASK_TRIES=3           # a task whose reply cannot be used is asked again this many times
-REVIEW_OPENING=500;REVIEW_MIDDLE=400;REVIEW_ENDING=500
+TASK_TRIES=5          # a task whose reply cannot be used is asked again this many times
+REVIEW_OPENING=350;REVIEW_MIDDLE=250;REVIEW_ENDING=350
 
 CRITERIA=[
  ('Câu đầu khớp tiêu đề','0:52','0:57','trong 5 giây đầu'),
@@ -108,14 +108,14 @@ def review_prompt(plan,sections,style,last_error=''):
  for i,s in enumerate(sections):
   t=s['text'];m=len(t)//2
   ex=[t] if len(t)<=1400 else [t[:REVIEW_OPENING],t[m-REVIEW_MIDDLE//2:m+REVIEW_MIDDLE//2],t[-REVIEW_ENDING:]]
-  hl=[] if len(t)<=1400 else [p[:600] for p in re.split(r'\n\s*\n',t) if HIGHLIGHT.search(p) and not any(p[:80] in e for e in ex)][:2]
+  hl=[] if len(t)<=1400 else [p[:400] for p in re.split(r'\n\s*\n',t) if HIGHLIGHT.search(p) and not any(p[:80] in e for e in ex)][:1]
   parts.append(dict({'part':i+1,'title':s['title'],'excerpts':ex},**({'highlights':hl} if hl else {})))
  rules=' '.join('mục %d — %s'%(k,v) for k,v in RULES.items())
  return ('Bạn là biên tập viên kịch bản YouTube. Chỉ trả một JSON hoàn chỉnh.\nPHONG CÁCH CÁ NHÂN: %s\nCÔNG THỨC APRILYNNE:\n%s\n'
   'Đối chiếu cấu trúc toàn video dựa trên các trích đoạn theo đúng thứ tự các phần; highlights là các đoạn nói về nguồn sử liệu, công sức tìm hiểu hoặc tuyến truyện phụ. '
   'Tiêu đề đích là "%s"; chấm mục 0 theo độ khớp của câu mở đầu với tiêu đề này. Chấm từng tiêu chí 0–10 theo đúng ID (0–%d); part là số phần (bắt đầu từ 1) chứa dẫn chứng, evidence là đoạn trích từ phần đó. '
   'Nếu dưới %d, chọn phần cần sửa nhất và ghi cách sửa cụ thể. Mục 1 và 8 cần ảnh bìa/cảnh dựng thật nên trả score:null, part:null, evidence:"". Cách chấm riêng: %s '
-  'Trả {"rows":[{"id":0,"score":7,"part":1,"evidence":"...","reason":"...","fix":"..."}]} với đủ %d dòng.%s\n%s')%(
+  'Trả {"rows":[{"id":0,"score":7,"part":1,"evidence":"...","reason":"...","fix":"..."}]} với đủ %d dòng; reason và fix mỗi dòng tối đa một câu ngắn, trả lời ngay.%s\n%s')%(
   json.dumps(style[:3000],ensure_ascii=False),reference(),plan.get('title',''),len(CRITERIA)-1,THRESHOLD,rules,len(CRITERIA),
   (' LƯU Ý: lần trước bị từ chối vì: '+last_error) if last_error else '',json.dumps({'plan':plan,'parts':parts},ensure_ascii=False))
 
