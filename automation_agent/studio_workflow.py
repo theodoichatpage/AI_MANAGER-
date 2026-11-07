@@ -186,7 +186,9 @@ class StudioStep:
   # Every section is already rewritten on the Studio server (the tab that assembles them was closed, reloaded or showed old data):
   # join them like Studio does (blank line between sections) and save the script, instead of waiting for a click in Studio.
   secs=((s or {}).get('rewrite') or {}).get('sections') or []
-  if secs and all(x.get('status')=='done' and str(x.get('text') or '').strip() for x in secs) and not str((s or {}).get('script') or '').strip():
+  # Only sections written for this run's command (Studio reported its rewrite stage) are joined; sections left from an earlier split are not.
+  own=self.j.get('transcript_command') and pipeline.get('id')==self.j['transcript_command']['id'] and pipeline.get('stage') in ('rewrite','analysis','done')
+  if own and secs and all(x.get('status')=='done' and str(x.get('text') or '').strip() for x in secs) and not str((s or {}).get('script') or '').strip():
    text='\n\n'.join(str(x['text']).strip() for x in secs)
    self.api.request(self.sid,'/script',{'script':text})
    if self.ledger:self.ledger.update('transcript','transcript','COMPLETED',reason='Đã ghép '+str(len(secs))+' phần viết lại thành kịch bản ('+str(len(text))+' ký tự)')
@@ -197,7 +199,7 @@ class StudioStep:
    return self.wait('transcript:engine',600,dict(actual,studio_stage='Transcript',studio_message=message,studio_reconcile=facts))
   cmd=self.j.get('transcript_command')
   if not cmd or cmd.get('epoch')!=self.c.get('studio_retry_epoch',0):
-   cmd={'type':'transcript_pipeline','id':self.c['studio_run_id'][:20]+'-'+str(self.c.get('studio_retry_epoch',0)),'url':self.c['studio_youtube_url'],'language':self.c.get('studio_language','vi'),'rewrite':bool(self.c.get('studio_rewrite',True)),'epoch':self.c.get('studio_retry_epoch',0)}
+   cmd={'type':'transcript_pipeline','outline':True,'id':self.c['studio_run_id'][:20]+'-'+str(self.c.get('studio_retry_epoch',0)),'url':self.c['studio_youtube_url'],'language':self.c.get('studio_language','vi'),'rewrite':bool(self.c.get('studio_rewrite',True)),'epoch':self.c.get('studio_retry_epoch',0)}
    if self.c.get('studio_rewrite_style'):cmd['style']=self.c['studio_rewrite_style']
    # Several ChatGPT tabs: Studio uploads the sections and Manager hands them out to the tabs.
    if len((self.c.get('work_config') or {}).get('lanes') or [])>1:cmd['parallel']=True
