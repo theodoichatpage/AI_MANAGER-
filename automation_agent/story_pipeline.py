@@ -42,10 +42,11 @@ HIGHLIGHT=re.compile(r'sử ký|sử chép|chí lược|cương mục|hiến ch�
 TRANSCRIPT_ENGINE='http://127.0.0.1:8000/transcript'
 
 def _sec(v):m,s=v.split(':');return int(m)*60+int(s)
-def reference():
+def reference(ids=None):
  lines=(Path(__file__).parent/'data'/'aprilynne_transcript.txt').read_text(encoding='utf8').splitlines()
  out=[]
  for i,(name,start,end,timing) in enumerate(CRITERIA):
+  if ids is not None and i not in ids:continue
   ex=[l for l in lines if re.match(r'^\[(\d+:\d+)\]',l) and _sec(start)<=_sec(re.match(r'^\[(\d+:\d+)\]',l).group(1))<_sec(end)]
   out.append('%d. %s%s\n%s'%(i,name,' ('+timing+')' if timing else '','\n'.join(ex)))
  return '\n'.join(out)
@@ -118,6 +119,40 @@ def review_prompt(plan,sections,style,last_error=''):
   'Trả {"rows":[{"id":0,"score":7,"part":1,"evidence":"...","reason":"...","fix":"..."}]} với đủ %d dòng; reason và fix mỗi dòng tối đa một câu ngắn, trả lời ngay.%s\n%s')%(
   json.dumps(style[:3000],ensure_ascii=False),reference(),plan.get('title',''),len(CRITERIA)-1,THRESHOLD,rules,len(CRITERIA),
   (' LƯU Ý: lần trước bị từ chối vì: '+last_error) if last_error else '',json.dumps({'plan':plan,'parts':parts},ensure_ascii=False))
+
+# One long review made ChatGPT think past the tab watchdog: three short reviews instead, each with only the text it needs.
+GROUPS=[('open',[0,2,3,4,5,7]),('body',[6,9,10,13]),('end',[11,12])]
+def group_parts(g,sections):
+ n=len(sections)
+ if g=='open':return [{'part':i+1,'title':sections[i]['title'],'text':sections[i]['text']} for i in range(min(2,n))]
+ if g=='end':return [{'part':i+1,'title':sections[i]['title'],'text':sections[i]['text']} for i in range(max(0,n-3),n)]
+ out=[]
+ for i,s in enumerate(sections):
+  t=s['text'];m=len(t)//2
+  ex=[t] if len(t)<=900 else [t[:250],t[m-100:m+100],t[-250:]]
+  hl=[] if len(t)<=900 else [p[:400] for p in re.split(r'\n\s*\n',t) if HIGHLIGHT.search(p) and not any(p[:80] in e for e in ex)][:1]
+  out.append(dict({'part':i+1,'title':s['title'],'excerpts':ex},**({'highlights':hl} if hl else {})))
+ return out
+def group_prompt(g,ids,plan,sections,style,last_error=''):
+ rules=' '.join('mục %d — %s'%(k,v) for k,v in RULES.items() if k in ids)
+ scope={'open':'phần mở đầu của video (các phần đầu, đầy đủ)','end':'phần kết của video (các phần cuối, đầy đủ)','body':'toàn video qua trích đoạn theo thứ tự; highlights là các đoạn về nguồn sử liệu, công sức tìm hiểu hoặc tuyến truyện phụ'}[g]
+ return ('Bạn là biên tập viên kịch bản YouTube. Chấm nhanh, chỉ trả một JSON.\nCÔNG THỨC APRILYNNE (chỉ các tiêu chí cần chấm):\n%s\n'
+  'Đối chiếu %s. Tiêu đề đích: "%s". Chấm 0–10 đúng các ID %s; part là số phần chứa dẫn chứng; nếu dưới %d ghi cách sửa cụ thể. %s'
+  'Trả {"rows":[{"id":%d,"score":7,"part":1,"evidence":"trích ngắn","reason":"một câu","fix":"một câu"}]} gồm đúng %d dòng.%s\nPHONG CÁCH KÊNH: %s\nDÀN Ý: %s\nKỊCH BẢN: %s')%(
+  reference(ids),scope,plan.get('title',''),ids,THRESHOLD,('Cách chấm riêng: '+rules+' ') if rules else '',ids[0],len(ids),
+  (' LƯU Ý: lần trước bị từ chối vì: '+last_error) if last_error else '',json.dumps(style[:1500],ensure_ascii=False),
+  json.dumps({k:plan.get(k) for k in ('title','hook','question','promise','tracks','payoff','ending','sources')},ensure_ascii=False),json.dumps(group_parts(g,sections),ensure_ascii=False))
+def accept_group(reply,ids,n):
+ v=parse_json(reply);by={r['id']:r for r in v.get('rows') or [] if isinstance(r,dict) and isinstance(r.get('id'),int)}
+ out=[]
+ for i in ids:
+  r=by.get(i)
+  if r is None:raise ValueError('Thiếu tiêu chí '+CRITERIA[i][0])
+  sc=r.get('score');pt=r.get('part')
+  if not isinstance(sc,(int,float)) or not 0<=sc<=10:raise ValueError('Điểm không hợp lệ cho '+CRITERIA[i][0])
+  if not isinstance(pt,int) or not 1<=pt<=n:pt=1
+  out.append({'id':i,'score':float(sc),'part':pt,'evidence':str(r.get('evidence') or '')[:800],'reason':str(r.get('reason') or '')[:800],'fix':str(r.get('fix') or '')[:800]})
+ return out
 
 def accept_review(reply,n):
  v=parse_json(reply);rows=v.get('rows')
@@ -215,14 +250,24 @@ class Story:
      return self.wait('write:%d'%done,'Đang viết theo dàn ý %d/%d phần'%(done,n),studio_rewrite_done=done,studio_rewrite_total=n)
    d['stage']='review';self.save()
   if d['stage']=='review':
-   base='review%d'%d['round'];tid=self.task_id(base)
-   got=self.tasks(s,[{'id':tid,'title':'Chấm Aprilynne vòng %d'%(d['round']+1),'prompt':review_prompt(d['plan'],secs,self.style(),d.get('last_error') if d['tries'].get(base) else '')}])
-   if got is None:return self.wait('review:busy','Chờ tab ChatGPT rảnh')
-   r=got.get(tid) or {}
-   if r.get('status')=='error':self.retry(base,r.get('error'));return self.wait(base+':retry','Chấm lỗi, hỏi lại')
-   if r.get('status')!='done':return self.wait(base,'Đang chấm Aprilynne vòng %d/%d'%(d['round']+1,ROUNDS))
-   try:rows=accept_review(r.get('text'),n)
-   except (ValueError,KeyError,TypeError) as e:self.retry(base,e);return self.wait(base+':retry','Kết quả chấm chưa hợp lệ, hỏi lại')
+   got_rows=d.setdefault('group_rows',{}).setdefault(str(d['round']),{})
+   todo=[(g,ids) for g,ids in GROUPS if g not in got_rows]
+   tasks=[{'id':self.task_id('rv%d-%s'%(d['round'],g)),'title':'Chấm Aprilynne vòng %d · %s'%(d['round']+1,g),
+    'prompt':group_prompt(g,ids,d['plan'],secs,self.style(),d.get('last_error') if d['tries'].get('rv%d-%s'%(d['round'],g)) else '')} for g,ids in todo]
+   if tasks:
+    got=self.tasks(s,tasks)
+    if got is None:return self.wait('review:busy','Chờ tab ChatGPT rảnh')
+    for (g,ids),t in zip(todo,tasks):
+     r=got.get(t['id']) or {};base='rv%d-%s'%(d['round'],g)
+     if r.get('status')=='error':self.retry(base,r.get('error'));continue
+     if r.get('status')!='done':continue
+     try:got_rows[g]=accept_group(r.get('text'),ids,n)
+     except (ValueError,KeyError,TypeError) as e:self.retry(base,e)
+    self.save()
+    if any(g not in got_rows for g,_ in GROUPS):
+     return self.wait('review:%d:%d'%(d['round'],len(got_rows)),'Đang chấm Aprilynne vòng %d/%d (%d/3 nhóm tiêu chí)'%(d['round']+1,ROUNDS,len(got_rows)))
+   by={r['id']:r for g,_ in GROUPS for r in got_rows[g]}
+   rows=[by.get(i) or {'id':i,'score':None,'part':None,'evidence':'','reason':'Cần ảnh bìa/cảnh dựng thật','fix':''} for i in range(len(CRITERIA))]
    d['rows']=rows;d.setdefault('history',[]).append({'round':d['round'],'passed':passed(rows),'rows':rows})
    if not d.get('best') or passed(rows)>d['best']['passed']:d['best']={'passed':passed(rows),'texts':[x['text'] for x in secs],'rows':rows}
    todo=failing_parts(rows)
