@@ -21,4 +21,11 @@ class WorkLedger:
   if status=='COMPLETED':self.data.update(last_successful_task=stage,last_successful_subtask=key)
   from .studio_workflow import atomic
   atomic(self.path,self.data);return row
+ def reopen(self,stage,key):
+  """Deliberate redo (the script written again): a finished subtask may run once more."""
+  row=self.data['tasks'].get(stage,{}).get('subtasks',{}).get(key)
+  if row and row.get('status') in ('COMPLETED','SKIPPED'):
+   row.update(status='READY',updated_at=time.time())
+   from .studio_workflow import atomic
+   atomic(self.path,self.data)
  def get(self,stage,key):return self.data['tasks'].get(stage,{}).get('subtasks',{}).get(key,{})

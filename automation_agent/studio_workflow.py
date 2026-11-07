@@ -188,12 +188,15 @@ class StudioStep:
   # Writing again: the old script leaves the server first, so the new one is joined in its place.
   if self.j.get('transcript_redo') and str((s or {}).get('script') or '').strip() and not (s or {}).get('activeJob'):
    s=self.api.request(self.sid,'/script',{'script':''})
+  if self.j.get('transcript_redo') and self.ledger and not self.j.get('transcript_redo_reopened'):
+   for stage,key in (('transcript','transcript'),('analysis','script'),('analysis','structure')):self.ledger.reopen(stage,key)
+   self.j['transcript_redo_reopened']=True;self.save()
   secs=((s or {}).get('rewrite') or {}).get('sections') or []
   # Only sections written for this run's command (Studio reported its rewrite stage) are joined; sections left from an earlier split are not.
   own=self.j.get('transcript_command') and pipeline.get('id')==self.j['transcript_command']['id'] and pipeline.get('stage') in ('rewrite','analysis','done')
   if own and secs and all(x.get('status')=='done' and str(x.get('text') or '').strip() for x in secs) and not str((s or {}).get('script') or '').strip():
    text='\n\n'.join(str(x['text']).strip() for x in secs)
-   self.api.request(self.sid,'/script',{'script':text});self.j.pop('transcript_redo',None);self.save()
+   self.api.request(self.sid,'/script',{'script':text});self.j.pop('transcript_redo',None);self.j.pop('transcript_redo_reopened',None);self.save()
    if self.ledger:self.ledger.update('transcript','transcript','COMPLETED',reason='Đã ghép '+str(len(secs))+' phần viết lại thành kịch bản ('+str(len(text))+' ký tự)')
    return self.wait('transcript:assembled',300,dict(actual,studio_stage='Transcript',studio_message='Đã ghép '+str(len(secs))+' phần thành kịch bản',studio_reconcile=facts))
   # Studio reads the YouTube transcript through the Transcript Engine on this PC: start it before asking, never let the tab fail on it.
