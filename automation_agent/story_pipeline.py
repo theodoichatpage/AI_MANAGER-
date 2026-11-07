@@ -198,7 +198,10 @@ class Story:
    else:return self.wait('plan','Đang lập dàn ý Aprilynne và chia phần')
   secs=d['sections'];n=len(secs)
   if d['stage']=='write':
-   tasks=[{'id':'w%d-%s'%(d.get('write_try',0),x['id']),'title':x['title'],'prompt':write_prompt(x,i,n,d['plan'],self.style(),secs)} for i,x in enumerate(secs) if not x['text']]
+   # The task list stays the same for the whole try (changing it while tabs work would block new hand-outs).
+   wt=d.get('write_try',0)
+   if d.get('write_todo_try')!=wt:d['write_todo']=[x['id'] for x in secs if not x['text']];d['write_todo_try']=wt;self.save()
+   tasks=[{'id':'w%d-%s'%(wt,x['id']),'title':x['title'],'prompt':write_prompt(x,i,n,d['plan'],self.style(),secs)} for i,x in enumerate(secs) if x['id'] in d['write_todo']]
    if tasks:
     got=self.tasks(s,tasks)
     if got is None:return self.wait('write:busy','Chờ tab ChatGPT rảnh')
