@@ -185,12 +185,15 @@ class StudioStep:
   """Ask the Studio tab to get the YouTube transcript (and rewrite it in the saved style), then watch its progress."""
   # Every section is already rewritten on the Studio server (the tab that assembles them was closed, reloaded or showed old data):
   # join them like Studio does (blank line between sections) and save the script, instead of waiting for a click in Studio.
+  # Writing again: the old script leaves the server first, so the new one is joined in its place.
+  if self.j.get('transcript_redo') and str((s or {}).get('script') or '').strip() and not (s or {}).get('activeJob'):
+   s=self.api.request(self.sid,'/script',{'script':''})
   secs=((s or {}).get('rewrite') or {}).get('sections') or []
   # Only sections written for this run's command (Studio reported its rewrite stage) are joined; sections left from an earlier split are not.
   own=self.j.get('transcript_command') and pipeline.get('id')==self.j['transcript_command']['id'] and pipeline.get('stage') in ('rewrite','analysis','done')
   if own and secs and all(x.get('status')=='done' and str(x.get('text') or '').strip() for x in secs) and not str((s or {}).get('script') or '').strip():
    text='\n\n'.join(str(x['text']).strip() for x in secs)
-   self.api.request(self.sid,'/script',{'script':text})
+   self.api.request(self.sid,'/script',{'script':text});self.j.pop('transcript_redo',None);self.save()
    if self.ledger:self.ledger.update('transcript','transcript','COMPLETED',reason='Đã ghép '+str(len(secs))+' phần viết lại thành kịch bản ('+str(len(text))+' ký tự)')
    return self.wait('transcript:assembled',300,dict(actual,studio_stage='Transcript',studio_message='Đã ghép '+str(len(secs))+' phần thành kịch bản',studio_reconcile=facts))
   # Studio reads the YouTube transcript through the Transcript Engine on this PC: start it before asking, never let the tab fail on it.
@@ -314,7 +317,8 @@ class StudioStep:
    from .studio_reconcile import reconcile
    facts=reconcile(s,self.presence())
    pipeline=(self.presence().get('project_state') or {}).get('pipeline') or {}
-   if self.c.get('studio_youtube_url') and not facts['analysis_completed'] and not facts['script_content_exists']:
+   # transcript_redo: the script is written again from the transcript (e.g. now from an Aprilynne outline) although an old one exists.
+   if self.c.get('studio_youtube_url') and not facts['analysis_completed'] and (not facts['script_content_exists'] or self.j.get('transcript_redo')):
     return self.transcript_pipeline(name,actual,facts,pipeline,s)
    if facts['analysis_completed']:state,reason='SKIPPED','Studio đã phân tích cấu trúc; không cần transcript'
    elif self.j.get('transcript_command') and pipeline.get('id')==self.j['transcript_command']['id'] and pipeline.get('stage')=='done':state,reason='COMPLETED','Đã lấy transcript'+(' và viết lại theo phong cách' if self.c.get('studio_rewrite',True) else '')+' ('+str(facts['script_character_count'])+' ký tự)'
