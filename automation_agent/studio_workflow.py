@@ -188,8 +188,11 @@ class StudioStep:
   # Writing again: the old script leaves the server first, so the new one is joined in its place.
   if self.j.get('transcript_redo') and str((s or {}).get('script') or '').strip() and not (s or {}).get('activeJob'):
    s=self.api.request(self.sid,'/script',{'script':''})
-  if self.j.get('transcript_redo') and self.ledger and not self.j.get('transcript_redo_reopened'):
-   for stage,key in (('transcript','transcript'),('analysis','script'),('analysis','structure')):self.ledger.reopen(stage,key)
+  if self.j.get('transcript_redo') and not self.j.get('transcript_redo_reopened'):
+   for stage,key in (('transcript','transcript'),('analysis','script'),('analysis','structure')):
+    if self.ledger:self.ledger.reopen(stage,key)
+   # The new script gets its own Aprilynne review.
+   self.j.pop('aprilynne_command',None);self.j.pop('aprilynne_done',None);self.j['aprilynne_last_stage']='limited'
    self.j['transcript_redo_reopened']=True;self.save()
   secs=((s or {}).get('rewrite') or {}).get('sections') or []
   # Only sections written for this run's command (Studio reported its rewrite stage) are joined; sections left from an earlier split are not.
