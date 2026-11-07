@@ -251,13 +251,15 @@ class Story:
    d['stage']='review';self.save()
   if d['stage']=='review':
    got_rows=d.setdefault('group_rows',{}).setdefault(str(d['round']),{})
-   todo=[(g,ids) for g,ids in GROUPS if g not in got_rows]
+   # The list keeps all three groups for the round (a changing list would block handing out work); finished ones are only read.
+   todo=[(g,ids) for g,ids in GROUPS] if any(g not in got_rows for g,_ in GROUPS) else []
    tasks=[{'id':self.task_id('rv%d-%s'%(d['round'],g)),'title':'Chấm Aprilynne vòng %d · %s'%(d['round']+1,g),
     'prompt':group_prompt(g,ids,d['plan'],secs,self.style(),d.get('last_error') if d['tries'].get('rv%d-%s'%(d['round'],g)) else '')} for g,ids in todo]
    if tasks:
     got=self.tasks(s,tasks)
     if got is None:return self.wait('review:busy','Chờ tab ChatGPT rảnh')
     for (g,ids),t in zip(todo,tasks):
+     if g in got_rows:continue
      r=got.get(t['id']) or {};base='rv%d-%s'%(d['round'],g)
      if r.get('status')=='error':self.retry(base,r.get('error'));continue
      if r.get('status')!='done':continue
