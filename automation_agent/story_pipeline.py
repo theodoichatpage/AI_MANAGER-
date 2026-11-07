@@ -175,7 +175,7 @@ class Story:
    if any(j.get('type')=='transcript_rewrite' for j in s.get('laneJobs') or []):return None
    s=self.w.api.request(self.w.sid,'/rewrite',{'sections':tasks});self.d['list']=want;self.save()
   from .studio_lanes import rewrite_round
-  self.lanes=rewrite_round(self.w,s)
+  self.lanes=rewrite_round(self.w,s,single=len(tasks)==1)
   return {x.get('id'):x for x in ((s.get('rewrite') or {}).get('sections') or [])}
  def task_id(self,base):return base+'-t%d'%self.d['tries'].get(base,0)
  def retry(self,base,error):

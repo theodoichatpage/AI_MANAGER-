@@ -317,6 +317,9 @@ class StudioStep:
    return self.wait('connection',1800 if running else 120)
   self.j['stages'].pop(self.stage_key('connection'),None)
   if name=='STUDIO_LANES':
+   # Story line first: the outline runs on the main profile; the extra profiles open when the sections are written.
+   if self.c.get('studio_youtube_url') and self.c.get('studio_rewrite',True) and self.c.get('studio_aprilynne',True) is not False and not self.j.get('aprilynne_done'):
+    return {'context':{'studio_stage':'Mở thêm tab khi viết nhiều phần'}}
    from .studio_lanes import open_step
    return open_step(self)
   s=self.api.request(self.sid);parts=s.get('parts') or [];job=s.get('activeJob')

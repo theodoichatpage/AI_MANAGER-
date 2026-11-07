@@ -256,7 +256,7 @@ def step(w,s,post=None):
  # Watchdog keyed on progress: any finished part/image restarts the clock.
  return w.wait('lanes:'+str(done_parts)+':'+str(done_images),JOB_LIMIT+LANE_LOST+300,ctx)
 
-def rewrite_round(w,s,post=None):
+def rewrite_round(w,s,post=None,single=False):
  """Get Transcript on several tabs: give each free lane the next rewrite section the Studio tab uploaded.
  Same safety as scenes: lost/stuck lanes are released first, a failed section is retried up to the limit."""
  post=post or (lambda route,body:w.api.request(w.sid,route,body))
@@ -264,7 +264,12 @@ def rewrite_round(w,s,post=None):
  st=w.j.setdefault('lanes',{'items':{},'cooldown':{},'seen':{},'opened':{}});items=st['items']
  live=live_lanes(w.presence().get('workers') or [])
  for lane in live:st['seen'][lane]=now
- ensure_lanes(w,live)
+ # One task (outline, review): one tab is enough, the main profile when its ChatGPT is connected; extra profiles open only for many tasks.
+ if single:
+  main='edge_'+str(w.c.get('browser_profile') or 'Default')
+  keep=main if main in live else next(iter(live),None)
+  live={k:v for k,v in live.items() if k==keep}
+ else:ensure_lanes(w,live)
  sections=(s.get('rewrite') or {}).get('sections') or [];lane_jobs=s.get('laneJobs') or [];busy={j.get('lane'):j for j in lane_jobs}
  for lane,r in (s.get('laneLast') or {}).items():
   if r.get('type')!='transcript_rewrite':continue
