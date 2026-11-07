@@ -246,7 +246,9 @@ class StudioStep:
   """The rewritten script is checked against the Aprilynne formula in the Studio tab (check, rewrite what fails, approve) before it is split into parts and scenes.
   Studio answers `approved` with the SHA-256 of the script it saved on its server; only that exact script goes on."""
   # The story line already reviewed and saved the script: no Studio-tab review.
-  if self.c.get('studio_aprilynne',True) is False or self.j.get('aprilynne_done'):return None
+  if self.j.get('aprilynne_done'):
+   self.post_command(None);return None
+  if self.c.get('studio_aprilynne',True) is False:return None
   epoch=self.c.get('studio_retry_epoch',0);cmd=self.j.get('aprilynne_command')
   # A retry after a finished review (not passed / stopped) asks for a new one; after an error it keeps the same review so Studio carries on where it was.
   if not cmd or (cmd.get('epoch')!=epoch and self.j.get('aprilynne_last_stage') not in ('error','running','paused','')):
