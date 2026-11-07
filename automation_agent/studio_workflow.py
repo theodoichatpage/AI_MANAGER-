@@ -32,6 +32,13 @@ def parts_from_script(script,limit=MAX_PARTS):
 
 TRANSCRIPT_ENGINE='http://127.0.0.1:8000/health'
 def transcript_engine_dir():return Path(os.environ.get('LOCALAPPDATA') or Path.home())/'VIDEO_IMAGE_STUDIO'/'YouTubeTranscriptEngine'
+def merge_parts(rows,limit=MAX_PARTS):
+ """Written sections as Studio parts; above the limit the two shortest neighbours are joined."""
+ rows=[[str(r.get('title') or '').strip(),str(r.get('content') or '').strip()] for r in rows if str(r.get('content') or '').strip()]
+ while len(rows)>limit:
+  i=min(range(len(rows)-1),key=lambda k:len(rows[k][1])+len(rows[k+1][1]))
+  rows[i:i+2]=[[rows[i][0],rows[i][1]+'\n\n'+rows[i+1][1]]]
+ return [{'title':'Phần %d - %s'%(n+1,t[:120]),'range':t[:200],'content':c} for n,(t,c) in enumerate(rows)]
 def engine_up():
  """The YouTube Transcript Engine (port 8000) Studio uses to read a video's transcript from this PC."""
  try:
@@ -318,6 +325,14 @@ class StudioStep:
    from .studio_lanes import step as parallel
    return parallel(self,s)
   actual={'studio_total_parts':len(parts),'studio_completed_parts':sum(p.get('status')=='complete' for p in parts),'studio_total_scenes':sum(len(p.get('scenes') or []) for p in parts),'studio_current_part':job.get('partId') if job else None,'studio_message':None,'studio_external_job':None}
+  if name=='STUDIO_TRANSCRIPT' and self.c.get('studio_youtube_url') and self.c.get('studio_rewrite',True) and self.c.get('studio_aprilynne',True) is not False and not self.j.get('aprilynne_done'):
+   # Manager runs the whole story line itself (transcript, Aprilynne outline, writing, review); the Studio tabs only execute ChatGPT tasks.
+   from .story_pipeline import Story
+   story=Story(self);waiting=story.step(s)
+   if waiting is not None:return waiting
+   if self.ledger:
+    self.ledger.reopen('transcript','transcript');self.ledger.update('transcript','transcript','COMPLETED',reason='Kịch bản viết theo dàn ý Aprilynne, '+str(story.summary()))
+   return {'context':dict(actual,studio_stage='Transcript',studio_message='Kịch bản đã đạt Aprilynne',studio_waiting_action=None)}
   if name=='STUDIO_TRANSCRIPT':
    # GET_TRANSCRIPT is decided by the real Studio state, never skipped by default.
    from .studio_reconcile import reconcile
@@ -360,6 +375,14 @@ class StudioStep:
     job=(s.get('activeJob') or {}).get('id')
     texts=[str(x.get('text') or '').strip() for x in secs]
     unchanged=2<=len(secs)<=30 and all(texts) and '\n\n'.join(texts)==script
+    story=self.j.get('story_parts') or []
+    if job and story:
+     # The story line already wrote the script section by section: those sections are the parts, no ChatGPT split.
+     parts=merge_parts(story)
+     from . import studio_cache
+     studio_cache.call('bridge/'+self.sid+'/event',{'jobId':job,'state':'completed','text':json.dumps({'parts':parts},ensure_ascii=False)},reply='lean')
+     if self.ledger:self.ledger.update('analysis','structure','COMPLETED',reason='Dùng '+str(len(parts))+' phần của kịch bản đã viết làm cấu trúc')
+     return self.wait(name,60,dict(actual,studio_stage='Phân tích cấu trúc'))
     if job and len(script)>LONG_SCRIPT and (unchanged or (2<=len(secs)<=30 and all(texts) and len(script)<=sum(len(t)+2 for t in texts))) or (job and len(script)>LONG_SCRIPT and self.j.get('aprilynne_done')):
      # ChatGPT is asked to return the whole script word for word, split into parts: impossible for a very long script (the tab hangs).
      # The rewritten sections already are that split, so they become the parts.
