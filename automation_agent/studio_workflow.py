@@ -344,11 +344,12 @@ class StudioStep:
    from .studio_reconcile import reconcile
    facts=reconcile(s,self.presence())
    pipeline=(self.presence().get('project_state') or {}).get('pipeline') or {}
-   # transcript_redo: the script is written again from the transcript (e.g. now from an Aprilynne outline) although an old one exists.
-   if self.c.get('studio_youtube_url') and not facts['analysis_completed'] and (not facts['script_content_exists'] or self.j.get('transcript_redo')):
+   transcript_done=bool(self.j.get('transcript_command') and pipeline.get('id')==self.j['transcript_command']['id'] and pipeline.get('stage')=='done')
+   # A completed owned command must not run again; an explicit redo may replace an existing script.
+   if self.c.get('studio_youtube_url') and not transcript_done and not facts['analysis_completed'] and (not facts['script_content_exists'] or self.j.get('transcript_redo')):
     return self.transcript_pipeline(name,actual,facts,pipeline,s)
    if facts['analysis_completed']:state,reason='SKIPPED','Studio đã phân tích cấu trúc; không cần transcript'
-   elif self.j.get('transcript_command') and pipeline.get('id')==self.j['transcript_command']['id'] and pipeline.get('stage')=='done':state,reason='COMPLETED','Đã lấy transcript'+(' và viết lại theo phong cách' if self.c.get('studio_rewrite',True) else '')+' ('+str(facts['script_character_count'])+' ký tự)'
+   elif transcript_done:state,reason='COMPLETED','Đã lấy transcript'+(' và viết lại theo phong cách' if self.c.get('studio_rewrite',True) else '')+' ('+str(facts['script_character_count'])+' ký tự)'
    elif facts['transcript_exists']:state,reason='SKIPPED','Transcript đã có ('+str(facts['transcript_character_count'])+' ký tự); không lấy lại'
    elif facts['script_content_exists'] or str(self.c.get('studio_script') or '').strip():state,reason='SKIPPED','Kịch bản đã có ('+str(facts['script_character_count'] or len(str(self.c.get('studio_script')).strip()))+' ký tự); dùng kịch bản, không cần transcript'
    else:return self.script_wait(name,s,actual,facts)
@@ -368,6 +369,24 @@ class StudioStep:
     if s.get('status')=='error' and not self.c.get('studio_retry_epoch'):raise RuntimeError('Studio lỗi: '+str(s.get('lastError') or 'Phân tích thất bại'))
     # Studio's server copy wins; the Manager project's own script is only a fallback.
     script=str(s.get('script') or self.c.get('studio_script') or '').strip()
+    run_id=str(self.c.get('studio_run_id') or '')
+    if re.fullmatch(r'[a-f0-9]{32}',run_id):
+     source='transcript' if self.j.get('transcript_command') else 'script'
+     review_id=run_id+'-review-'+str(self.c.get('studio_retry_epoch',0))
+     self.post_command({'type':'analysis_review','id':review_id,'source':source})
+     review=(self.presence().get('project_state') or {}).get('analysis_review') or {}
+     stage=review.get('stage') if review.get('id')==review_id else 'waiting'
+     if stage!='approved':
+      message={'limited':'Còn tiêu chí dưới 8/10. Có thể sửa thêm trong tab Phân tích.',
+               'error':review.get('error') or 'Studio chưa hoàn tất đối chiếu.',
+               'saving':'Đang lưu bản đã đạt vào Phân tách.'}.get(stage,'Đang chờ Studio đối chiếu và sửa kịch bản.')
+      return self.wait('review:'+str(stage)+':'+str(review.get('progress',0)),1800,
+                       dict(actual,studio_stage='Đối chiếu Aprilynne',studio_message=message))
+     server_script=str(s.get('script') or '').strip()
+     if not server_script or hashlib.sha256(server_script.encode()).hexdigest()!=review.get('fingerprint'):
+      return self.wait('review:script',120,dict(actual,studio_stage='Chờ bản đã duyệt'))
+     script=server_script
+     self.post_command(None)
     if not script:
      from .studio_reconcile import reconcile
      return self.script_wait(name,s,actual,reconcile(s,self.presence()))

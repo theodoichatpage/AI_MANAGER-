@@ -9,7 +9,7 @@ from studio_monitor import StudioMonitor
 from extension_monitor import ExtensionMonitor
 from automation_agent.manager_service import AutomationService
 
-VERSION = '0.2.23'
+VERSION = '0.2.25'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/main.zip'
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
 CONFIG = BASE / 'config.json'
@@ -73,13 +73,23 @@ def analysis_review_state(raw):
     """Studio's Aprilynne review of the script: its stage, a progress counter and, once approved, the SHA-256 of the script Studio saved."""
     if not isinstance(raw,dict): return None
     fp=str(raw.get('fingerprint') or '')
-    return {'id':str(raw.get('id',''))[:64],'stage':str(raw.get('stage',''))[:20],'fingerprint':fp if re.fullmatch(r'[a-f0-9]{64}',fp) else None,
+    return {**review_state(raw),'id':str(raw.get('id',''))[:64],'stage':str(raw.get('stage',''))[:20],'fingerprint':fp if re.fullmatch(r'[a-f0-9]{64}',fp) else None,
         'progress':int(raw['progress']) if isinstance(raw.get('progress'),(int,float)) and not isinstance(raw.get('progress'),bool) and 0<=raw['progress']<=10**9 else 0,'error':str(raw.get('error',''))[:500] or None}
+
 
 def pipeline_state(raw):
     if not isinstance(raw,dict): return None
     num=lambda v: int(v) if isinstance(v,(int,float)) and not isinstance(v,bool) and 0<=v<=100000 else 0
     return {'id':str(raw.get('id',''))[:64],'stage':str(raw.get('stage',''))[:20],'done':num(raw.get('done')),'total':num(raw.get('total')),'attempts':num(raw.get('attempts')),'error':str(raw.get('error',''))[:500] or None}
+
+def review_state(raw):
+    state=pipeline_state(raw)
+    if state is not None:
+        progress=raw.get('progress')
+        state['progress']=progress if isinstance(progress,int) and 0<=progress<=1000000 else 0
+        fingerprint=str(raw.get('fingerprint',''))
+        state['fingerprint']=fingerprint if re.fullmatch(r'[a-f0-9]{64}',fingerprint) else None
+    return state
 
 YOUTUBE=re.compile(r'https://(www\.|m\.)?(youtube\.com/(watch\?v=|shorts/|live/)|youtu\.be/)[A-Za-z0-9_-]{6,}[^\s]*')
 def studio_deploy(data):

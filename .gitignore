@@ -1,2 +1,37 @@
+# Runtime and generated artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
 logs/
+*.log
 dist/
+build/
+# Secrets and authenticated browser state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+cookies*.json
+sessions/
+browser_profiles/
+chrome_profiles/
+# Local application data and unreleased integration candidates
+integration_reports/
+CONTINUE*.md
+.ai_manager/
+*.sqlite*
+*.db
+*.db-*
+backups/
+backup/
+*.bak
+screenshots/
+outputs/
+downloads/
+*.mp4
+*.webm
+*.mov
