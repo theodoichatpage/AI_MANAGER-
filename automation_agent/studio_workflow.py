@@ -1,5 +1,5 @@
 """Single-project Studio orchestration using its existing API. No prompt rewriting."""
-import hashlib,json,os,re,time,urllib.parse,urllib.request,uuid
+import hashlib,json,os,re,tempfile,time,urllib.parse,urllib.request,uuid
 from pathlib import Path
 from . import fsutil
 from . import window_manager as wm
@@ -60,9 +60,14 @@ class StudioScriptMissing(ValueError):pass
 SCRIPT_WAIT=600
 
 def atomic(path,value):
- path=Path(path);path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_suffix('.tmp')
- with tmp.open('w',encoding='utf8') as f:json.dump(value,f,ensure_ascii=False);f.flush();os.fsync(f.fileno())
- fsutil.replace_retry(tmp,path)
+ path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
+ tmp=None
+ try:
+  with tempfile.NamedTemporaryFile(mode='w',encoding='utf8',dir=path.parent,prefix=path.name+'.',suffix='.tmp',delete=False) as f:
+   tmp=Path(f.name);json.dump(value,f,ensure_ascii=False);f.flush();os.fsync(f.fileno())
+  fsutil.replace_retry(tmp,path)
+ finally:
+  if tmp is not None:tmp.unlink(missing_ok=True)
 
 class StudioAPI:
  def create(self,sid):
