@@ -67,7 +67,7 @@ class ChatGPTSnapshotTests(unittest.TestCase):
 
  def test_dom_observe_verified_assistant(self):
   browser=BrowserController({'hwnd':123,'target_app':'chrome'})
-  state={'url':'https://chatgpt.com/c/test','assistantCount':2,'turnCount':4,'lastAssistant':'answer','generating':False,'composerReady':True,'sendControlPresent':True}
+  state={'url':'https://chatgpt.com/c/test','assistantCount':2,'turnCount':4,'lastRole':'assistant','lastAssistant':'answer','generating':False,'composerReady':True,'sendControlPresent':True}
   with patch.object(browser,'chatgpt_dom',side_effect=[state,state,state]),patch('automation_agent.browser_controller.time.sleep',return_value=None):
    result=browser.chatgpt_dom_observe()
   self.assertTrue(result['completion_verified'])
