@@ -35,7 +35,13 @@ class AgentHandler(BaseHTTPRequestHandler):
      result.setdefault('result',{}).update(agent_identity=self.server.agent_identity,windows_api_contract=self.server.api_contract)
     return self.reply(200,result)
    if self.path=='/submit':
-    tid=r.store.submit(data['actions'],data.get('project'),data.get('stage','Automation'),data.get('context'),initial_status='held' if data.get('held') else 'waiting')
+    if data.get('exclusive'):
+     with r.lock:
+      active=[t for t in r.store.list() if t['status'] in ('running','waiting')]
+      if r.current or active:raise ValueError('Agent already has active work; exclusive task refused')
+      tid=r.store.submit(data['actions'],data.get('project'),data.get('stage','Automation'),data.get('context'),initial_status='waiting')
+      r.start()
+    else:tid=r.store.submit(data['actions'],data.get('project'),data.get('stage','Automation'),data.get('context'),initial_status='held' if data.get('held') else 'waiting')
     return self.reply(200,{'task_id':tid})
    if self.path=='/requeue':
     with r.store.lock,r.store.db:
@@ -51,7 +57,8 @@ class AgentHandler(BaseHTTPRequestHandler):
      t.update(status='held',in_flight=False);r.store.save(t)
     return self.reply(200,{'ok':True})
    if self.path=='/release':
-    with r.store.lock,r.store.db:
+    with r.lock,r.store.lock,r.store.db:
+     if any(t.get('context',{}).get('wincontrol_task') and t['status'] in ('running','waiting') for t in r.store.list()):raise ValueError('Agent is running WinControl; queue release remains held')
      t=r.store.get(data['task_id'])
      if t['status'] not in ('held','paused','stopped') and not(t['status']=='needs_review' and t.get('context',{}).get('work_config')):raise ValueError('Task không thể bắt đầu lại; chỉ đối soát Studio read-before-send được Resume')
      t.update(status='waiting',in_flight=False);r.store.save(t)
@@ -60,6 +67,7 @@ class AgentHandler(BaseHTTPRequestHandler):
    if self.path=='/pause':r.pause();return self.reply(200,{'ok':True})
    if self.path=='/stop':r.stop();return self.reply(200,{'ok':True})
    if self.path=='/resume':r.store.resume(data['task_id']);r.start();return self.reply(200,{'ok':True})
+   if self.path=='/cancel':return self.reply(200,r.cancel_task(str(data.get('task_id',''))))
    self.reply(404,{'error':'Not found'})
   except Exception as e:self.reply(400,{'error':str(e)})
 

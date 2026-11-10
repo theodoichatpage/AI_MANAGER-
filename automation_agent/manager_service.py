@@ -7,7 +7,7 @@ from .workflows import workflow
 
 class AutomationService:
  def __init__(self,home,queue_getter):
-  self.home=Path(home);self.queue_getter=queue_getter;self.client=AgentClient(self.home);self.client.start_supervisor();self.bridge=None
+  self.home=Path(home);self.queue_getter=queue_getter;self.client=AgentClient(self.home);self.client.start_supervisor();self.bridge=None;self.wincontrol_lock=threading.Lock()
  def ensure_bridge(self):
   if self.bridge is None:self.bridge=QueueBridge(self.queue_getter(),self.client)
  def reset_bridge(self):
@@ -15,6 +15,34 @@ class AutomationService:
  def snapshot(self):return self.client.snapshot()
  def control(self,data):
   cmd=data.get('command')
+  if cmd=='wincontrol_cancel':
+   task_id=str(data.get('task_id') or '')
+   agent=self.client.request('/state',timeout=7)
+   task=next((t for t in agent.get('tasks',[]) if t.get('id')==task_id),None)
+   if not task or task.get('current_stage')!='WinControl' or not task.get('context',{}).get('wincontrol_task'):raise ValueError('Chi huy duoc task WinControl dang duoc giao dien nay theo doi')
+   return self.client.request('/cancel',{'task_id':task_id},timeout=7)
+  if cmd=='wincontrol':
+   with self.wincontrol_lock:
+    text=str(data.get('text') or '').strip()
+    if not text:raise ValueError('Nh???p l???nh WinControl')
+    if not self.snapshot().get('online'):raise ValueError('Windows Agent ch??a k???t n???i')
+    agent=self.client.request('/state',timeout=7);active=[t for t in agent.get('tasks',[]) if t.get('status') in ('running','waiting')]
+    if agent.get('current_task') or active:raise ValueError('Agent ??ang c?? task ho???t ?????ng; kh??ng th??m l??nh ????? tr??nh tr??ng')
+    settings={}
+    try:settings=json.loads((self.home/'settings.json').read_text(encoding='utf8'))
+    except (OSError,ValueError):pass
+    page_url=(settings.get('chrome_mcp') or {}).get('page_url')
+    if not page_url:raise ValueError('CHROME_MCP_NOT_CONFIGURED')
+    q=self.queue_getter();projects=[{k:p.get(k) for k in ('id','name','status','current_stage','execution_mode','automation_task_id','action_done','action_total')} for p in q.list()]
+    tasks=[{k:t.get(k) for k in ('id','status','project','current_action','error','next_action')} for t in agent.get('tasks',[]) if t.get('status') in ('running','waiting','paused','failed','timeout','needs_review')][-12:]
+    live={'agent':{k:agent.get(k) for k in ('online','enabled','pid','current_task','error')},'projects':projects,'tasks':tasks}
+    from .wincontrol_chat_loop import initial_prompt
+    task_id=__import__('uuid').uuid4().hex
+    exchange='wincontrol-'+task_id+'-initial'
+    context={'target_app':'chrome','expected_url':page_url,'wincontrol_task':True,'wincontrol_command':text,'wincontrol_round':0,'wincontrol_initial_state':live,'temp_dir':str(Path(__import__('tempfile').gettempdir())/'WinControl')}
+    actions=[{'action':'OBSERVE_CHATGPT','samples':3,'timeout':30},{'action':'SEND_CHATGPT','text':initial_prompt(text,dict(live,temp_dir=context['temp_dir'])),'exchange_id':exchange,'timeout':45,'retries':0},{'action':'WINCONTROL_DECIDE','timeout':30,'retries':0}]
+    submitted=self.client.request('/submit',{'actions':actions,'project':None,'stage':'WinControl','context':context,'exclusive':True},timeout=10)
+    return {'intent':'WINCONTROL_CHATGPT_LOOP','summary':'Task ???? ???????c g???i ?????n ChatGPT qua Chrome DevTools MCP; Agent s??? l??m c??ng c???, quan s??t v?? g???i k???t qu??? l???i.','task_id':submitted['task_id']}
   if cmd=='studio_attach':
    from .studio_workflow import workflow as studio_workflow,validate_url
    q=self.queue_getter();p=q.get(data['project'])

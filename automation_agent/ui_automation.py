@@ -42,7 +42,7 @@ def type_text(target,selector,text):
 
 def hotkey(target,keys):
  from pywinauto.keyboard import send_keys
- aliases={'CTRL+A':'^a','CTRL+C':'^c','CTRL+V':'^v','ENTER':'{ENTER}','ESCAPE':'{ESC}','CTRL+L':'^l','CTRL+T':'^t','CTRL+W':'^w','CTRL+TAB':'^{TAB}','CTRL+SHIFT+TAB':'^+{TAB}','F5':'{F5}'}
+ aliases={'CTRL+S':'^s','CTRL+O':'^o','CTRL+A':'^a','CTRL+C':'^c','CTRL+V':'^v','ENTER':'{ENTER}','ESCAPE':'{ESC}','CTRL+L':'^l','CTRL+T':'^t','CTRL+W':'^w','CTRL+TAB':'^{TAB}','CTRL+SHIFT+TAB':'^+{TAB}','F5':'{F5}'}
  key=str(keys).upper()
  if key not in aliases:raise ValueError('Hotkey chưa nằm trong danh sách hỗ trợ')
  validate_target(target,True)

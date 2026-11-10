@@ -304,6 +304,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith('/api/story/'): return self.story('GET',None)
         if path=='/work_board.js':return self.send(200,(Path(__file__).parent/'work_board.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/ui_shell.js': return self.send(200,(Path(__file__).parent/'ui_shell.js').read_bytes(),'application/javascript; charset=utf-8')
+        if path=='/wincontrol.js': return self.send(200,(Path(__file__).parent/'wincontrol.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/automation.css': return self.send(200,(Path(__file__).parent/'automation.css').read_bytes(),'text/css; charset=utf-8')
         if path=='/studio_automation.js':return self.send(200,(Path(__file__).parent/'studio_automation.js').read_bytes(),'application/javascript; charset=utf-8')
         if path=='/automation.js': return self.send(200,(Path(__file__).parent/'automation.js').read_bytes(),'application/javascript; charset=utf-8')

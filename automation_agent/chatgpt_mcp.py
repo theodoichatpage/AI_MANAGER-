@@ -91,7 +91,7 @@ def send(context,settings,url,text,exchange_id,verified):
  for _ in range(5):
   snap=_call(c,'snapshot')['snapshot']
   receipt=parse_snapshot(snap,url)
-  if receipt['turnCount']>state['turnCount'] and receipt['lastUserText']==text:
+  if receipt['lastUserText']==text and (receipt['turnCount']>state['turnCount'] or state.get('lastUserText')!=text):
    return {'exchange_id':exchange_id,'submission':'received','url':url,'turnCount':receipt['turnCount'],
            'prompt_sha256':hashlib.sha256(text.encode()).hexdigest()}
   time.sleep(.5)

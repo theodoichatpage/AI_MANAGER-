@@ -23,6 +23,15 @@ class AgentRuntime:
    if self.current and self.enabled and not self.cancel.is_set():return
    if self.current:raise ValueError('Đợi action hiện tại dừng hoàn toàn trước khi chạy tiếp')
    self.cancel.clear();self.enabled=True
+ def cancel_task(self,tid):
+  with self.lock:
+   task=self.store.get(tid)
+   if not task.get('context',{}).get('wincontrol_task'):raise ValueError('Chi co the huy task WinControl tu giao dien nay')
+   if self.current==tid:
+    self.store.stop_task(tid);self.enabled=False;self.cancel.set();self.executor.cancel()
+   else:self.store.stop_task(tid)
+  self.log.write(self.store.get(tid),'CANCEL',message='Huy task WinControl don le; giu nguyen cac task khac')
+  return {'ok':True,'task_id':tid,'status':self.store.get(tid)['status']}
  def stop(self):
   with self.lock:
    self.enabled=False;self.cancel.set();self.store.stop_all();self.executor.cancel()
@@ -87,8 +96,40 @@ class AgentRuntime:
       with self.lock:
        if self.cancel.is_set() or not self.store.mark_action(tid,idx,retry):break
       if not task['context'].get('studio_waiting_action'):self.log.write(self.store.get(tid),action['action'],message='Bắt đầu action' if retry==0 else 'Thử lại action')
+      if action['action']=='SEND_CHATGPT' and action.get('wincontrol_feedback'):
+       from .wincontrol_chat_loop import feedback_prompt
+       start=int(action.get('feedback_start',idx));observed=[]
+       for offset,entry in enumerate(task.get('results',[])[start:idx],start):
+        prior=task['actions'][offset]
+        observed.append({'action':prior.get('action'),'success':bool(entry.get('success')),'error':entry.get('error'),'result':entry.get('result')})
+       action=dict(action,text=feedback_prompt(task.get('context',{}).get('wincontrol_command',''),task.get('context',{}).get('wincontrol_last_summary',''),observed))
+       with self.store.lock,self.store.db:
+        persisted=self.store.get(tid);persisted['actions'][idx]['text']=action['text'];self.store.save(persisted)
       result=self.executor.run(tid,action,task['context'],self.cancel,retry)
       if not result.get('result',{}).get('waiting'):self.log.write(self.store.get(tid),action['action'],result)
+      if result.get('success') and action['action']=='WINCONTROL_DECIDE':
+       decision=result.get('result',{}).get('decision') or {}
+       if decision.get('status')=='blocked':
+        result.update(success=False,status='needs_review',error=decision.get('summary') or 'ChatGPT cannot safely continue')
+       elif decision.get('status')=='continue':
+        from .wincontrol_chat_loop import validate_actions
+        try:
+         next_action=validate_actions(decision.get('actions'))[0]
+         round_number=int(result.get('result',{}).get('context',{}).get('wincontrol_round',task.get('context',{}).get('wincontrol_round',0)+1))
+         from .wincontrol_chat_loop import MAX_ROUNDS
+         if round_number>MAX_ROUNDS:raise ValueError('WINCONTROL_MAX_ROUNDS_REACHED')
+         exchange_id='wincontrol-'+tid+'-'+str(round_number)
+         with self.store.lock,self.store.db:
+          current=self.store.get(tid)
+          if current['status']!='running' or current['next_action']!=idx:raise ValueError('WINCONTROL_CHECKPOINT_MOVED')
+          existing={a.get('exchange_id') for old in self.store.list() for a in old.get('actions',[]) if a.get('action')=='SEND_CHATGPT'}
+          if exchange_id in existing:raise ValueError('WINCONTROL_DUPLICATE_EXCHANGE')
+          feedback={'action':'SEND_CHATGPT','exchange_id':exchange_id,'wincontrol_feedback':True,'feedback_start':idx+1,'timeout':30,'retries':0}
+          current['actions'][idx+1:idx+1]=[next_action,feedback,{'action':'WINCONTROL_DECIDE','timeout':30,'retries':0}]
+          result.setdefault('result',{}).setdefault('context',{})['wincontrol_last_summary']=str(decision.get('summary') or '')[:1000]
+          self.store.save(current)
+        except Exception as exc:
+         result.update(success=False,status='needs_review',error=str(exc))
       if result['success'] or self.cancel.is_set():break
       if retry<maximum and self.cancel.wait(min(2**retry,8)):break
      if self.cancel.is_set():break
@@ -112,7 +153,7 @@ class AgentRuntime:
      if result.get('error_code')=='STUDIO_REVIEW':result['status']='needs_review'
      if not result['success'] and action['action'] in UNSAFE:result['status']='needs_review'
      self.store.complete_action(tid,idx,result)
-     if not result['success']:break
+     if self.store.get(tid)['status']!='running':break
    except Exception as e:
     with self.store.lock,self.store.db:
      t=self.store.get(tid);t.update(status='needs_review',error=str(e));self.store.save(t)

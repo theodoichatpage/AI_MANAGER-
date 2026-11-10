@@ -70,6 +70,16 @@ class MCPRegression(unittest.TestCase):
    self.assertEqual(result['submission'],'received')
    self.assertEqual(result['prompt_sha256'],hashlib.sha256(prompt.encode()).hexdigest())
 
+ def test_send_receipt_survives_virtualized_turn_count(self):
+  prompt='unique prompt after older turns were virtualized'
+  received=SNAP.replace('  uid=1_2 StaticText "seed"','  uid=1_2 StaticText "unique prompt after older turns were virtualized"')
+  state=dict(completion_verified=True,url=URL,fingerprint='a'*64,turnCount=2,lastUserText='seed')
+  verified=dict(completed=True,url=URL,fingerprint='a'*64,turn_count=2)
+  with patch.object(m,'observe',return_value=state),patch.object(m,'_config',return_value={}),patch.object(m,'_call',side_effect=[{'clicked':True},{'snapshot':received}]) as call:
+   result=m.send({}, {},URL,prompt,'exchange-virtualized-0001',verified)
+   self.assertEqual(result['submission'],'received')
+   self.assertEqual(call.call_count,2)
+
  def test_lost_receipt_never_resends(self):
   state=dict(completion_verified=True,url=URL,fingerprint='a'*64,turnCount=2)
   verified=dict(completed=True,url=URL,fingerprint='a'*64,turn_count=2)

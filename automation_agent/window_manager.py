@@ -11,7 +11,7 @@ class WindowChoiceRequired(RuntimeError):
 class WindowLostError(RuntimeError):
  pass
 
-APPS={'edge':{'names':['msedge.exe']},'chrome':{'names':['chrome.exe']},'capcut':{'names':['capcut.exe']},'test':{'names':['python.exe','pythonw.exe']}}
+APPS={'edge':{'names':['msedge.exe']},'chrome':{'names':['chrome.exe']},'capcut':{'names':['capcut.exe']},'notepad':{'names':['notepad.exe']},'test':{'names':['python.exe','pythonw.exe']}}
 
 def require_windows():
  if sys.platform!='win32':raise RuntimeError('Windows Automation cần máy Windows; không mô phỏng thành công trên hệ điều hành khác.')
@@ -93,7 +93,7 @@ def close(target):
 
 def executable(app,settings=None):
  require_windows();settings=settings or {}
- if app not in ('chrome','edge','capcut'):raise ValueError('Chỉ mở Chrome, Edge hoặc CapCut')
+ if app not in ('chrome','edge','capcut','notepad'):raise ValueError('Chỉ mở Chrome, Edge hoặc CapCut')
  configured=settings.get(app+'_path')
  candidates=[]
  if configured:candidates.append(Path(configured))
@@ -105,6 +105,8 @@ def executable(app,settings=None):
    except OSError:pass
   for env in ('PROGRAMFILES','PROGRAMFILES(X86)','LOCALAPPDATA'):
    if os.environ.get(env):candidates.append(Path(os.environ[env])/('Microsoft/Edge/Application/msedge.exe' if app=='edge' else 'Google/Chrome/Application/chrome.exe'))
+ elif app=='notepad':
+  candidates.extend([Path(os.environ.get('WINDIR','C:/Windows'))/'System32/notepad.exe',Path(os.environ.get('WINDIR','C:/Windows'))/'SysWOW64/notepad.exe'])
  else:
   local=Path(os.environ.get('LOCALAPPDATA',''))
   candidates.extend([local/'CapCut/Apps/CapCut.exe',local/'Programs/CapCut/CapCut.exe'])
