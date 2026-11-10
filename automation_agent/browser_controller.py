@@ -111,7 +111,7 @@ class BrowserController:
     return {url:location.href,assistantCount:assistants.length,
       lastAssistant:last?.innerText||'',lastAssistantId:last?.getAttribute('data-message-id')||'',
       generating:stop,composerReady:!!composer&&!composer.hasAttribute('disabled'),
-      sendReady:!!send&&!send.disabled,turnCount:turns.length};
+      sendControlPresent:!!send,turnCount:turns.length};
   })()"""
   ws=websocket.create_connection(wsurl,timeout=4,origin='http://localhost')
   try:
@@ -137,6 +137,6 @@ class BrowserController:
   fingerprints=[hashlib.sha256(str(v.get('lastAssistant','')).encode()).hexdigest() for v in values]
   stable=len(set(fingerprints))==1 and bool(last.get('lastAssistant','').strip())
   same=all(v.get('url')==last.get('url') and v.get('assistantCount')==last.get('assistantCount') and v.get('turnCount')==last.get('turnCount') for v in values)
-  ready=all(not v.get('generating') and v.get('composerReady') and v.get('sendReady') for v in values)
+  ready=all(not v.get('generating') and v.get('composerReady') and v.get('sendControlPresent') for v in values)
   verified=bool(stable and same and ready and last.get('assistantCount',0)>0)
   return dict(last,stable=stable,completion_verified=verified,state='completed' if verified else 'unverified',fingerprint=fingerprints[-1])
