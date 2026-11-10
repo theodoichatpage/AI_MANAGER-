@@ -79,3 +79,64 @@ class BrowserController:
   return dict(last,stable=stable,observations=samples,completion_verified=False,
               state='generating' if any(s['generating'] for s in observed) else 'unverified',
               reason='UIA document lacks a verified last-assistant completion marker')
+
+ def chatgpt_dom(self,port=9222):
+  """Read only an explicitly attached local Chrome DevTools target (no reload)."""
+  import json,urllib.request
+  port=int(port)
+  if not 1024<=port<=65535:raise ValueError('Cổng CDP không hợp lệ')
+  url=self.read_url()
+  parsed=urlparse(url)
+  if parsed.scheme!='https' or parsed.hostname not in ('chatgpt.com','chat.openai.com') or not parsed.path.startswith('/c/'):
+   raise ValueError('Không phải hội thoại ChatGPT đã xác minh')
+  try:
+   with urllib.request.urlopen('http://127.0.0.1:'+str(port)+'/json/list',timeout=2) as response:
+    targets=json.load(response)
+  except Exception as exc:raise RuntimeError('Chrome DevTools chưa kết nối; không reload') from exc
+  matching=[target for target in targets if target.get('type')=='page' and target.get('url','').split('#')[0].rstrip('/')==url.split('#')[0].rstrip('/')]
+  if len(matching)!=1:raise RuntimeError('Không xác minh được duy nhất một tab ChatGPT qua CDP')
+  target=matching[0]
+  wsurl=target.get('webSocketDebuggerUrl','')
+  if not wsurl.startswith('ws://127.0.0.1:') and not wsurl.startswith('ws://localhost:'):
+   raise RuntimeError('CDP endpoint không thuộc localhost')
+  try:import websocket
+  except ImportError as exc:raise RuntimeError('Thiếu websocket-client để đọc Chrome DevTools') from exc
+  expression=r"""(() => {
+    const turns=[...document.querySelectorAll('[data-message-author-role]')];
+    const assistants=turns.filter(x=>x.getAttribute('data-message-author-role')==='assistant');
+    const last=assistants.at(-1);
+    const stop=!!document.querySelector('button[aria-label*="Stop"],button[data-testid="stop-button"]');
+    const composer=document.querySelector('#prompt-textarea,[data-testid="composer-text-input"]');
+    const send=document.querySelector('button[data-testid="send-button"],button[aria-label="Send prompt"]');
+    return {url:location.href,assistantCount:assistants.length,
+      lastAssistant:last?.innerText||'',lastAssistantId:last?.getAttribute('data-message-id')||'',
+      generating:stop,composerReady:!!composer&&!composer.hasAttribute('disabled'),
+      sendReady:!!send&&!send.disabled,turnCount:turns.length};
+  })()"""
+  ws=websocket.create_connection(wsurl,timeout=4,origin='http://localhost')
+  try:
+   ws.send(json.dumps({'id':1,'method':'Runtime.evaluate','params':{'expression':expression,'returnByValue':True}}))
+   while True:
+    data=json.loads(ws.recv())
+    if data.get('id')==1:break
+   value=data.get('result',{}).get('result',{}).get('value')
+   if not isinstance(value,dict):raise RuntimeError('DOM ChatGPT không trả kết quả hợp lệ')
+   if value.get('url','').split('#')[0].rstrip('/')!=url.split('#')[0].rstrip('/'):
+    raise RuntimeError('CDP đã chuyển sang hội thoại khác')
+   return value
+  finally:ws.close()
+
+ def chatgpt_dom_observe(self,port=9222,samples=3,interval=.5):
+  import hashlib
+  if not 3<=int(samples)<=8:raise ValueError('Cần 3–8 mẫu')
+  values=[]
+  for index in range(int(samples)):
+   values.append(self.chatgpt_dom(port))
+   if index+1<int(samples):time.sleep(max(.2,min(float(interval),5)))
+  last=values[-1]
+  fingerprints=[hashlib.sha256(str(v.get('lastAssistant','')).encode()).hexdigest() for v in values]
+  stable=len(set(fingerprints))==1 and bool(last.get('lastAssistant','').strip())
+  same=all(v.get('url')==last.get('url') and v.get('assistantCount')==last.get('assistantCount') and v.get('turnCount')==last.get('turnCount') for v in values)
+  ready=all(not v.get('generating') and v.get('composerReady') and v.get('sendReady') for v in values)
+  verified=bool(stable and same and ready and last.get('assistantCount',0)>0)
+  return dict(last,stable=stable,completion_verified=verified,state='completed' if verified else 'unverified',fingerprint=fingerprints[-1])
