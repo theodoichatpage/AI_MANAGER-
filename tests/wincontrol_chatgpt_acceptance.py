@@ -19,7 +19,7 @@ def main():
  parser=argparse.ArgumentParser()
  parser.add_argument('--url',required=True,help='Dedicated test conversation URL, not a development chat')
  parser.add_argument('--home',default=None,help='Existing isolated acceptance checkpoint folder')
- parser.add_argument('--cdp-port',type=int,default=9222)
+ parser.add_argument('--mcp-config',required=True,help='JSON from existing owned Chrome MCP profile')
  parser.add_argument('--timeout',type=int,default=180)
  parser.add_argument('--hwnd',type=int,default=None)
  args=parser.parse_args()
@@ -31,12 +31,13 @@ def main():
  executor=ActionExecutor(home)
  windows=[w for w in wm.windows('chrome') if args.hwnd is None or w['hwnd']==args.hwnd]
  if len(windows)!=1:raise SystemExit('BLOCKED: select one verified Chrome window using --hwnd')
- target=dict(windows[0],target_app='chrome')
+ config=json.loads(Path(args.mcp_config).read_text(encoding='utf-8'))
+ target=dict(windows[0],target_app='chrome',expected_url=args.url,chrome_mcp_config=config)
  browser=BrowserController(target)
- if browser.read_url()!=args.url:raise SystemExit('BLOCKED: Chrome must already show dedicated test conversation')
+ if browser.read_url()!=args.url or config.get('page_url')!=args.url:raise SystemExit('BLOCKED: exact owned test conversation required')
  actions=[]
  for i in (1,2):
-  actions.extend([{'action':'OBSERVE_CHATGPT','target_app':'chrome','cdp_port':args.cdp_port,'timeout':25},
+  actions.extend([{'action':'OBSERVE_CHATGPT','target_app':'chrome','timeout':25},
                   {'action':'SEND_CHATGPT','target_app':'chrome','cdp_port':args.cdp_port,
                    'exchange_id':'acceptance-'+str(i)+'-'+args.url.rsplit('/',1)[-1],
                    'text':'Test round '+str(i)+': reply exactly ACK ROUND '+str(i),
