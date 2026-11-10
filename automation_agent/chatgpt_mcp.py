@@ -77,7 +77,10 @@ def send(context,settings,url,text,exchange_id,verified):
  # Click alone is not receipt. A snapshot must show exact user text.
  for _ in range(5):
   snap=_call(c,'snapshot')['snapshot']
-  if text in snap:
+  # Require a user-authored turn marker, not text left in the composer.
+  import re
+  user_turns=re.findall(r'(?:You said:|user message)(.*?)(?=ChatGPT said:|assistant message|You said:|user message|\\Z)',snap,re.I|re.S)
+  if any(text.strip()==turn.strip() for turn in user_turns):
    return {'exchange_id':exchange_id,'submission':'received','prompt_sha256':hashlib.sha256(text.encode()).hexdigest()}
   time.sleep(.5)
  raise RuntimeError('CHATGPT_RECEIPT_UNVERIFIED_NO_RETRY')
