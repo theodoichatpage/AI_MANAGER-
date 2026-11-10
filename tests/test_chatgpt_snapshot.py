@@ -43,4 +43,26 @@ class ChatGPTSnapshotTests(unittest.TestCase):
   with self.assertRaises(RuntimeError):self.snapshot('https://chatgpt.com/c/test',[FakeDocument('one',[]),FakeDocument('two',[])])
 
 
+ def test_observe_stable_does_not_authorize_send(self):
+  browser=BrowserController({'hwnd':123,'target_app':'chrome'})
+  stable={'url':'https://chatgpt.com/c/test','text':'assistant text','fingerprint':'abc','generating':False}
+  with patch.object(browser,'chatgpt_snapshot',side_effect=[stable,stable,stable]),patch('automation_agent.browser_controller.time.sleep',return_value=None):
+   result=browser.chatgpt_observe(3,.2)
+  self.assertTrue(result['stable'])
+  self.assertFalse(result['completion_verified'])
+
+ def test_observe_generating_blocks_completion(self):
+  browser=BrowserController({'hwnd':123,'target_app':'chrome'})
+  stable={'url':'https://chatgpt.com/c/test','text':'assistant text','fingerprint':'abc','generating':False}
+  busy=dict(stable,generating=True)
+  with patch.object(browser,'chatgpt_snapshot',side_effect=[stable,busy,stable]),patch('automation_agent.browser_controller.time.sleep',return_value=None):
+   result=browser.chatgpt_observe(3,.2)
+  self.assertFalse(result['stable'])
+  self.assertEqual(result['state'],'generating')
+
+ def test_observe_requires_multiple_samples(self):
+  browser=BrowserController({'hwnd':123,'target_app':'chrome'})
+  with self.assertRaises(ValueError):browser.chatgpt_observe(1)
+
+
 if __name__=='__main__':unittest.main()
