@@ -41,15 +41,14 @@ class BrowserController:
   wm.focus(self.target);return ui.hotkey(self.target,key)
 
  def chatgpt_snapshot(self):
-  """Read-only UIA snapshot. Never infer completion from a stable text length."""
-  from urllib.parse import urlparse
+  """Read a guarded UIA snapshot; no navigation or reload."""
+  import hashlib
   current=self.read_url()
   parsed=urlparse(current)
   if parsed.scheme!='https' or parsed.hostname not in ('chatgpt.com','chat.openai.com') or not parsed.path.startswith('/c/'):
    raise ValueError('Chỉ đọc hội thoại ChatGPT có URL /c/ đã xác minh')
   wm.validate_target(self.target)
-  root=ui.root(self.target)
-  documents=root.descendants(control_type='Document')
+  documents=ui.root(self.target).descendants(control_type='Document')
   if len(documents)!=1:raise RuntimeError('Không xác minh được duy nhất một Document của hội thoại')
   document=documents[0]
   text=document.window_text() or ''
@@ -58,7 +57,25 @@ class BrowserController:
   labels=[(button.window_text() or '').strip().lower() for button in buttons]
   stop=any(label in ('stop generating','stop responding','dừng tạo','dừng phản hồi') for label in labels)
   send=any(label in ('send prompt','send message','gửi tin nhắn','gửi') for label in labels)
-  # Absence of Stop is not proof that the assistant completed its answer.
-  return {'url':current,'text':text,'generating':stop,
-          'state':'generating' if stop else 'unverified',
+  # A stable document is only evidence of stability, not a server receipt.
+  return {'url':current,'text':text,'fingerprint':hashlib.sha256(text.encode('utf-8')).hexdigest(),
+          'generating':stop,'state':'generating' if stop else 'unverified',
           'send_control_visible':send,'completion_verified':False}
+
+ def chatgpt_observe(self,samples=3,interval=1):
+  """Stable DOM samples; require explicit assistant end controls before completion."""
+  import time as _time
+  samples=int(samples)
+  if samples<3 or samples>8:raise ValueError('Cần ít nhất 3 mẫu UIA')
+  observed=[]
+  for index in range(samples):
+   snap=self.chatgpt_snapshot()
+   observed.append(snap)
+   if index+1<samples:_time.sleep(max(.2,min(float(interval),5)))
+  last=observed[-1]
+  stable=all(s['url']==last['url'] and s['fingerprint']==last['fingerprint'] and not s['generating'] for s in observed)
+  # The current UIA reader cannot distinguish assistant content from user/page chrome,
+  # so stability must not authorize sending the next prompt.
+  return dict(last,stable=stable,observations=samples,completion_verified=False,
+              state='generating' if any(s['generating'] for s in observed) else 'unverified',
+              reason='UIA document lacks a verified last-assistant completion marker')
