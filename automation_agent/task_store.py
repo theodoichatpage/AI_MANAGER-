@@ -29,11 +29,11 @@ class TaskStore:
    if not 0<=int(a.get('retries',0))<=3:raise ValueError('Retry tối đa 3')
   exchanges=[a.get('exchange_id') for a in actions if a.get('action')=='SEND_CHATGPT']
   if any(not isinstance(x,str) or len(x)<8 for x in exchanges) or len(exchanges)!=len(set(exchanges)):raise ValueError('Mỗi lượt ChatGPT cần exchange_id duy nhất')
-  with self.lock:
+  t={'id':str(uuid.uuid4()),'task_id':None,'project':project,'current_project':project,'current_stage':stage,'current_part':0,'current_scene':0,'status':initial_status,'actions':actions,'next_action':0,'current_action':None,'target_app':None,'target_window':None,'retry_count':0,'last_successful_action':None,'last_successful_checkpoint':None,'context':context or {},'results':[],'in_flight':False,'error':None,'created_at':time.time()};t['task_id']=t['id']
+  with self.lock,self.db:
    prior={a.get('exchange_id') for task in self.list() for a in task.get('actions',[]) if a.get('action')=='SEND_CHATGPT'}
    if prior.intersection(exchanges):raise ValueError('Lượt ChatGPT đã có trong checkpoint; không gửi trùng')
-  t={'id':str(uuid.uuid4()),'task_id':None,'project':project,'current_project':project,'current_stage':stage,'current_part':0,'current_scene':0,'status':initial_status,'actions':actions,'next_action':0,'current_action':None,'target_app':None,'target_window':None,'retry_count':0,'last_successful_action':None,'last_successful_checkpoint':None,'context':context or {},'results':[],'in_flight':False,'error':None,'created_at':time.time()};t['task_id']=t['id']
-  with self.lock,self.db:self.save(t)
+   self.save(t)
   return t['id']
  def list(self):
   with self.lock:return [json.loads(r['payload']) for r in self.db.execute('SELECT payload FROM tasks ORDER BY rowid')]
