@@ -65,4 +65,28 @@ class ChatGPTSnapshotTests(unittest.TestCase):
   with self.assertRaises(ValueError):browser.chatgpt_observe(1)
 
 
+ def test_dom_observe_verified_assistant(self):
+  browser=BrowserController({'hwnd':123,'target_app':'chrome'})
+  state={'url':'https://chatgpt.com/c/test','assistantCount':2,'turnCount':4,'lastAssistant':'answer','generating':False,'composerReady':True,'sendControlPresent':True}
+  with patch.object(browser,'chatgpt_dom',side_effect=[state,state,state]),patch('automation_agent.browser_controller.time.sleep',return_value=None):
+   result=browser.chatgpt_dom_observe()
+  self.assertTrue(result['completion_verified'])
+  self.assertEqual(result['lastAssistant'],'answer')
+
+ def test_dom_observe_rejects_busy_or_switched_conversation(self):
+  browser=BrowserController({'hwnd':123,'target_app':'chrome'})
+  state={'url':'https://chatgpt.com/c/test','assistantCount':2,'turnCount':4,'lastAssistant':'answer','generating':False,'composerReady':True,'sendControlPresent':True}
+  busy=dict(state,generating=True)
+  switched=dict(state,url='https://chatgpt.com/c/other')
+  for sequence in ([state,busy,state],[state,switched,state]):
+   with patch.object(browser,'chatgpt_dom',side_effect=sequence),patch('automation_agent.browser_controller.time.sleep',return_value=None):
+    self.assertFalse(browser.chatgpt_dom_observe()['completion_verified'])
+
+ def test_dom_observe_rejects_empty_assistant(self):
+  browser=BrowserController({'hwnd':123,'target_app':'chrome'})
+  state={'url':'https://chatgpt.com/c/test','assistantCount':0,'turnCount':1,'lastAssistant':'','generating':False,'composerReady':True,'sendControlPresent':True}
+  with patch.object(browser,'chatgpt_dom',side_effect=[state,state,state]),patch('automation_agent.browser_controller.time.sleep',return_value=None):
+   self.assertFalse(browser.chatgpt_dom_observe()['completion_verified'])
+
+
 if __name__=='__main__':unittest.main()
