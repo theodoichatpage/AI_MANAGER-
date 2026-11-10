@@ -89,4 +89,42 @@ class ChatGPTSnapshotTests(unittest.TestCase):
    self.assertFalse(browser.chatgpt_dom_observe()['completion_verified'])
 
 
+ def test_send_requires_exact_receipt(self):
+  browser=BrowserController({'hwnd':123,'target_app':'chrome'})
+  import hashlib
+  prompt='Continue test';base={'url':'https://chatgpt.com/c/test','turnCount':4}
+  receipt=dict(base,turnCount=5,lastUserText=prompt)
+  class Edit:
+   element_info=type('Info',(),{'automation_id':'prompt-textarea'})()
+   def is_enabled(self):return True
+   def is_visible(self):return True
+   def set_edit_text(self,text):self.text=text
+   def window_text(self):return self.text
+  edit=Edit()
+  class Root:
+   def descendants(self,control_type=None):return [edit]
+  verified=dict(base,completion_verified=True,fingerprint=hashlib.sha256(b'answer').hexdigest())
+  with patch.object(browser,'chatgpt_dom_observe',return_value=verified),patch.object(browser,'chatgpt_dom',return_value=receipt),patch('automation_agent.browser_controller.ui.root',return_value=Root()),patch('automation_agent.browser_controller.wm.validate_target'),patch('automation_agent.browser_controller.ui.hotkey') as hotkey:
+   result=browser.chatgpt_send_verified(prompt,'exchange-001',base['url'],verified['fingerprint'])
+  self.assertEqual(result['submission'],'received')
+  hotkey.assert_called_once()
+
+ def test_send_does_not_retry_after_missing_receipt(self):
+  browser=BrowserController({'hwnd':123,'target_app':'chrome'})
+  import hashlib
+  prompt='Continue test';base={'url':'https://chatgpt.com/c/test','turnCount':4}
+  class Edit:
+   element_info=type('Info',(),{'automation_id':'prompt-textarea'})()
+   def is_enabled(self):return True
+   def is_visible(self):return True
+   def set_edit_text(self,text):self.text=text
+   def window_text(self):return self.text
+  class Root:
+   def descendants(self,control_type=None):return [Edit()]
+  verified=dict(base,completion_verified=True,fingerprint=hashlib.sha256(b'answer').hexdigest())
+  with patch.object(browser,'chatgpt_dom_observe',return_value=verified),patch.object(browser,'chatgpt_dom',return_value=dict(base,lastUserText='')),patch('automation_agent.browser_controller.ui.root',return_value=Root()),patch('automation_agent.browser_controller.wm.validate_target'),patch('automation_agent.browser_controller.ui.hotkey') as hotkey,patch('automation_agent.browser_controller.time.sleep',return_value=None):
+   with self.assertRaises(RuntimeError):browser.chatgpt_send_verified(prompt,'exchange-002',base['url'],verified['fingerprint'])
+  hotkey.assert_called_once()
+
+
 if __name__=='__main__':unittest.main()
