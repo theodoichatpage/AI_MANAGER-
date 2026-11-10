@@ -113,11 +113,11 @@ def dispatch(a,context,home,settings):
  if name=='READ_CHATGPT':return BrowserController(target).chatgpt_snapshot()
  if name=='OBSERVE_CHATGPT':
   observed=BrowserController(target).chatgpt_dom_observe(a.get('cdp_port',9222),a.get('samples',3),a.get('interval',.5))
-  return dict(observed,context={'chatgpt_verified':{'url':observed['url'],'fingerprint':observed['fingerprint'],'completed':observed['completion_verified']}})
+  return dict(observed,context={'chatgpt_verified':{'url':observed['url'],'fingerprint':observed['fingerprint'],'turn_count':observed['turnCount'],'completed':observed['completion_verified']}})
  if name=='SEND_CHATGPT':
   verified=context.get('chatgpt_verified') or {}
   if not verified.get('completed'):raise RuntimeError('Chưa có checkpoint xác nhận ChatGPT hoàn tất')
-  result=BrowserController(target).chatgpt_send_verified(a.get('text'),a.get('exchange_id'),verified['url'],verified['fingerprint'],a.get('cdp_port',9222))
+  result=BrowserController(target).chatgpt_send_verified(a.get('text'),a.get('exchange_id'),verified['url'],verified['fingerprint'],a.get('cdp_port',9222),verified.get('turn_count'))
   if result.get('submission')!='received':raise RuntimeError('Chưa có receipt tin nhắn; cần đối soát')
   return dict(result,context={'chatgpt_exchange_id':result['exchange_id'],'chatgpt_submission':'received','chatgpt_verified':None})
  if name=='WAIT_PAGE':return browser.wait_page(a.get('url') or context.get('expected_url'),float(a.get('timeout',30))-.1)
