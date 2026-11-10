@@ -118,7 +118,8 @@ def dispatch(a,context,home,settings):
   verified=context.get('chatgpt_verified') or {}
   if not verified.get('completed'):raise RuntimeError('Chưa có checkpoint xác nhận ChatGPT hoàn tất')
   result=BrowserController(target).chatgpt_send_verified(a.get('text'),a.get('exchange_id'),verified['url'],verified['fingerprint'],a.get('cdp_port',9222))
-  raise RuntimeError('Đã thử gửi lượt '+result['exchange_id']+'; chưa có receipt, cần đối soát trước khi tiếp tục')
+  if result.get('submission')!='received':raise RuntimeError('Chưa có receipt tin nhắn; cần đối soát')
+  return dict(result,context={'chatgpt_exchange_id':result['exchange_id'],'chatgpt_submission':'received','chatgpt_verified':None})
  if name=='WAIT_PAGE':return browser.wait_page(a.get('url') or context.get('expected_url'),float(a.get('timeout',30))-.1)
  key={'NEW_TAB':'CTRL+T','CLOSE_TAB':'CTRL+W','SWITCH_TAB':'CTRL+TAB','REFRESH':'F5'}.get(name)
  if key:return browser.key(key)
