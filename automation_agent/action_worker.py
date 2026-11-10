@@ -111,6 +111,8 @@ def dispatch(a,context,home,settings):
  if name=='OPEN_URL':return browser.open_url(a.get('url'))
  if name=='READ_URL':return {'url':browser.read_url()}
  if name=='READ_CHATGPT':return BrowserController(target).chatgpt_snapshot()
+ if name in ('OBSERVE_CHATGPT','SEND_CHATGPT') and (context.get('chrome_mcp_config') or (settings or {}).get('chrome_mcp')):
+  raise RuntimeError('CHROME_MCP_BRIDGE_REQUIRED: không mở kết nối CDP song song với MCP đã cấu hình')
  if name=='OBSERVE_CHATGPT':
   observed=BrowserController(target).chatgpt_dom_observe(a.get('cdp_port',9222),a.get('samples',3),a.get('interval',.5))
   return dict(observed,context={'chatgpt_verified':{'url':observed['url'],'fingerprint':observed['fingerprint'],'turn_count':observed['turnCount'],'completed':observed['completion_verified']}})
