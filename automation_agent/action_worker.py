@@ -110,6 +110,7 @@ def dispatch(a,context,home,settings):
  browser=EdgeController(target) if app=='edge' else BrowserController(target)
  if name=='OPEN_URL':return browser.open_url(a.get('url'))
  if name=='READ_URL':return {'url':browser.read_url()}
+ if name=='READ_CHATGPT':return browser.chatgpt_snapshot()
  if name=='WAIT_PAGE':return browser.wait_page(a.get('url') or context.get('expected_url'),float(a.get('timeout',30))-.1)
  key={'NEW_TAB':'CTRL+T','CLOSE_TAB':'CTRL+W','SWITCH_TAB':'CTRL+TAB','REFRESH':'F5'}.get(name)
  if key:return browser.key(key)
