@@ -90,7 +90,7 @@ def dispatch(a,context,home,settings):
    except wm.WindowNotFoundError:
     if name=='FIND_WINDOW' or time.monotonic()>=deadline:raise
     time.sleep(.2)
- if not target.get('hwnd'):
+ if not target.get('hwnd') and name not in ('OBSERVE_CHATGPT','SEND_CHATGPT'):
   target.update(wm.find_window(app,a.get('title')))
  if name=='FOCUS_WINDOW':return wm.focus(target)
  if name in ('RESTORE','MAXIMIZE','MINIMIZE'):return wm.set_state(target,name)
@@ -116,7 +116,7 @@ def dispatch(a,context,home,settings):
   url=context.get('expected_url') or (context.get('chrome_mcp_config') or {}).get('page_url')
   if not url:raise RuntimeError('EXACT_CHATGPT_URL_REQUIRED')
   observed=chatgpt_mcp.observe(context,settings,url,a.get('samples',3))
-  return dict(observed,context={'chatgpt_verified':{'url':observed['url'],'fingerprint':observed['fingerprint'],'completed':observed['completion_verified']}})
+  return dict(observed,context={'chatgpt_verified':{'url':observed['url'],'fingerprint':observed['fingerprint'],'turn_count':observed['turnCount'],'completed':observed['completion_verified']}})
  if name=='SEND_CHATGPT':
   from . import chatgpt_mcp
   verified=context.get('chatgpt_verified') or {}

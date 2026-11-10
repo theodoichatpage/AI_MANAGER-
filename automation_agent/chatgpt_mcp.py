@@ -10,7 +10,7 @@ def _config(context,settings,url):
  if any(not c.get(k) for k in ('node','server','sdk_root','browser_url','profile_dir')):
   raise RuntimeError('CHROME_MCP_NOT_CONFIGURED')
  u=urlsplit(c['browser_url'])
- if u.scheme!='http' or u.hostname!='127.0.0.1' or u.path not in ('','/') or u.username or u.password:
+ if u.scheme!='http' or u.hostname!='127.0.0.1' or u.path not in ('','/') or u.username or u.password or u.query or u.fragment:
   raise RuntimeError('OWNED_LOOPBACK_CDP_REQUIRED')
  marker=Path(c['profile_dir'])/'DevToolsActivePort'
  if int(marker.read_text().splitlines()[0])!=u.port:raise RuntimeError('CHROME_PROFILE_ENDPOINT_MISMATCH')
@@ -20,9 +20,9 @@ def _config(context,settings,url):
  return c
 
 def _call(c,operation,text=None):
- payload=dict(c,operation=operation,text=text)
- process=subprocess.run([c['node'],str(Path(__file__).with_name('chatgpt_mcp_bridge.mjs'))],
-  input=json.dumps(payload),text=True,capture_output=True,timeout=18,
+ payload=dict(c,operation='action',action={'action':'CHATGPT_SNAPSHOT' if operation=='snapshot' else 'CHATGPT_SEND','text':text})
+ process=subprocess.run([c['node'],str(Path(__file__).with_name('chrome_mcp_bridge.mjs'))],
+  input=json.dumps(payload),text=True,encoding='utf-8',capture_output=True,timeout=18,
   creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
  try:result=json.loads(process.stdout)
  except ValueError as exc:raise RuntimeError('MCP_RESPONSE_INVALID') from exc
@@ -32,55 +32,67 @@ def _call(c,operation,text=None):
 def parse_snapshot(raw,url):
  """Conservative parser: only explicitly attributed assistant turns qualify."""
  import re
- lines=raw.splitlines()
- # The MCP accessibility tree does not guarantee a stable author-role identifier.
- # Do not infer assistant text from a generic paragraph or page-wide text.
- assistant=[]
- for i,line in enumerate(lines):
-  if re.search(r'\b(?:assistant message|ChatGPT said:)\b',line,re.I):
-   chunk=[]
-   for item in lines[i+1:]:
-    if re.search(r'\b(?:user message|You said:|assistant message|ChatGPT said:)\b',item,re.I):break
-    chunk.append(item)
-   if chunk:assistant.append('\n'.join(chunk).strip())
- generating=any(re.search(r'\b(?:Stop generating|Stop responding|Dừng tạo|Dừng phản hồi)\b',line,re.I) for line in lines)
- composer=any(re.search(r'\btextbox\b.*(?:Message ChatGPT|Ask anything|Message|Send a message)',line,re.I) for line in lines)
- send=any(re.search(r'\bbutton\b.*(?:Send prompt|Send message|Send)',line,re.I) for line in lines)
- last=assistant[-1] if assistant else ''
- return {'url':url,'lastAssistant':last,'assistantCount':len(assistant),'generating':generating,
-         'composerReady':composer,'sendControlPresent':send,
-         'fingerprint':hashlib.sha256(last.encode()).hexdigest(),
-         'snapshot':raw}
+ turns=[];current=None;composer=False;generating=False;end=False;saw_root=False
+ for line in raw.splitlines():
+  match=re.match(r'\s*uid=(\S+)\s+(\S+)(?:\s+("(?:[^"\\]|\\.)*"))?',line)
+  if not match:continue
+  if match[2].startswith('"'):
+   plain=re.match(r'\s*uid=\S+\s+("(?:[^"\\]|\\.)*")',line)
+   if not plain:continue
+   role='StaticText';name=json.loads(plain[1])
+  else:
+   role=match[2];name=json.loads(match[3]) if match[3] else ''
+  if role=='RootWebArea':
+   saw_root=True
+   observed=re.search(r'\burl=("(?:[^"\\]|\\.)*")',line)
+   if not observed or json.loads(observed[1])!=url:raise RuntimeError('MCP_SNAPSHOT_URL_MISMATCH')
+  author={'You said:':'user','user message':'user','ChatGPT said:':'assistant','assistant message':'assistant'}.get(name)
+  if author and role in ('heading','generic'):
+   current={'role':author,'text':[]};turns.append(current);end=False;continue
+  if role=='heading' and name=='Latest response':current=None
+  if role=='textbox':
+   composer=name in ('Ask anything','Ask ChatGPT','Message ChatGPT','Message','Send a message') and not re.search(r'\b(?:disabled|readonly)\b',line)
+   current=None
+  if role=='button':
+   generating|=name.lower() in ('stop generating','stop responding','stop streaming','dừng tạo','dừng phản hồi')
+   if current and current['role']=='assistant' and name in ('Copy','Copy response','Read aloud','Good response'):end=True
+  if current and role=='StaticText':current['text'].append(name)
+ if not saw_root:raise RuntimeError('MCP_SNAPSHOT_URL_MISSING')
+ last=next((t for t in reversed(turns) if t['role']=='assistant'),None)
+ text='\n'.join(last['text']) if last else ''
+ return dict(url=url,lastAssistant=text,lastUserText=next(('\n'.join(t['text']) for t in reversed(turns) if t['role']=='user'),''),
+  assistantCount=sum(t['role']=='assistant' for t in turns),turnCount=len(turns),lastRole=turns[-1]['role'] if turns else '',
+  generating=generating,composerReady=composer,assistantEndControl=end,
+  fingerprint=hashlib.sha256(text.encode()).hexdigest(),snapshot=raw)
 
 def observe(context,settings,url,samples=3):
  c=_config(context,settings,url)
  samples=int(samples)
- if samples<3 or samples>8:raise ValueError('Cần 3–8 mẫu')
+ if samples<3 or samples>8:raise ValueError('REQUIRE_3_TO_8_SAMPLES')
  rows=[]
  for i in range(samples):
   rows.append(parse_snapshot(_call(c,'snapshot')['snapshot'],url))
   if i+1<samples:time.sleep(.5)
  last=rows[-1]
  stable=bool(last['lastAssistant']) and len({r['fingerprint'] for r in rows})==1
- ready=all(not r['generating'] and r['composerReady'] and r['sendControlPresent'] for r in rows)
- completed=stable and ready and all(r['assistantCount']==last['assistantCount'] for r in rows)
+ ready=all(not r['generating'] and r['composerReady'] and r['assistantEndControl'] and r['lastRole']=='assistant' for r in rows)
+ completed=stable and ready and all(r['turnCount']==last['turnCount'] for r in rows)
  return {k:v for k,v in dict(last,stable=stable,completion_verified=completed,state='completed' if completed else 'unverified').items() if k!='snapshot'}
 
 def send(context,settings,url,text,exchange_id,verified):
  if not isinstance(text,str) or not text.strip() or len(text)>12000:raise ValueError('INVALID_PROMPT')
  if not isinstance(exchange_id,str) or len(exchange_id)<8:raise ValueError('INVALID_EXCHANGE_ID')
  state=observe(context,settings,url)
- if not state['completion_verified'] or not verified.get('completed') or verified.get('url')!=url or state['fingerprint']!=verified.get('fingerprint'):
+ if not state['completion_verified'] or not verified.get('completed') or verified.get('url')!=url or state['fingerprint']!=verified.get('fingerprint') or state['turnCount']!=verified.get('turn_count'):
   raise RuntimeError('CHATGPT_UNVERIFIED_NO_SEND')
  c=_config(context,settings,url)
  _call(c,'fill_click',text)
  # Click alone is not receipt. A snapshot must show exact user text.
  for _ in range(5):
   snap=_call(c,'snapshot')['snapshot']
-  # Require a user-authored turn marker, not text left in the composer.
-  import re
-  user_turns=re.findall(r'(?:You said:|user message)(.*?)(?=ChatGPT said:|assistant message|You said:|user message|\\Z)',snap,re.I|re.S)
-  if any(text.strip()==turn.strip() for turn in user_turns):
-   return {'exchange_id':exchange_id,'submission':'received','prompt_sha256':hashlib.sha256(text.encode()).hexdigest()}
+  receipt=parse_snapshot(snap,url)
+  if receipt['turnCount']>state['turnCount'] and receipt['lastUserText']==text:
+   return {'exchange_id':exchange_id,'submission':'received','url':url,'turnCount':receipt['turnCount'],
+           'prompt_sha256':hashlib.sha256(text.encode()).hexdigest()}
   time.sleep(.5)
  raise RuntimeError('CHATGPT_RECEIPT_UNVERIFIED_NO_RETRY')
