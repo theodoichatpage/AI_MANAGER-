@@ -111,6 +111,7 @@ def dispatch(a,context,home,settings):
  if name=='OPEN_URL':return browser.open_url(a.get('url'))
  if name=='READ_URL':return {'url':browser.read_url()}
  if name=='READ_CHATGPT':return BrowserController(target).chatgpt_snapshot()
+ if name=='OBSERVE_CHATGPT':return BrowserController(target).chatgpt_observe(a.get('samples',3),a.get('interval',1))
  if name=='WAIT_PAGE':return browser.wait_page(a.get('url') or context.get('expected_url'),float(a.get('timeout',30))-.1)
  key={'NEW_TAB':'CTRL+T','CLOSE_TAB':'CTRL+W','SWITCH_TAB':'CTRL+TAB','REFRESH':'F5'}.get(name)
  if key:return browser.key(key)
