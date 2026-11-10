@@ -110,6 +110,8 @@ class BrowserController:
     const send=document.querySelector('button[data-testid="send-button"],button[aria-label="Send prompt"]');
     return {url:location.href,assistantCount:assistants.length,
       lastAssistant:last?.innerText||'',lastAssistantId:last?.getAttribute('data-message-id')||'',
+      lastRole:turns.at(-1)?.getAttribute('data-message-author-role')||'',
+      lastUserText:turns.filter(x=>x.getAttribute('data-message-author-role')==='user').at(-1)?.innerText||'',
       generating:stop,composerReady:!!composer&&!composer.hasAttribute('disabled'),
       sendControlPresent:!!send,turnCount:turns.length};
   })()"""
@@ -138,7 +140,7 @@ class BrowserController:
   stable=len(set(fingerprints))==1 and bool(last.get('lastAssistant','').strip())
   same=all(v.get('url')==last.get('url') and v.get('assistantCount')==last.get('assistantCount') and v.get('turnCount')==last.get('turnCount') for v in values)
   ready=all(not v.get('generating') and v.get('composerReady') and v.get('sendControlPresent') for v in values)
-  verified=bool(stable and same and ready and last.get('assistantCount',0)>0)
+  verified=bool(stable and same and ready and last.get('assistantCount',0)>0 and last.get('lastRole')=='assistant')
   return dict(last,stable=stable,completion_verified=verified,state='completed' if verified else 'unverified',fingerprint=fingerprints[-1])
 
  def chatgpt_send_verified(self,text,exchange_id,expected_url,expected_fingerprint,port=9222):
@@ -160,5 +162,14 @@ class BrowserController:
   if control.window_text()!=text:raise RuntimeError('Không xác minh được nội dung đã nhập; không gửi')
   # Enter may have been delivered even if the worker loses connection; never auto-retry.
   ui.hotkey(self.target,'ENTER')
-  return {'exchange_id':exchange_id,'submission':'uncertain','expected_url':expected_url,
-          'prompt_sha256':hashlib.sha256(text.encode()).hexdigest()}
+  # Receipt is the exact user turn in the same conversation, not keyboard success.
+  try:
+   for _ in range(5):
+    receipt=self.chatgpt_dom(port)
+    if receipt['url']!=expected_url:raise RuntimeError('Đã đổi hội thoại khi chờ receipt')
+    if receipt.get('turnCount',0)>state.get('turnCount',0) and receipt.get('lastUserText','').strip()==text.strip():
+     return {'exchange_id':exchange_id,'submission':'received','expected_url':expected_url,
+             'prompt_sha256':hashlib.sha256(text.encode()).hexdigest()}
+    time.sleep(.3)
+  except Exception as exc:raise RuntimeError('Không xác minh được receipt sau thao tác gửi; không gửi lại') from exc
+  raise RuntimeError('Chưa thấy tin nhắn trong đúng hội thoại; không gửi lại')
