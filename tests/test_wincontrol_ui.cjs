@@ -7,6 +7,7 @@ const server = fs.readFileSync('server.py', 'utf8');
 assert.match(page, /src="\/manager_settings\.js"><\/script><script src="\/wincontrol\.js"/);
 assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /WinControl/);
 assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /winControlHTML\(\)/);
+assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /document\.querySelector\('aside'\)/, 'WinControl navigation must attach to the existing app sidebar');
 assert.match(server, /path=='\/wincontrol\.js'/);
 assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /api\('\/api\/automation'/);
 assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /wincontrol_cancel/);

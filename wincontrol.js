@@ -57,7 +57,7 @@ async function winControlStop(){
 (function installWinControlPage(){
  if(typeof UI_PAGES==='undefined'||typeof goPage!=='function'||typeof render!=='function')return;
  if(!UI_PAGES.includes('WinControl'))UI_PAGES.push('WinControl');
- const nav=document.querySelector('.neo-main-nav');
+ const nav=document.querySelector('aside')||document.querySelector('.neo-main-nav');
  if(nav&&!nav.querySelector('[data-page="WinControl"]')){
   const button=document.createElement('button');button.className='btn';button.dataset.page='WinControl';button.textContent='WinControl';button.setAttribute('aria-label','Mở giao diện WinControl');button.onclick=()=>goPage('WinControl');nav.appendChild(button);
  }
