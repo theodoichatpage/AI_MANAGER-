@@ -39,3 +39,26 @@ class BrowserController:
   raise TimeoutError('Chrome chưa hiển thị đúng URL/Document trong thời hạn')
  def key(self,key):
   wm.focus(self.target);return ui.hotkey(self.target,key)
+
+ def chatgpt_snapshot(self):
+  """Read-only UIA snapshot. Never infer completion from a stable text length."""
+  from urllib.parse import urlparse
+  current=self.read_url()
+  parsed=urlparse(current)
+  if parsed.scheme!='https' or parsed.hostname not in ('chatgpt.com','chat.openai.com') or not parsed.path.startswith('/c/'):
+   raise ValueError('Chỉ đọc hội thoại ChatGPT có URL /c/ đã xác minh')
+  wm.validate_target(self.target)
+  root=ui.root(self.target)
+  documents=root.descendants(control_type='Document')
+  if len(documents)!=1:raise RuntimeError('Không xác minh được duy nhất một Document của hội thoại')
+  document=documents[0]
+  text=document.window_text() or ''
+  if not text.strip():raise RuntimeError('Chưa đọc được nội dung hội thoại qua UIA')
+  buttons=document.descendants(control_type='Button')
+  labels=[(button.window_text() or '').strip().lower() for button in buttons]
+  stop=any(label in ('stop generating','stop responding','dừng tạo','dừng phản hồi') for label in labels)
+  send=any(label in ('send prompt','send message','gửi tin nhắn','gửi') for label in labels)
+  # Absence of Stop is not proof that the assistant completed its answer.
+  return {'url':current,'text':text,'generating':stop,
+          'state':'generating' if stop else 'unverified',
+          'send_control_visible':send,'completion_verified':False}
