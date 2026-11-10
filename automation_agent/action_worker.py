@@ -111,16 +111,17 @@ def dispatch(a,context,home,settings):
  if name=='OPEN_URL':return browser.open_url(a.get('url'))
  if name=='READ_URL':return {'url':browser.read_url()}
  if name=='READ_CHATGPT':return BrowserController(target).chatgpt_snapshot()
- if name in ('OBSERVE_CHATGPT','SEND_CHATGPT') and (context.get('chrome_mcp_config') or (settings or {}).get('chrome_mcp')):
-  raise RuntimeError('CHROME_MCP_BRIDGE_REQUIRED: không mở kết nối CDP song song với MCP đã cấu hình')
  if name=='OBSERVE_CHATGPT':
-  observed=BrowserController(target).chatgpt_dom_observe(a.get('cdp_port',9222),a.get('samples',3),a.get('interval',.5))
-  return dict(observed,context={'chatgpt_verified':{'url':observed['url'],'fingerprint':observed['fingerprint'],'turn_count':observed['turnCount'],'completed':observed['completion_verified']}})
+  from . import chatgpt_mcp
+  url=context.get('expected_url') or (context.get('chrome_mcp_config') or {}).get('page_url')
+  if not url:raise RuntimeError('EXACT_CHATGPT_URL_REQUIRED')
+  observed=chatgpt_mcp.observe(context,settings,url,a.get('samples',3))
+  return dict(observed,context={'chatgpt_verified':{'url':observed['url'],'fingerprint':observed['fingerprint'],'completed':observed['completion_verified']}})
  if name=='SEND_CHATGPT':
+  from . import chatgpt_mcp
   verified=context.get('chatgpt_verified') or {}
-  if not verified.get('completed'):raise RuntimeError('Chưa có checkpoint xác nhận ChatGPT hoàn tất')
-  result=BrowserController(target).chatgpt_send_verified(a.get('text'),a.get('exchange_id'),verified['url'],verified['fingerprint'],a.get('cdp_port',9222),verified.get('turn_count'))
-  if result.get('submission')!='received':raise RuntimeError('Chưa có receipt tin nhắn; cần đối soát')
+  url=context.get('expected_url') or (context.get('chrome_mcp_config') or {}).get('page_url')
+  result=chatgpt_mcp.send(context,settings,url,a.get('text'),a.get('exchange_id'),verified)
   return dict(result,context={'chatgpt_exchange_id':result['exchange_id'],'chatgpt_submission':'received','chatgpt_verified':None})
  if name=='WAIT_PAGE':return browser.wait_page(a.get('url') or context.get('expected_url'),float(a.get('timeout',30))-.1)
  key={'NEW_TAB':'CTRL+T','CLOSE_TAB':'CTRL+W','SWITCH_TAB':'CTRL+TAB','REFRESH':'F5'}.get(name)
