@@ -143,14 +143,14 @@ class BrowserController:
   verified=bool(stable and same and ready and last.get('assistantCount',0)>0 and last.get('lastRole')=='assistant')
   return dict(last,stable=stable,completion_verified=verified,state='completed' if verified else 'unverified',fingerprint=fingerprints[-1])
 
- def chatgpt_send_verified(self,text,exchange_id,expected_url,expected_fingerprint,port=9222):
+ def chatgpt_send_verified(self,text,exchange_id,expected_url,expected_fingerprint,port=9222,expected_turn_count=None):
   """Single-attempt UIA send guarded by fresh CDP observation; caller journals in_flight first."""
   import hashlib
   if not isinstance(text,str) or not text.strip() or len(text)>12000:raise ValueError('Yêu cầu tiếp tục trống hoặc quá dài')
   if not isinstance(exchange_id,str) or not 8<=len(exchange_id)<=128:raise ValueError('Thiếu định danh lượt trao đổi')
   if not isinstance(expected_fingerprint,str) or len(expected_fingerprint)!=64:raise ValueError('Thiếu dấu vân tay phản hồi đã xác minh')
   state=self.chatgpt_dom_observe(port)
-  if not state['completion_verified'] or state['url']!=expected_url or state['fingerprint']!=expected_fingerprint:
+  if not state['completion_verified'] or state['url']!=expected_url or state['fingerprint']!=expected_fingerprint or (expected_turn_count is not None and state.get('turnCount')!=expected_turn_count):
    raise RuntimeError('ChatGPT chưa xác minh hoàn tất hoặc đã thay đổi; không gửi')
   edits=ui.root(self.target).descendants(control_type='Edit')
   candidates=[control for control in edits if getattr(control.element_info,'automation_id','') in ('prompt-textarea','composer-text-input')]
