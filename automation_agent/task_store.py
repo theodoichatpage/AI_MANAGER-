@@ -1,8 +1,8 @@
 import json, sqlite3, threading, time, uuid
 from pathlib import Path
 
-ACTIONS={'STUDIO_IMAGES','STUDIO_READY','STUDIO_ANALYZE','STUDIO_SCENES','EDGE_DIAGNOSTICS','LIST_EDGE_PROFILES','OPEN_APP','CLOSE_APP','RESTART_APP','LIST_PROCESSES','LIST_WINDOWS','CHECK_PROCESS','FIND_WINDOW','WAIT_WINDOW','FOCUS_WINDOW','RESTORE','MAXIMIZE','MINIMIZE','OPEN_URL','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','READ_URL','WAIT_PAGE','FIND_ELEMENT','READ_ELEMENT','CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','WAIT','WAIT_ELEMENT','WAIT_ELEMENT_GONE','SCREENSHOT','OPEN_TEST_WINDOW'}
-UNSAFE={'CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','CLOSE_APP','RESTART_APP','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','OPEN_URL'}
+ACTIONS={'STUDIO_IMAGES','STUDIO_READY','STUDIO_ANALYZE','STUDIO_SCENES','EDGE_DIAGNOSTICS','LIST_EDGE_PROFILES','OPEN_APP','CLOSE_APP','RESTART_APP','LIST_PROCESSES','LIST_WINDOWS','CHECK_PROCESS','FIND_WINDOW','WAIT_WINDOW','FOCUS_WINDOW','RESTORE','MAXIMIZE','MINIMIZE','OPEN_URL','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','READ_URL','READ_CHATGPT','OBSERVE_CHATGPT','SEND_CHATGPT','WAIT_PAGE','FIND_ELEMENT','READ_ELEMENT','CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','WAIT','WAIT_ELEMENT','WAIT_ELEMENT_GONE','SCREENSHOT','OPEN_TEST_WINDOW'}
+UNSAFE={'SEND_CHATGPT','CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','CLOSE_APP','RESTART_APP','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','OPEN_URL'}
 
 class TaskStore:
  def __init__(self,path):
@@ -27,8 +27,13 @@ class TaskStore:
    if not isinstance(a,dict) or a.get('action') not in ACTIONS:raise ValueError('Action không được hỗ trợ')
    if not 0<float(a.get('timeout',30))<=300:raise ValueError('Timeout phải từ 0 đến 300 giây')
    if not 0<=int(a.get('retries',0))<=3:raise ValueError('Retry tối đa 3')
+  exchanges=[a.get('exchange_id') for a in actions if a.get('action')=='SEND_CHATGPT']
+  if any(not isinstance(x,str) or len(x)<8 for x in exchanges) or len(exchanges)!=len(set(exchanges)):raise ValueError('Mỗi lượt ChatGPT cần exchange_id duy nhất')
   t={'id':str(uuid.uuid4()),'task_id':None,'project':project,'current_project':project,'current_stage':stage,'current_part':0,'current_scene':0,'status':initial_status,'actions':actions,'next_action':0,'current_action':None,'target_app':None,'target_window':None,'retry_count':0,'last_successful_action':None,'last_successful_checkpoint':None,'context':context or {},'results':[],'in_flight':False,'error':None,'created_at':time.time()};t['task_id']=t['id']
-  with self.lock,self.db:self.save(t)
+  with self.lock,self.db:
+   prior={a.get('exchange_id') for task in self.list() for a in task.get('actions',[]) if a.get('action')=='SEND_CHATGPT'}
+   if prior.intersection(exchanges):raise ValueError('Lượt ChatGPT đã có trong checkpoint; không gửi trùng')
+   self.save(t)
   return t['id']
  def list(self):
   with self.lock:return [json.loads(r['payload']) for r in self.db.execute('SELECT payload FROM tasks ORDER BY rowid')]

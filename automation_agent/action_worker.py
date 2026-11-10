@@ -90,7 +90,7 @@ def dispatch(a,context,home,settings):
    except wm.WindowNotFoundError:
     if name=='FIND_WINDOW' or time.monotonic()>=deadline:raise
     time.sleep(.2)
- if not target.get('hwnd'):
+ if not target.get('hwnd') and name not in ('OBSERVE_CHATGPT','SEND_CHATGPT'):
   target.update(wm.find_window(app,a.get('title')))
  if name=='FOCUS_WINDOW':return wm.focus(target)
  if name in ('RESTORE','MAXIMIZE','MINIMIZE'):return wm.set_state(target,name)
@@ -110,6 +110,19 @@ def dispatch(a,context,home,settings):
  browser=EdgeController(target) if app=='edge' else BrowserController(target)
  if name=='OPEN_URL':return browser.open_url(a.get('url'))
  if name=='READ_URL':return {'url':browser.read_url()}
+ if name=='READ_CHATGPT':return BrowserController(target).chatgpt_snapshot()
+ if name=='OBSERVE_CHATGPT':
+  from . import chatgpt_mcp
+  url=context.get('expected_url') or (context.get('chrome_mcp_config') or {}).get('page_url')
+  if not url:raise RuntimeError('EXACT_CHATGPT_URL_REQUIRED')
+  observed=chatgpt_mcp.observe(context,settings,url,a.get('samples',3))
+  return dict(observed,context={'chatgpt_verified':{'url':observed['url'],'fingerprint':observed['fingerprint'],'turn_count':observed['turnCount'],'completed':observed['completion_verified']}})
+ if name=='SEND_CHATGPT':
+  from . import chatgpt_mcp
+  verified=context.get('chatgpt_verified') or {}
+  url=context.get('expected_url') or (context.get('chrome_mcp_config') or {}).get('page_url')
+  result=chatgpt_mcp.send(context,settings,url,a.get('text'),a.get('exchange_id'),verified)
+  return dict(result,context={'chatgpt_exchange_id':result['exchange_id'],'chatgpt_submission':'received','chatgpt_verified':None})
  if name=='WAIT_PAGE':return browser.wait_page(a.get('url') or context.get('expected_url'),float(a.get('timeout',30))-.1)
  key={'NEW_TAB':'CTRL+T','CLOSE_TAB':'CTRL+W','SWITCH_TAB':'CTRL+TAB','REFRESH':'F5'}.get(name)
  if key:return browser.key(key)
