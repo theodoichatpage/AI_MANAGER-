@@ -76,6 +76,25 @@ def dispatch(a,context,home,settings):
   from .wincontrol_chat_loop import man_health
   with urllib.request.urlopen(str(context.get('man_state_url') or 'http://127.0.0.1:8765/api/state'),timeout=min(20,float(a.get('timeout',30)))) as r:
    return man_health(json.load(r))
+ if name=='MAN_QUEUE':
+  import urllib.request
+  from .wincontrol_chat_loop import man_queue,resolve_project
+  state_url=str(context.get('man_state_url') or 'http://127.0.0.1:8765/api/state');queue_url=state_url.rsplit('/',1)[0]+'/queue'
+  wait=min(20,float(a.get('timeout',30)))
+  def read():
+   with urllib.request.urlopen(state_url,timeout=wait) as r:return json.load(r)
+  def post(body):
+   req=urllib.request.Request(queue_url,json.dumps(body).encode(),{'Content-Type':'application/json'})
+   with urllib.request.urlopen(req,timeout=wait) as r:return json.load(r)
+  sent=[]
+  try:done=man_queue(read(),a.get('op'),a.get('project'),context.get('wincontrol_command',''),lambda body:(sent.append(body),post(body)))
+  except ValueError as exc:
+   # Refused before anything reached MAN (unknown/ambiguous project, not named by the user, wrong state): tell ChatGPT.
+   if not sent:raise NotExecuted(str(exc)) from exc
+   raise
+  # Confirm from MAN's own state, not from the request having been accepted.
+  row=resolve_project(read().get('queue') or [],done['id'])
+  return dict(done,status_after=row.get('status'),stage_after=row.get('current_stage'))
  if context.get('wincontrol_task') and app=='notepad' and name in ('OPEN_APP','SAVE_AS'):
   return wincontrol_notepad(name,a,target,settings)
  if name in ('ENSURE_TEMP_DIR','VERIFY_FILE','OPEN_FILE'):

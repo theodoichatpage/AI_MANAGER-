@@ -9,8 +9,9 @@ WINCONTROL_ACTIONS = {
     'LIST_WINDOWS', 'LIST_PROCESSES', 'CHECK_PROCESS', 'OPEN_APP', 'WAIT_WINDOW',
     'FOCUS_WINDOW', 'RESTORE', 'MAXIMIZE', 'MINIMIZE', 'SCREENSHOT', 'FIND_ELEMENT',
     'READ_ELEMENT', 'CLICK', 'TYPE_TEXT', 'HOTKEY', 'WAIT', 'WAIT_ELEMENT',
-    'ENSURE_TEMP_DIR', 'VERIFY_FILE', 'OPEN_FILE', 'SAVE_AS', 'MAN_STATUS',
+    'ENSURE_TEMP_DIR', 'VERIFY_FILE', 'OPEN_FILE', 'SAVE_AS', 'MAN_STATUS', 'MAN_QUEUE',
 }
+QUEUE_OPS = {'pause', 'resume'}
 TARGET_APPS = {'notepad', 'chrome', 'edge', 'capcut'}
 BROWSER_APPS = {'chrome', 'edge'}
 INPUT_ACTIONS = {'CLICK', 'TYPE_TEXT', 'HOTKEY', 'OPEN_FILE', 'SAVE_AS'}
@@ -41,6 +42,7 @@ FIELDS = {
     'OPEN_FILE': {'action', 'target_app', 'path', 'timeout'},
     'SAVE_AS': {'action', 'target_app', 'path', 'timeout'},
     'MAN_STATUS': {'action', 'timeout'},
+    'MAN_QUEUE': {'action', 'op', 'project', 'timeout'},
 }
 SELECTOR_FIELDS = {'title', 'title_re', 'auto_id', 'control_type', 'class_name', 'control_id'}
 HOTKEYS = {'CTRL+A', 'CTRL+C', 'CTRL+V', 'CTRL+S', 'CTRL+O', 'CTRL+L', 'CTRL+T', 'CTRL+W', 'CTRL+TAB', 'CTRL+SHIFT+TAB', 'ENTER', 'ESCAPE', 'F5'}
@@ -91,6 +93,11 @@ def validate_actions(actions):
             action['path'] = _safe_temp_path(action.get('path'))
         if name == 'VERIFY_FILE' and (not isinstance(action.get('expected_text'), str) or len(action['expected_text']) > 8000):
             raise ValueError('WINCONTROL_FILE_EXPECTATION_INVALID')
+        if name == 'MAN_QUEUE':
+            if action.get('op') not in QUEUE_OPS:
+                raise ValueError('MAN_QUEUE_OP_NOT_ALLOWED')
+            if not isinstance(action.get('project'), str) or not 1 <= len(action['project'].strip()) <= 160:
+                raise ValueError('MAN_QUEUE_PROJECT_REQUIRED')
         timeout = float(action.get('timeout', 30))
         if not 0.1 <= timeout <= 300:
             raise ValueError('WINCONTROL_TIMEOUT_INVALID')
@@ -170,8 +177,10 @@ CONTRACT = ('Reply with ONE JSON object only, as plain text (no code block, no o
             '{"status":"continue|complete|blocked","summary":"<short Vietnamese summary for the user>","actions":[...]}. '
             'status=continue requires exactly one next action in actions; complete or blocked requires actions=[]. '
             'Choose one step, then wait for its observed result before deciding again. Use only available_actions with their fields. '
-            'Never request Studio production, Extension changes, SEND_CHATGPT, or files outside temp_dir. '
-            'Never claim success before an observed result proves it. MAN_STATUS reads MAN, Agent, Studio and Extension health read-only. '
+            'Never request Extension changes, SEND_CHATGPT, or files outside temp_dir. '
+            'Never claim success before an observed result proves it. MAN_STATUS reads MAN, Agent, Studio, Extension and the project queue (id, status, progress) read-only. '
+            'Production goes only through MAN_QUEUE: op "pause" stops a running project at its next safe point; op "resume" continues a paused project from its checkpoint and is allowed only for a project the user named in user_command. '
+            'project is the project id or its exact name from MAN_STATUS. Read MAN_STATUS first, and again after MAN_QUEUE to confirm. Never start, retry, stop or delete projects. '
             'Every window action must name target_app; never CLICK, TYPE_TEXT, HOTKEY or OPEN_FILE in chrome or edge (they hold this ChatGPT tab and Studio). '
             'For a Notepad text task: ENSURE_TEMP_DIR, OPEN_APP notepad (always opens a new window and focuses it), TYPE_TEXT with selector {"class_name":"Edit"}, SAVE_AS target_app notepad with a new full path under temp_dir (it refuses existing files), '
             'then VERIFY_FILE before complete. If a step fails, choose one corrective step or report blocked with the reason.')
@@ -234,10 +243,61 @@ def man_health(state):
     return {
         'version': state.get('version'),
         'agent': {k: agent.get(k) for k in ('online', 'enabled', 'pid', 'current_task', 'error')},
-        'queue': [{'name': q.get('name'), 'status': q.get('status'), 'stage': q.get('current_stage')} for q in queue][:10],
+        'queue': [{'id': q.get('id'), 'name': q.get('name'), 'status': q.get('status'), 'stage': q.get('current_stage'),
+                   'progress': [q.get('action_done'), q.get('action_total')]} for q in queue][:10],
         'studio': {'status': studio.get('status'), 'error': studio.get('error'), 'presence': studio.get('presence')},
         'extension': {k: extension.get(k) for k in ('status', 'heartbeatAge', 'activeJobId', 'version')},
         'extension_update': {k: update.get(k) for k in ('installed', 'latest', 'error')},
         'tasks_needing_review': problems,
         'issues': issues,
     }
+
+
+def _norm(text):
+    import unicodedata
+    return ' '.join(unicodedata.normalize('NFC', str(text or '')).casefold().split())
+
+
+def resolve_project(queue, project):
+    """The one queue row named by id or exact name (case/spacing ignored). Ambiguity is refused, never guessed."""
+    want = _norm(project)
+    rows = [q for q in queue if str(q.get('id') or '') == str(project).strip()]
+    if not rows:
+        rows = [q for q in queue if _norm(q.get('name')) == want]
+    if not rows:
+        raise ValueError('MAN_PROJECT_NOT_FOUND: ' + str(project)[:120])
+    if len(rows) > 1:
+        raise ValueError('MAN_PROJECT_AMBIGUOUS: ' + ', '.join(str(q.get('id')) for q in rows))
+    return rows[0]
+
+
+def named_by_user(command, row):
+    """True when the user's own command names this project (its name, or at least 8 characters of its id)."""
+    said = _norm(command)
+    name = _norm(row.get('name'))
+    pid = str(row.get('id') or '').lower()
+    return bool(name and name in said) or any(len(w) >= 8 and pid.startswith(w) for w in re.findall(r'[0-9a-f-]{8,}', said))
+
+
+def man_queue(state, op, project, command, post):
+    """Pause or resume one MAN project through MAN's own /api/queue. Repeating a request that already took
+    effect changes nothing. `post(body)` sends to /api/queue; the caller re-reads state to confirm."""
+    if op not in QUEUE_OPS:
+        raise ValueError('MAN_QUEUE_OP_NOT_ALLOWED')
+    row = resolve_project(state.get('queue') or [], project)
+    pid, status = row.get('id'), row.get('status')
+    view = {'id': pid, 'name': row.get('name'), 'op': op, 'status_before': status}
+    if op == 'resume':
+        if not named_by_user(command, row):
+            raise ValueError('MAN_RESUME_NEEDS_USER_NAMED_PROJECT: người dùng chưa nêu tên dự án "' + str(row.get('name')) + '" trong lệnh')
+        if status in ('running', 'waiting'):
+            return dict(view, changed=False, note='Dự án đã đang chạy; không gửi lại lệnh.')
+        if status != 'paused':
+            raise ValueError('MAN_PROJECT_NOT_PAUSED: ' + str(status))
+    else:
+        if status in ('paused', 'stopped', 'completed', 'failed'):
+            return dict(view, changed=False, note='Dự án không chạy; không cần tạm dừng.')
+        if status not in ('running', 'waiting'):
+            raise ValueError('MAN_PROJECT_NOT_RUNNING: ' + str(status))
+    post({'action': op, 'id': pid})
+    return dict(view, changed=True)

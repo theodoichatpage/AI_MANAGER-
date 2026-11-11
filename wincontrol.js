@@ -50,8 +50,8 @@ function winControlMessages(task){
  return messages;
 }
 function winControlActionName(a){
- const names={OPEN_APP:'Mở ứng dụng',WAIT_WINDOW:'Chờ cửa sổ',FOCUS_WINDOW:'Đưa cửa sổ lên trước',TYPE_TEXT:'Nhập văn bản',HOTKEY:'Bấm phím tắt',CLICK:'Bấm',SCREENSHOT:'Chụp màn hình',LIST_WINDOWS:'Liệt kê cửa sổ',LIST_PROCESSES:'Liệt kê tiến trình',ENSURE_TEMP_DIR:'Chuẩn bị thư mục tạm',VERIFY_FILE:'Kiểm tra tệp',OPEN_FILE:'Mở tệp',MAN_STATUS:'Kiểm tra MAN, Studio, Extension',WAIT:'Chờ',READ_ELEMENT:'Đọc phần tử',FIND_ELEMENT:'Tìm phần tử',WAIT_ELEMENT:'Chờ phần tử'};
- const extra=a.target_app?' · '+a.target_app:a.keys?' · '+a.keys:a.path?' · '+a.path:'';
+ const names={OPEN_APP:'Mở ứng dụng',WAIT_WINDOW:'Chờ cửa sổ',FOCUS_WINDOW:'Đưa cửa sổ lên trước',TYPE_TEXT:'Nhập văn bản',HOTKEY:'Bấm phím tắt',CLICK:'Bấm',SCREENSHOT:'Chụp màn hình',LIST_WINDOWS:'Liệt kê cửa sổ',LIST_PROCESSES:'Liệt kê tiến trình',ENSURE_TEMP_DIR:'Chuẩn bị thư mục tạm',VERIFY_FILE:'Kiểm tra tệp',OPEN_FILE:'Mở tệp',MAN_STATUS:'Kiểm tra MAN, Studio, Extension',MAN_QUEUE:'Điều khiển dự án MAN',WAIT:'Chờ',READ_ELEMENT:'Đọc phần tử',FIND_ELEMENT:'Tìm phần tử',WAIT_ELEMENT:'Chờ phần tử'};
+ const extra=a.action==='MAN_QUEUE'?' · '+(a.op==='resume'?'tiếp tục':'tạm dừng')+' '+(a.project||''):a.target_app?' · '+a.target_app:a.keys?' · '+a.keys:a.path?' · '+a.path:'';
  return (names[a.action]||a.action)+extra;
 }
 function winControlStatus(task){
