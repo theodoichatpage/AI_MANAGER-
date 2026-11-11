@@ -240,16 +240,21 @@ def man_health(state):
         issues.append('EXTENSION_UPDATE_AVAILABLE')
     if problems:
         issues.append('TASKS_NEED_REVIEW')
+    presence = studio.get('presence') or {}
+    # Active projects first, then the rest: ChatGPT sees a shortened result, so health comes first and lists come last.
+    active = sorted(queue, key=lambda q: q.get('status') not in ('running', 'waiting', 'paused'))
+    # Insertion order is what ChatGPT reads first when the result is shortened.
     return {
+        'issues': issues,
         'version': state.get('version'),
         'agent': {k: agent.get(k) for k in ('online', 'enabled', 'pid', 'current_task', 'error')},
-        'queue': [{'id': q.get('id'), 'name': q.get('name'), 'status': q.get('status'), 'stage': q.get('current_stage'),
-                   'progress': [q.get('action_done'), q.get('action_total')]} for q in queue][:10],
-        'studio': {'status': studio.get('status'), 'error': studio.get('error'), 'presence': studio.get('presence')},
+        'studio': {'status': studio.get('status'), 'error': studio.get('error'),
+                   **{k: presence.get(k) for k in ('studio_tab_open', 'chat_connected', 'project_name')}},
         'extension': {k: extension.get(k) for k in ('status', 'heartbeatAge', 'activeJobId', 'version')},
         'extension_update': {k: update.get(k) for k in ('installed', 'latest', 'error')},
-        'tasks_needing_review': problems,
-        'issues': issues,
+        'queue': [{'id': q.get('id'), 'name': q.get('name'), 'status': q.get('status'), 'stage': q.get('current_stage'),
+                   'progress': [q.get('action_done'), q.get('action_total')]} for q in active][:8],
+        'tasks_needing_review': [{k: p[k] for k in ('id', 'status', 'error')} for p in problems][-4:],
     }
 
 

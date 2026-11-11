@@ -89,6 +89,15 @@ class ManQueueTests(unittest.TestCase):
         row = man_health({'queue': QUEUE})['queue'][0]
         self.assertEqual((row['id'], row['progress']), (QUEUE[0]['id'], [94, 384]))
 
+    def test_health_survives_the_shortened_result(self):
+        from automation_agent.wincontrol_chat_loop import _short
+        queue = [{'id': '%032x' % i, 'name': 'Dự án thử nghiệm số %d có tên khá dài' % i, 'status': 'stopped', 'current_stage': 'Đã dừng'} for i in range(12)]
+        queue.append(dict(QUEUE[0], status='running'))
+        text = _short(man_health({'queue': queue, 'studio': {'status': 'connected', 'presence': {'studio_tab_open': True, 'workers': ['x'] * 50}},
+                                  'extension': {'status': 'responding', 'version': '0.5.20'}, 'automation': {'online': True}}))
+        for needed in ('"connected"', '"responding"', '0.5.20', 'Thái sư Trần Thủ Độ'):
+            self.assertIn(needed, text)
+
     def test_prompt_offers_man_queue_and_forbids_other_production_commands(self):
         text = initial_prompt('x', {})
         self.assertIn('MAN_QUEUE', text); self.assertIn('Never start, retry, stop or delete projects', text)
