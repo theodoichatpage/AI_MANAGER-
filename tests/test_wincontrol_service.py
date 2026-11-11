@@ -40,11 +40,15 @@ class WinControlServiceTests(unittest.TestCase):
         self.assertEqual(submitted['stage'], 'WinControl')
         self.assertNotIn('studio_project_id', submitted['context'])
 
-    def test_refuses_to_add_wincontrol_when_an_agent_task_is_active(self):
-        service = self.service(tasks=[{'id':'legacy','status':'running'}])
-        with self.assertRaisesRegex(ValueError, 'task'):
+    def test_refuses_a_second_wincontrol_task_while_one_is_active(self):
+        service = self.service(tasks=[{'id':'wc-1','status':'running','context':{'wincontrol_task':True}}])
+        with self.assertRaisesRegex(ValueError, 'WinControl'):
             service.control({'command':'wincontrol','text':'Mở Notepad'})
         self.assertFalse(any(c.args[0] == '/submit' for c in service.client.request.call_args_list))
+
+    def test_accepts_a_wincontrol_task_while_studio_production_runs(self):
+        service = self.service(tasks=[{'id':'studio','status':'running','context':{'studio_project_id':'s'}}])
+        self.assertEqual(service.control({'command':'wincontrol','text':'Mở Notepad'})['task_id'], 'new-wc-task')
 
     def test_user_command_is_sent_only_to_chatgpt_as_planner_not_codex(self):
         service = self.service()

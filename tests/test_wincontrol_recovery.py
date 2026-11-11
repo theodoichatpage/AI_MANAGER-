@@ -66,6 +66,7 @@ def run_task(decisions):
     runtime = AgentRuntime(Path(td.name))
     fake = Executor(decisions)
     runtime.executor = fake
+    runtime.wc_executor = fake
     try:
         tid = runtime.store.submit([{'action': 'WINCONTROL_DECIDE'}], stage='WinControl',
                                    context={'wincontrol_task': True, 'wincontrol_command': 'Mở Notepad', 'wincontrol_round': 0})

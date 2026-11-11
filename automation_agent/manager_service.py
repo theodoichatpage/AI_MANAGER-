@@ -32,8 +32,9 @@ class AutomationService:
     # The same send (double click, browser retry) returns the task it already created instead of a second one.
     same=next((t for t in agent.get('tasks',[]) if request_id and t.get('context',{}).get('wincontrol_request_id')==request_id),None)
     if same:return {'intent':'WINCONTROL_CHATGPT_LOOP','summary':'Lệnh này đã được nhận trước đó; không gửi lại.','task_id':same['id'],'duplicate':True}
-    active=[t for t in agent.get('tasks',[]) if t.get('status') in ('running','waiting')]
-    if agent.get('current_task') or active:raise ValueError('Agent đang có task hoạt động; không thêm lệnh để tránh trùng')
+    # WinControl has its own Agent lane: production may keep running; only a second WinControl task is refused.
+    active=[t for t in agent.get('tasks',[]) if t.get('status') in ('running','waiting') and (t.get('context') or {}).get('wincontrol_task')]
+    if agent.get('wincontrol_task') or active:raise ValueError('WinControl đang có nhiệm vụ chạy; chờ xong hoặc dừng nhiệm vụ đó')
     settings={}
     try:settings=json.loads((self.home/'settings.json').read_text(encoding='utf8'))
     except (OSError,ValueError):pass
@@ -48,7 +49,7 @@ class AutomationService:
     context={'target_app':'chrome','expected_url':page_url,'wincontrol_task':True,'wincontrol_command':text,'wincontrol_request_id':request_id or task_id,'wincontrol_round':0,'wincontrol_initial_state':live,'man_state_url':'http://127.0.0.1:8765/api/state','temp_dir':str(Path(__import__('tempfile').gettempdir())/'WinControl')}
     # A Chrome MCP snapshot takes several seconds on this PC; observe/send/decide budgets allow for it and a reconnect.
     prompt='['+exchange+'] '+initial_prompt(text,dict(live,temp_dir=context['temp_dir']))
-    actions=[{'action':'OBSERVE_CHATGPT','samples':3,'timeout':90,'retries':2},{'action':'SEND_CHATGPT','text':prompt,'exchange_id':exchange,'timeout':120,'retries':0},{'action':'WINCONTROL_DECIDE','timeout':120,'retries':0}]
+    actions=[{'action':'OBSERVE_CHATGPT','samples':3,'timeout':90,'retries':2},{'action':'SEND_CHATGPT','text':prompt,'exchange_id':exchange,'timeout':120,'retries':0},{'action':'WINCONTROL_DECIDE','exchange_id':exchange,'timeout':120,'retries':0}]
     submitted=self.client.request('/submit',{'actions':actions,'project':None,'stage':'WinControl','context':context,'exclusive':True},timeout=10)
     return {'intent':'WINCONTROL_CHATGPT_LOOP','summary':'Đã gửi nhiệm vụ đến ChatGPT qua Chrome DevTools MCP; Agent thực thi từng bước, quan sát và gửi kết quả lại.','task_id':submitted['task_id']}
   if cmd=='studio_attach':

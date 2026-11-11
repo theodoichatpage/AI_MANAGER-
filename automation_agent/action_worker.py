@@ -216,7 +216,7 @@ def dispatch(a,context,home,settings):
   from . import chatgpt_mcp
   verified=context.get('chatgpt_verified') or {}
   url=context.get('expected_url') or (context.get('chrome_mcp_config') or {}).get('page_url')
-  result=chatgpt_mcp.send(context,settings,url,a.get('text'),a.get('exchange_id'),verified)
+  result=chatgpt_mcp.send(context,settings,url,a.get('text'),a.get('exchange_id'),verified,fresh=bool(context.get('wincontrol_task')))
   return dict(result,context={'chatgpt_exchange_id':result['exchange_id'],'chatgpt_submission':'received','chatgpt_verified':None})
  if name=='WINCONTROL_DECIDE':
   if not context.get('wincontrol_task'):raise RuntimeError('WINCONTROL_TASK_CONTEXT_REQUIRED')
@@ -234,6 +234,10 @@ def dispatch(a,context,home,settings):
   if not observed.get('completion_verified') or observed.get('lastRole')!='assistant':
    if time.time()-since>limit:raise TimeoutError('CHATGPT_RESPONSE_TIMEOUT')
    return {'waiting':True,'context':{'wincontrol_wait_since':since,'wincontrol_wait_reason':'generating' if observed.get('generating') else 'unverified'}}
+  # Only the reply to this round's prompt counts: the latest user turn must carry this round's exchange id.
+  if a.get('exchange_id') and a['exchange_id'] not in str(observed.get('lastUserText') or ''):
+   if time.time()-since>limit:raise TimeoutError('CHATGPT_REPLY_FOR_THIS_ROUND_NOT_FOUND')
+   return {'waiting':True,'context':{'wincontrol_wait_since':since,'wincontrol_wait_reason':'other_turn'}}
   verified={'completed':True,'url':url,'fingerprint':observed['fingerprint'],'turn_count':observed['turnCount']}
   done={'chatgpt_verified':verified,'wincontrol_round':int(context.get('wincontrol_round',0))+1,'wincontrol_wait_since':None,'wincontrol_wait_reason':None}
   try:decision=parse_decision(observed.get('lastAssistant'))

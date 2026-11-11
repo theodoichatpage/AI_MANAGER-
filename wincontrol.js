@@ -67,7 +67,7 @@ function winControlChatHTML(task){
  const empty=!messages.length;
  const transcript=messages.map(m=>`<article class="wc-message ${m.kind}"><small>${esc(m.title)}</small><div>${esc(m.text)}</div></article>`).join('');
  const prompt=empty?`<div class="wc-welcome"><div class="wc-mark">W</div><h1>WinControl</h1><p>Giao một nhiệm vụ bằng tiếng Việt. ChatGPT sẽ quyết định từng bước và Agent sẽ xác minh kết quả.</p></div>`:'';
- return `<section class="wc-chat-view${empty?" empty":""}">${prompt}<div class="wc-transcript" id="wc_transcript">${transcript}</div><form class="wc-composer" onsubmit="winControlSubmit(event)"><textarea id="win_command" maxlength="4000" rows="1" placeholder="Gửi lệnh cho WinControl" aria-label="Lệnh WinControl" ${winControlBusy?'disabled':''}></textarea><div class="wc-compose-actions"><span>${esc(winControlStatus(task))}</span><div>${task&&task.status!=='running'?`<button class="wc-stop" type="button" onclick="winControlNew()">Nhiệm vụ mới</button>`:''}${task?.status==='running'?`<button class="wc-stop" type="button" onclick="winControlStop()">Dừng an toàn</button>`:''}<button class="wc-send" type="submit" ${winControlBusy?'disabled':''} aria-label="Gửi nhiệm vụ">${winControlBusy?'…':'↑'}</button></div></div></form>${winControlReply?`<div class="wc-live-result" aria-live="polite">${esc(winControlReply)}</div>`:''}</section>`;
+ return `<section class="wc-chat-view${empty?" empty":""}">${prompt}<div class="wc-transcript" id="wc_transcript">${transcript}</div><form class="wc-composer" onsubmit="winControlSubmit(event)"><textarea id="win_command" maxlength="4000" rows="1" placeholder="Gửi lệnh cho WinControl" aria-label="Lệnh WinControl" ${winControlBusy?'disabled':''}></textarea><div class="wc-compose-actions"><span>${esc(winControlStatus(task))}</span><div>${task&&task.status!=='running'?`<button class="wc-stop" type="button" onclick="winControlNew()">Nhiệm vụ mới</button>`:''}${task?.status==='running'?`<button class="wc-stop" type="button" onclick="winControlStop()">Dừng an toàn</button>`:['needs_review','paused','stopped'].includes(task?.status)?`<button class="wc-stop" type="button" onclick="winControlResume()">Tiếp tục</button>`:''}<button class="wc-send" type="submit" ${winControlBusy?'disabled':''} aria-label="Gửi nhiệm vụ">${winControlBusy?'…':'↑'}</button></div></div></form>${winControlReply?`<div class="wc-live-result" aria-live="polite">${esc(winControlReply)}</div>`:''}</section>`;
 }
 function winControlJobsHTML(){
  const tasks=winControlTasks();
@@ -106,6 +106,13 @@ async function winControlSubmit(event){
   state=await api('/api/state');
  }catch(e){winControlReply='Chưa thực thi: '+e.message}
  finally{winControlBusy=false;winControlSent='';render()}
+}
+async function winControlResume(){
+ // Continues from the checkpoint; the Agent refuses when the stopped step is not safe to repeat (e.g. typing).
+ const task=winControlSelected();if(!task)return;
+ try{await api('/api/automation',{command:'resume',task_id:task.id});winControlReply='Đã tiếp tục từ checkpoint.';state=await api('/api/state')}
+ catch(e){winControlReply='Không tiếp tục được: '+e.message}
+ render();
 }
 async function winControlStop(){
  const task=winControlTasks().find(t=>t.id===winControlLastTask)||winControlSelected();

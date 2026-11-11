@@ -94,7 +94,7 @@ def observe(context,settings,url,samples=3):
  completed=stable and ready and all(r['turnCount']==last['turnCount'] for r in rows)
  return {k:v for k,v in dict(last,stable=stable,completion_verified=completed,state='completed' if completed else 'unverified').items() if k!='snapshot'}
 
-def send(context,settings,url,text,exchange_id,verified):
+def send(context,settings,url,text,exchange_id,verified,fresh=False):
  if not isinstance(text,str) or not text.strip() or len(text)>12000:raise ValueError('INVALID_PROMPT')
  if not isinstance(exchange_id,str) or len(exchange_id)<8:raise ValueError('INVALID_EXCHANGE_ID')
  # The bridge verifies the composer value line by line, so a multi-line prompt can never be verified (and is never sent).
@@ -106,7 +106,10 @@ def send(context,settings,url,text,exchange_id,verified):
  # report it as received instead of sending a duplicate.
  if tagged and exchange_id in state.get('lastUserText',''):
   return {'exchange_id':exchange_id,'submission':'received','url':url,'turnCount':state['turnCount'],'prompt_sha256':digest,'recovered':True}
- if not state['completion_verified'] or not verified.get('completed') or verified.get('url')!=url or state['fingerprint']!=verified.get('fingerprint') or state['turnCount']!=verified.get('turn_count'):
+ # fresh (WinControl): the page is checked now (idle, reply complete) instead of against an earlier observation, so a
+ # task resumed after an interruption can send; its exchange id above already prevents a second copy.
+ stale=not fresh and (not verified.get('completed') or verified.get('url')!=url or state['fingerprint']!=verified.get('fingerprint') or state['turnCount']!=verified.get('turn_count'))
+ if not state['completion_verified'] or stale:
   raise RuntimeError('CHATGPT_UNVERIFIED_NO_SEND')
  c=_config(context,settings,url)
  _call(c,'fill_click',text)

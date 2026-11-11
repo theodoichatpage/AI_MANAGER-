@@ -63,6 +63,7 @@ class WinControlRuntimeLoopTests(unittest.TestCase):
             runtime = AgentRuntime(Path(td))
             fake = FakeExecutor()
             runtime.executor = fake
+            runtime.wc_executor = fake
             try:
                 tid = runtime.store.submit([{'action': 'WINCONTROL_DECIDE'}], stage='WinControl', context={'wincontrol_task': True, 'wincontrol_command': 'open Notepad', 'wincontrol_round': 0})
                 runtime.start()
