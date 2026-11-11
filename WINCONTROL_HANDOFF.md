@@ -1,8 +1,22 @@
 # WinControl — Bàn giao
 
-**Phiên giữ quyền viết:** phiên Claude "WinControl tiếp quản từ Codex (fork)" (`local_8fdb951a`), người dùng xác nhận ngày 2026-11-11. Các phiên khác chỉ đọc. Codex: chỉ làm trên worktree riêng, mở PR, không triển khai vào MAN.
+**Phiên giữ quyền viết và triển khai:** phiên Claude "Cấu trúc - quy trình wincontrol" (người dùng giao lúc ~22:00 ngày 2026-11-11). Chủ triển khai MAN ghi trong `%LOCALAPPDATA%\AI_MANAGER\DEPLOY_OWNER.json` = `cau-truc-quy-trinh-wincontrol`; chỉ triển khai qua `tools\deploy_man.ps1`. Các phiên khác chỉ đọc. Codex: chỉ làm trên worktree riêng, mở PR, không triển khai vào MAN.
 **Nhánh:** `wincontrol/takeover-20261111` (worktree `C:\Users\PC\Projects\AI_MANAGER_WINCONTROL`), đã push.
 **Kết luận:** `WINCONTROL_READY` cho **vòng điều hành cơ bản** (2026-11-11 13:19 giờ máy). Chưa có nghĩa các khả năng mở rộng (Chặng 2–4) đã xong.
+
+## 0. Đợt 2026-11-11 tối (phiên "Cấu trúc - quy trình wincontrol")
+
+| Việc | Đã sửa mã | Đã triển khai | Kiểm thử thực tế |
+|---|---|---|---|
+| (1) Mã đang chạy được commit | `b6fae8b` + merge `ecb9578` trên `main` của `C:\Users\PC\Projects\AI_MANAGER`; sao lưu `origin/pc-main/20261111` (không đè `origin/main`, vốn có 3 commit máy chưa có) | — | `main` = nhánh, không còn mã chạy chưa commit |
+| (2) Một chủ triển khai MAN | `360b100`, `76735ec`: `tools/deploy_man.ps1` (kiểm `DEPLOY_OWNER.json`, chặn khi có task running/waiting, ff-merge, so checkpoint, tự hoàn lại); `AGENTS.md` quy tắc 7; bộ nhớ dự án | Tệp khóa đã tạo; phiên "AI MANAGER v0.2.20 takeover" xác nhận không khởi động lại MAN | Gọi sai chủ → bị từ chối |
+| (6) Nhận ra hết lượt ảnh ChatGPT | Studio `b5acdab` (nhánh `phase3-manager-presence`): Extension 0.5.20 đọc thông báo giới hạn sau lượt user cuối, báo lỗi một lần kèm lời ChatGPT, không tải lại tab. MAN `3ca2f78`: tab nghỉ đúng thời gian ChatGPT nói (15 phút–6 giờ) | Extension 0.5.20 đã tự cập nhật (2/3 tab đang chạy 0.5.20). Phần MAN **chưa** (cần khởi động lại) | Chưa gặp lại thông báo giới hạn thật |
+| (7) Điều khiển sản xuất | `7e5c9b5`: hành động `MAN_QUEUE` (chỉ pause/resume qua `/api/queue`; resume chỉ dự án người dùng nêu tên; trùng tên → từ chối; lặp lại không gửi lần hai; xác nhận từ trạng thái MAN). `MAN_STATUS` có id + tiến độ | **Chưa** (cần khởi động lại) | Chưa |
+| (3) Chạy song song với sản xuất | — | — | Chưa: cần triển khai (7) rồi tiếp tục Thái Sư |
+
+Test: 320 test Python (cô lập) — chỉ 3 lỗi có sẵn (`test_startup_port`, 2 `test_work_orchestration`); 4 test UI Node đạt; Extension: test_watchdog/test_ping đạt, 2 test lỗi có sẵn (`test_image_instead`, `test_manager_heartbeat`); test Studio liên quan Extension: 53 đạt / 2 lỗi có sẵn (giống hệt trước khi sửa).
+
+Triển khai bị dừng: lần chạy đầu `deploy_man.ps1` từ chối vì task `b359d508` (stopped từ đầu tháng 11, còn cờ `in_flight` cũ — một trong 3 cờ Codex dặn không xóa). Đã sửa script để chỉ chặn task running/waiting; lần chạy lại bị bộ kiểm tra an toàn chặn, chờ người dùng duyệt khởi động lại MAN.
 
 ## 1. Bằng chứng READY (kiểm thử thực tế từ giao diện)
 
