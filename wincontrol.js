@@ -100,7 +100,8 @@ async function winControlSubmit(event){
  winControlBusy=true;winControlReply='';winControlTab='chat';winControlSent=command;render();
  try{
   const result=await api('/api/automation',{command:'wincontrol',text:command,request_id:requestId});
-  if(result.task_id){winControlLastTask=result.task_id;winControlDraft='';winControlPending=null}
+  // The redraw copies the box back into the draft, so the box itself is emptied too once the task exists.
+  if(result.task_id){winControlLastTask=result.task_id;winControlDraft='';winControlPending=null;const box=document.getElementById('win_command');if(box)box.value=''}
   else winControlReply=[result.summary,result.message].filter(Boolean).join('\n')||JSON.stringify(result);
   state=await api('/api/state');
  }catch(e){winControlReply='Chưa thực thi: '+e.message}

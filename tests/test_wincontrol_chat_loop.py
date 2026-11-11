@@ -53,6 +53,15 @@ class WinControlChatLoopTests(unittest.TestCase):
         huge = [{'action': 'LIST_WINDOWS', 'success': True, 'error': None, 'result': {'windows': ['x' * 500] * 200}}] * 5
         self.assertLessEqual(len(feedback_prompt('Liệt kê cửa sổ', 'ok', huge)), 11000)
 
+    def test_prompts_are_one_line_for_the_composer_check(self):
+        from automation_agent.wincontrol_chat_loop import initial_prompt, feedback_prompt, correction_prompt
+        prompts = (initial_prompt('mở\nNotepad', {'temp_dir': 'x'}),
+                   feedback_prompt('a\nb', 's\nx', [{'action': 'WAIT', 'success': True, 'result': {'t': 'l1\nl2'}}]),
+                   correction_prompt('c', 'e\nf', 'r\ng'))
+        for text in prompts:
+            self.assertNotIn('\n', text)
+            self.assertNotIn('\r', text)
+
     def test_man_health_reports_extension_and_agent_issues(self):
         from automation_agent.wincontrol_chat_loop import man_health
         health = man_health({'automation': {'online': False, 'tasks': [{'id': 't', 'status': 'needs_review', 'error': 'x'}]},

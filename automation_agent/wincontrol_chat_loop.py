@@ -177,7 +177,9 @@ CONTRACT = ('Reply with ONE JSON object only, as plain text (no code block, no o
 
 
 def _fit(prefix, envelope):
-    text = prefix + json.dumps(envelope, ensure_ascii=False, default=str)
+    # One line only: the Chrome MCP bridge reads the composer value back line by line and refuses to send a
+    # multi-line value it cannot verify (COMPOSER_VALUE_UNVERIFIED_NO_SEND). json.dumps already escapes inner newlines.
+    text = ' '.join((prefix + json.dumps(envelope, ensure_ascii=False, default=str)).splitlines())
     if len(text) > PROMPT_CHARS:
         text = text[:PROMPT_CHARS - 20] + '…(rút gọn)"}'
     return text
