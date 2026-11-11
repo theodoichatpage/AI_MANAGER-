@@ -1,67 +1,68 @@
 # WinControl — Bàn giao
 
-**Phiên giữ quyền viết:** phiên Claude "WinControl tiếp quản từ Codex (fork)" (`local_8fdb951a`), người dùng xác nhận ngày 2026-11-11. Các phiên "WinControl tiếp quản từ Codex" và "Cấu trúc - quy trình wincontrol" chỉ đọc.
+**Phiên giữ quyền viết:** phiên Claude "WinControl tiếp quản từ Codex (fork)" (`local_8fdb951a`), người dùng xác nhận ngày 2026-11-11. Các phiên khác chỉ đọc. Codex: chỉ làm trên worktree riêng, mở PR, không triển khai vào MAN.
 **Nhánh:** `wincontrol/takeover-20261111` (worktree `C:\Users\PC\Projects\AI_MANAGER_WINCONTROL`), đã push.
-**Kết luận hiện tại:** `WINCONTROL_NOT_READY` — xem "Vì sao chưa READY".
+**Kết luận:** `WINCONTROL_READY` cho **vòng điều hành cơ bản** (2026-11-11 13:19 giờ máy). Chưa có nghĩa các khả năng mở rộng (Chặng 2–4) đã xong.
 
-## 1. WinControl
+## 1. Bằng chứng READY (kiểm thử thực tế từ giao diện)
 
-| Mức | Trạng thái |
-|---|---|
-| Đã sửa mã | `d823045` UI Codex · `4a06f42` gia cố vòng lặp · `257b84f` an toàn target_app · `0caa3a0` lối vào UI v0.2.25, Notepad riêng, `SAVE_AS`, kiểm tra UIA Value · `9d30f31` prompt một dòng · `d56a7bf` làm phẳng prompt trong `chatgpt_mcp.send` |
-| Test tự động | 38 test Python WinControl + 2 test Node UI đạt |
-| Đã triển khai trên PC | Có. Script `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao lưu, chặn khi có việc chạy, so checkpoint trước/sau, tự rollback). Lần cuối 2026-11-11 01:42:54Z: MAN pid 13660, Agent pid 26780, checkpoint không đổi. Sau đó chép nóng `wincontrol.js`, `wincontrol_chat_loop.py`, `chatgpt_mcp.py`. |
-| Kiểm thử thực tế | Một phần (xem dưới) |
+Task `9213574d-0699-47c3-910d-1e875b8b6c2d`, gửi từ ô nhập WinControl: *"Mở Notepad, ghi dòng "WinControl sẵn sàng 11/11", lưu thành tệp wc_ready_1111.txt trong thư mục tạm WinControl rồi xác minh nội dung tệp."*
 
-Đã chứng minh thực tế trên PC:
-- Giao diện: nút **WinControl** ở thanh trên MAN v0.2.25 → trang Trò chuyện/Công việc; gõ lệnh tiếng Việt, chữ giữ nguyên qua các lần làm mới 2 giây, nút Gửi tạo task thật (`69156ea8`).
-- Windows UIA: `OPEN_APP notepad` (cửa sổ mới, gắn theo pid) → `TYPE_TEXT` tiếng Việt → `SAVE_AS` vào `%TEMP%\WinControl` → `VERIFY_FILE` đạt.
-- Chrome DevTools MCP: đọc hội thoại ChatGPT (snapshot ~7 giây/lần).
-- An toàn: lần gửi đầu bị bridge từ chối (`COMPOSER_VALUE_UNVERIFIED_NO_SEND`) và **không gửi gì** — đúng thiết kế; task dừng `needs_review`.
+| Vòng | ChatGPT quyết định | Agent thực thi | Kết quả |
+|---|---|---|---|
+| 1 | ENSURE_TEMP_DIR | worker | `%TEMP%\WinControl` |
+| 2 | OPEN_APP notepad | UIA, cửa sổ mới pid 31212 | OK |
+| 3 | FOCUS_WINDOW notepad | UIA | OK |
+| 4 | TYPE_TEXT `{"class_name":"Edit"}` | UIA, đọc lại Value | 25 ký tự, verified |
+| 5 | SAVE_AS `wc_ready_1111.txt` | UIA hộp thoại Save As | 28 byte |
+| 6 | VERIFY_FILE | worker | khớp |
+| 7 | `complete` + tóm tắt tiếng Việt | — | task `completed` |
 
-Chưa chứng minh thực tế: ChatGPT trả JSON → Agent thực thi → kết quả về ChatGPT → bước tiếp theo. Nguyên nhân lần thử thất bại (prompt nhiều dòng) đã sửa nhưng **chưa chạy lại** vì Agent đang bận sản xuất (WinControl cố ý từ chối khi Agent có task chạy).
+- File thật: `C:\Users\PC\AppData\Local\Temp\WinControl\wc_ready_1111.txt` = "WinControl sẵn sàng 11/11" (UTF-8).
+- Biên nhận: mỗi lượt gửi có `exchange_id` ở đầu prompt và receipt `submission: received`; kết quả mỗi bước ghi kèm chỉ số hành động trong TaskStore; nhật ký `~\.ai_manager\automation\automation.jsonl`.
+- Chống gửi trùng: đọc lại hội thoại ChatGPT, mỗi exchange id còn hiển thị xuất hiện đúng 1 lần.
+- Khôi phục sau gián đoạn: task `93cdbfe3` dừng 4 lần (bridge từ chối, lỗi định tuyến, mất focus) và qua 3 lần khởi động lại MAN/Agent; mỗi lần bấm **Tiếp tục** trên giao diện, nó đi tiếp từ checkpoint, gửi prompt đầu đúng 1 lần dù bản nháp cũ còn trong ô soạn tin, và chạy MAN_STATUS → ENSURE_TEMP_DIR → OPEN_APP với ChatGPT quyết định từng bước.
+- Khôi phục kết nối: sau khi khởi động lại MAN, ghép nối Studio tự nạp lại (Studio `connected`), Extension trở lại `responding`.
+- Chưa tự tạo được một lần rớt kết nối Chrome MCP thật để quan sát; đường đọc lại (3 lần, mở bridge mới mỗi lần) chỉ được chứng minh bằng test.
 
-Lỗi đã tìm và sửa trong đợt này:
-- Lối vào WinControl bị ẩn: `manager_ui.js` ẩn header cũ.
-- `OPEN_APP notepad` dùng lại Notepad người dùng đang mở (có thể gõ vào file của họ).
-- `TYPE_TEXT` báo sai vì đọc UIA Name ("Text Editor") thay vì Value.
-- Hành động thiếu `target_app` rơi về `chrome` (tab ChatGPT); nay bắt buộc ghi rõ, cấm gõ/bấm trong Chrome/Edge.
-- Prompt nhiều dòng không bao giờ qua được bước xác minh của bridge.
+## 2. Ba lỗi cấu trúc (Chặng 1)
 
-## 2. MAN (AI Manager)
+| Lỗi | Đã sửa mã | Triển khai | Kiểm thử thực tế |
+|---|---|---|---|
+| Mất ghép nối Studio khi khởi động lại MAN | `6ef5d73`: mã lưu mã hóa DPAPI `~\.ai_manager\studio_pairing.bin`, nạp lại khi khởi động, xóa khi Ngắt | Có | Có — 4 lần khởi động lại, Studio tự `connected` |
+| Test chạm DB sản xuất | `6ef5d73`: `test_guard.py` — dưới unittest/pytest tự dùng home tạm, thư mục dự án mặc định theo home tạm, `QueueManager` từ chối thư mục thật | Có | Full suite chạy không đặt `AI_MANAGER_HOME`: nhật ký hàng đợi thật không đổi |
+| WinControl bị chặn khi sản xuất chạy | `5271017`: làn WinControl riêng trong cùng Agent (executor, cờ hủy, task hiện tại riêng; Dừng WinControl không dừng sản xuất; Tạm dừng sản xuất không chạm WinControl) | Có | Có (task chạy khi Agent có task sản xuất ở trạng thái failed; chưa chạy song song với sản xuất đang chạy thật) |
 
-- Đang chạy: `C:\Users\PC\Projects\AI_MANAGER`, cổng 8765, phiên bản trạng thái 0.2.23 (giao diện v0.2.25). Agent online.
-- Thư mục chạy vẫn là `main` + thay đổi chưa commit (nay bằng nội dung nhánh này cho 13 tệp đã triển khai). Sao lưu: `integration_reports\takeover_20261111\` (`main_uncommitted.patch`, `predeploy_*`).
-- **Sự cố cần điều tra:** 01:30:47Z có tiến trình *không phải* MAN đang chạy đã mở DB hàng đợi thật và chạy khởi tạo `QueueManager` ("Khôi phục sau khi đóng: tạm dừng"), làm dự án Thái Sư đang chạy chuyển sang tạm dừng. Nghi do chạy bộ test không đặt `AI_MANAGER_HOME` (quy tắc 6 của `AGENTS.md`). Chưa xác định chắc chắn.
-- Phiên "WinControl tiếp quản từ Codex" xác nhận đã chạy `unittest discover` toàn bộ (không đặt `AI_MANAGER_HOME`) khoảng 01:29–01:31Z — khớp thời điểm trên; test cụ thể chưa xác định. Phiên "Cấu trúc - quy trình wincontrol" chạy test sau 01:30:47Z và có `AI_MANAGER_HOME` tạm, nên bị loại trừ. Từ nay chỉ chạy full suite với `AI_MANAGER_HOME` tạm; chưa chắc đủ cô lập (suite sinh `agent_server` con; config `root` và `AI_MANAGER_AGENT_HOME` có thể trỏ ra dữ liệu thật) — cần rà trước khi chạy lại full suite.
-- **Khởi động lại MAN làm mất ghép nối Studio:** mã kết nối Studio chỉ nằm trong bộ nhớ MAN. Sau lần triển khai 01:37Z, Studio về `unconfigured` và Extension `extension_lost` cho tới khi được ghép nối lại (lúc 01:50Z đã kết nối lại). Mỗi lần triển khai cần ghép nối lại Studio; nên lưu bền mã này hoặc tránh khởi động lại khi đang sản xuất.
-- Lỗi `cannot import name 'StudioReviewRequired'` của task `f3454b7a` là từ 2026-11-01, không do đợt triển khai này.
-- 01:26:40Z và 01:43:34Z có lệnh "Tiếp tục" dự án Thái Sư từ một trình duyệt khác (không phải tab của phiên này — đã đối chiếu nhật ký mạng).
+## 3. Lỗi tìm thấy khi chạy thật và đã sửa (đều đã triển khai)
 
-## 3. Studio (VIDEO IMAGE STUDIO)
+- `9d30f31`/`d56a7bf`: prompt nhiều dòng; `2b4cbaa`: snapshot in giá trị nguyên văn (không thoát `"`) → bridge cắt prompt JSON, mọi lượt gửi bị từ chối; `parse_snapshot` cũng sẽ cắt câu trả lời JSON.
+- `2b4cbaa`: kết quả "đang chờ" bị coi là trả lời sai → chèn vòng sửa thừa; hành động đã kiểm tra bị kiểm tra lại (trường `retries`).
+- `96dceb5`: ô soạn tin ChatGPT chèn xuống dòng quanh liên kết → giá trị nhiều dòng; kết quả là nhật ký nên lệch chỉ số → prompt phản hồi gửi nhầm dữ liệu.
+- `71beef4`: sau OPEN_APP notepad, bước ChatGPT bị định tuyến sang Notepad.
+- `d304182`: gõ phím bị chặn vì mất focus → nay tự đưa cửa sổ của WinControl lên trước; từ chối trước khi có thao tác (`NOT_EXECUTED`) được báo lại cho ChatGPT.
+- `0caa3a0`: lối vào WinControl bị ẩn trong MAN v0.2.25; Notepad riêng; `SAVE_AS`; đọc UIA Value.
+- `257b84f`: hành động phải ghi rõ ứng dụng; cấm gõ/bấm trong Chrome/Edge (tab ChatGPT, Studio).
 
-- Kết nối: Studio "connected", tab Studio mở, ChatGPT kết nối; origin nhánh `phase3-manager-presence` (không sửa).
-- Lỗi 402 (vượt hạn mức egress Supabase) trong báo cáo Codex 10/11: hiện **không tái hiện** — MAN đọc được dữ liệu phiên.
-- Sản xuất Thái Sư: 24/24 phần, 384 cảnh có prompt, 6/384 ảnh xong. Mục `image:part_cecarmg:6` (Cảnh 7) gửi lúc 01:27:49Z, chưa có kết quả; Đã quan sát MAN tự khôi phục, không can thiệp tay: 01:57:59Z thu hồi job treo ("Quá thời gian chờ"), 01:58:04Z gửi lại (lần 2), 01:58:49Z Cảnh 7 hoàn tất, Cảnh 8 bắt đầu.
+Test: 80 test WinControl/automation đạt; full suite (cô lập) chỉ còn 3 lỗi có sẵn từ `80a0890` (`test_startup_port`, 2 test `test_work_orchestration`) + `test_neon_browser.cjs` thiếu `playwright`.
 
-## 4. Extension
+Triển khai: `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao lưu `predeploy_*`, chặn khi có task running/waiting, so checkpoint trước/sau, tự rollback, xác minh MAN phục vụ đúng thư mục bằng `wincontrol.js`). Lần cuối 06:15:06Z: MAN pid 35384, Agent pid 32280.
 
-- v0.5.19 = bản mới nhất trong thư mục cập nhật; đang phản hồi (heartbeat vài giây). Không cần cập nhật.
+## 4. MAN, Studio, Extension
 
-## 5. Xưởng Nội Dung (repo riêng `theodoichatpage/XUONG_NOI_DUNG`)
+- MAN chạy `C:\Users\PC\Projects\AI_MANAGER` (`main` @ `2994818` + 17 tệp triển khai từ nhánh này, chưa commit trên `main`).
+- **Sản xuất Thái Sư dừng `failed` lúc 11:40:04**: watchdog "Studio quá thời gian tại lanes:24:94" (38 phút không có ảnh mới). Bằng chứng Studio `laneLast`: cả `edge_Profile_1` và `edge_Profile_2` báo *"ChatGPT không phản hồi sau 2 lần tự tải lại tab"* từ ~11:00; 94/384 ảnh xong; không còn job nào chạy trên Studio. Từ 09:05, phiên "AI MANAGER v0.2.20 takeover" đổi `IMAGE_LANES` 1→2 (2 tab tạo ảnh cùng lúc trên **một** tài khoản ChatGPT) — nghi liên quan hạn mức tài khoản, chưa xác minh. **Không tự chạy lại** — cần người dùng quyết định.
+- Phiên "AI MANAGER v0.2.20 takeover" (`local_e8068fff`) commit thẳng vào `main` và tự khởi động lại MAN lúc 09:05 — ngoài nhóm phối hợp này. Cần thống nhất chỉ một phiên triển khai MAN.
+- 01:30:47Z: full suite chạy không có home tạm (phiên gốc) đã tạm dừng dự án Thái Sư; nay bị chặn bởi `test_guard`.
+- Studio: `connected`; Extension v0.5.19 = mới nhất, `responding`.
 
-- `main` sạch, khớp `origin/main` (`8a8be58`). Web tĩnh trên Vercel `xuong-noi-dung-khaki.vercel.app`; mọi tệp `dist/` trên web trùng `main`. Extension v0.4.14.
-- `node --test tests/*.test.cjs`: 252 đạt, 1 bỏ qua, 0 lỗi. Trang mở không lỗi console.
-- Chưa kiểm tra kết nối Extension/Adapter/Sudowrite trong Chrome của người dùng (dữ liệu nằm trong localStorage trình duyệt đó). Không sửa gì.
+## 5. Xưởng Nội Dung (repo riêng)
 
-## Vì sao chưa READY
+`main` = `origin/main` (`8a8be58`); web Vercel trùng `main`; 252/253 test đạt (1 bỏ qua); trang không lỗi console. Chưa kiểm tra kết nối Extension trong Chrome người dùng. Không sửa gì.
 
-1. Vòng ChatGPT → hành động → ChatGPT chưa chạy hết một lần thật sau bản sửa prompt.
-2. Agent chỉ chạy một task một lúc; khi sản xuất Studio chạy (hàng giờ), WinControl không nhận lệnh. Cần người dùng chọn thời điểm tạm dừng sản xuất để chạy thử, hoặc chờ sản xuất xong.
-3. Tự khôi phục MAN/Studio/Extension mới ở mức đọc tình trạng (`MAN_STATUS`); chưa có hành động sửa tự động.
+## 6. Bước tiếp theo
 
-## Bước tiếp theo
-
-1. Khi Agent rảnh: gửi lại lệnh thử từ giao diện WinControl, theo dõi đủ vòng tới `complete`.
-2. Triển khai lại (script trên) để MAN nạp `wincontrol_chat_loop.py` mới cho prompt đầu (đã có lớp làm phẳng trong `chatgpt_mcp.send` nên không bắt buộc).
-3. Tìm tiến trình đã khởi tạo DB hàng đợi thật lúc 01:30:47Z.
+1. Người dùng quyết định việc chạy lại sản xuất Thái Sư (và có giữ `IMAGE_LANES=2` không).
+2. Chạy thử WinControl song song khi sản xuất đang chạy thật.
+3. Chặng 2: công cụ file/thư mục, PowerShell có kiểm soát, Chrome qua MCP, Git, build/test — thêm vào `wincontrol_chat_loop.FIELDS` + `action_worker`, có giới hạn và test.
+4. Chặng 3: hành động sửa chữa cho MAN/Studio/Extension dựa trên `MAN_STATUS` (hiện chỉ đọc).
+5. Commit 17 tệp đã triển khai vào `main` (hoặc merge nhánh này) để thư mục chạy hết "chưa commit".
