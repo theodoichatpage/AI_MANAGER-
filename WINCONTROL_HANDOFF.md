@@ -50,7 +50,11 @@ Triển khai: `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao
 ## 4. MAN, Studio, Extension
 
 - MAN chạy `C:\Users\PC\Projects\AI_MANAGER` (`main` @ `2994818` + 17 tệp triển khai từ nhánh này, chưa commit trên `main`).
-- **Sản xuất Thái Sư dừng `failed` lúc 11:40:04**: watchdog "Studio quá thời gian tại lanes:24:94" (38 phút không có ảnh mới). Bằng chứng Studio `laneLast`: cả `edge_Profile_1` và `edge_Profile_2` báo *"ChatGPT không phản hồi sau 2 lần tự tải lại tab"* từ ~11:00; 94/384 ảnh xong; không còn job nào chạy trên Studio. Từ 09:05, phiên "AI MANAGER v0.2.20 takeover" đổi `IMAGE_LANES` 1→2 (2 tab tạo ảnh cùng lúc trên **một** tài khoản ChatGPT) — nghi liên quan hạn mức tài khoản, chưa xác minh. **Không tự chạy lại** — cần người dùng quyết định.
+- **Sản xuất Thái Sư — nguyên nhân đã xác định:** tài khoản ChatGPT tạo ảnh hết hạn mức gói Plus. Tab ChatGPT trong Edge (hồ sơ "ChatGPT 3", chụp bằng PrintWindow, chỉ đọc) hiện: *"You've hit the Plus plan limit for image generations requests. You can create more images when the limit resets in 5 hours."* Studio chỉ báo "ChatGPT không phản hồi sau 2 lần tự tải lại tab", nên MAN không nhận ra là hết lượt và cứ gửi lại.
+  - Diễn biến: 94/384 ảnh xong; ~11:00 ngừng; 11:40 watchdog → `failed`. 13:42 người dùng chọn chạy lại với 1 tab: `IMAGE_LANES` 2→1 (commit `ff10145` trên `main` máy này, **chưa push** vì `main` máy đã lệch xa `origin/main` với nhiều commit của phiên khác), Chạy lại lỗi + Chạy → vẫn cùng lỗi trên cả hai hồ sơ.
+  - Ba cửa sổ Edge đang thu nhỏ; đã thử khôi phục (không lấy focus) — không đổi kết quả; đã thu nhỏ lại như cũ.
+  - 13:5x: **đã Tạm dừng** sản xuất (task `paused` ở bước 5, không in-flight, không lệnh `intent`, 94 ảnh giữ nguyên). Chạy tiếp sau khi hạn mức đặt lại (khoảng 5 giờ kể từ ~14:02) hoặc đổi sang tài khoản ChatGPT khác.
+  - Cần sửa ở Studio/Extension (repo VIDEO_IMAGE_STUDIO): nhận ra thông báo hết hạn mức ảnh và báo lỗi giới hạn để MAN nghỉ (`LIMIT_COOLDOWN`) thay vì gửi lại.
 - Phiên "AI MANAGER v0.2.20 takeover" (`local_e8068fff`) commit thẳng vào `main` và tự khởi động lại MAN lúc 09:05 — ngoài nhóm phối hợp này. Cần thống nhất chỉ một phiên triển khai MAN.
 - 01:30:47Z: full suite chạy không có home tạm (phiên gốc) đã tạm dừng dự án Thái Sư; nay bị chặn bởi `test_guard`.
 - Studio: `connected`; Extension v0.5.19 = mới nhất, `responding`.
@@ -61,7 +65,7 @@ Triển khai: `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao
 
 ## 6. Bước tiếp theo
 
-1. Người dùng quyết định việc chạy lại sản xuất Thái Sư (và có giữ `IMAGE_LANES=2` không).
+1. Chạy tiếp Thái Sư khi hạn mức ảnh ChatGPT đặt lại (Tiếp tục trong MAN); sửa Studio/Extension để nhận ra hết hạn mức.
 2. Chạy thử WinControl song song khi sản xuất đang chạy thật.
 3. Chặng 2: công cụ file/thư mục, PowerShell có kiểm soát, Chrome qua MCP, Git, build/test — thêm vào `wincontrol_chat_loop.FIELDS` + `action_worker`, có giới hạn và test.
 4. Chặng 3: hành động sửa chữa cho MAN/Studio/Extension dựa trên `MAN_STATUS` (hiện chỉ đọc).
