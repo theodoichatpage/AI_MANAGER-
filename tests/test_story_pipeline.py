@@ -107,4 +107,15 @@ class StoryTests(unittest.TestCase):
   self.assertEqual(d['history'][-1]['passed'],0)
   self.assertIn('bản tốt',self.api.s['rewrite']['sections'][0]['prompt'])
 
+ def test_rounds_go_on_past_three_while_the_score_rises(self):
+  import os
+  story={'stage':'review','tries':{},'round':2,'plan':{'title':'T'},'sections':[{'id':'s1','title':'A','role':'','source':'x'*100,'text':'bản vòng 3'}],
+   'best':{'passed':9,'total':100,'texts':['bản cũ'],'rows':rows(lambda i:9 if i not in (6,13,10) else 7)['rows']}}
+  os.makedirs(self.tmp.name+'/analysis',exist_ok=True)
+  with open(self.tmp.name+'/analysis/story.json','w',encoding='utf8') as f:json.dump(story,f)
+  self.step();self.api.answer(lambda x:json.dumps(rows(lambda i:9 if i!=13 else 7)))
+  self.step()
+  with open(self.tmp.name+'/analysis/story.json',encoding='utf8') as f:d=json.load(f)
+  self.assertEqual(d['stage'],'repair');self.assertEqual(d['best']['passed'],11)
+
 if __name__=='__main__':unittest.main()

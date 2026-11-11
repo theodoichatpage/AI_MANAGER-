@@ -10,6 +10,7 @@ from pathlib import Path
 
 THRESHOLD=8
 ROUNDS=3
+MAX_ROUNDS=6        # after ROUNDS, repairing goes on while every round still raises the score, up to this many rounds
 PASS_AFTER_ROUNDS=10   # rounds used up: go on with the best version when it passes at least this many criteria
 TASK_TRIES=5          # a task whose reply cannot be used is asked again this many times
 REVIEW_OPENING=350;REVIEW_MIDDLE=250;REVIEW_ENDING=350
@@ -323,7 +324,8 @@ class Story:
    rows,findings=combine(groups,got_rows)
    d['rows']=rows;d['findings']=findings
    d.setdefault('history',[]).append({'round':d['round'],'passed':passed(rows),'total':total(rows),'rows':rows,'findings':findings})
-   if better(rows,d.get('best')):d['best']={'passed':passed(rows),'total':total(rows),'texts':[x['text'] for x in secs],'rows':rows,'findings':findings,'round':d['round']}
+   rising=better(rows,d.get('best'))
+   if rising:d['best']={'passed':passed(rows),'total':total(rows),'texts':[x['text'] for x in secs],'rows':rows,'findings':findings,'round':d['round']}
    elif failing_parts(rows,findings) and d['round']+1<ROUNDS:
     # This round's repairs made the script worse: the next repairs start again from the best version, never from a worse one.
     best=d['best']
@@ -332,7 +334,7 @@ class Story:
     d['note']='Vòng %d kém hơn bản tốt nhất (%d/%d): sửa tiếp từ bản tốt nhất'%(d['round']+1,best['passed'],len(CRITERIA))
    todo=failing_parts(rows,findings)
    if not todo:d['stage']='done'
-   elif d['round']+1>=ROUNDS:
+   elif d['round']+1>=ROUNDS and not (rising and d['round']+1<MAX_ROUNDS):
     best=d['best']
     for x,t in zip(secs,best['texts']):x['text']=t
     d['rows']=best['rows'];d['findings']=best.get('findings') or []
