@@ -19,7 +19,20 @@ REARM_AFTER=900      # an item that used all its tries gets a new set after this
 REARM_MAX=4          # ...at most this many new sets, then it stays failed for the user
 OPEN_WAIT=180        # how long to wait for extra lanes to connect before working with fewer
 RATE=re.compile(r'limit|giới hạn|too many|quá nhiều|try again later|thử lại sau|rate',re.I)
+LIMIT_MAX=6*3600     # never rest a lane longer than this, whatever ChatGPT says
+WAIT=re.compile(r'(?:resets? in|in|sau)\s+(\d+(?:[.,]\d+)?)\s*(hours?|hrs?|h\b|giờ|minutes?|mins?|phút)',re.I)
 MIN_VERSION=(0,5,0)
+
+def limit_wait(error):
+ """Seconds to rest a lane after a limit error: ChatGPT's own "resets in 5 hours" when given, else LIMIT_COOLDOWN."""
+ m=WAIT.search(str(error or ''))
+ if not m:return LIMIT_COOLDOWN
+ n=float(m.group(1).replace(',','.'));unit=m.group(2).lower()
+ seconds=n*(60 if unit.startswith(('min','phút')) else 3600)
+ return int(min(LIMIT_MAX,max(LIMIT_COOLDOWN,seconds)))
+
+def wait_text(seconds):
+ return (str(round(seconds/3600,1)).rstrip('0').rstrip('.')+' giờ') if seconds>=3600 else (str(int(seconds//60))+' phút')
 
 def version_ok(text):
  try:return tuple(int(x) for x in str(text).split('.')[:3])>=MIN_VERSION
@@ -151,7 +164,8 @@ def step(w,s,post=None):
   item['state']=r.get('status');item['error']=r.get('error') or None
   if r.get('status')=='error' and r.get('type')=='image_generation' and RATE.search(str(r.get('error') or '')):
    item['tries']=max(0,item.get('tries',1)-1)  # the account's limit says nothing about this scene: not a used try
-   st['cooldown'][lane]=now+LIMIT_COOLDOWN;attention.append('ChatGPT báo hết lượt/giới hạn ở '+((live.get(lane) or {}).get('account_label') or lane)+'; tab này nghỉ tạo ảnh 15 phút.')
+   rest=limit_wait(r.get('error'))
+   st['cooldown'][lane]=now+rest;attention.append('ChatGPT báo hết lượt/giới hạn ở '+((live.get(lane) or {}).get('account_label') or lane)+'; tab này nghỉ tạo ảnh '+wait_text(rest)+'.')
  # 2. Take jobs back from lost or stuck lanes so another lane can do them.
  for job in lane_jobs:
   lane=job.get('lane');key=('part:'+str(job.get('partId'))) if job.get('type')=='part_analysis' else 'image:'+str(job.get('sceneKey'))

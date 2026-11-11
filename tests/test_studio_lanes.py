@@ -129,6 +129,24 @@ class Lanes(unittest.TestCase):
   self.assertIn('nghỉ tạo ảnh',r['context']['studio_attention'][0])
   w.now+=901;st.finish('laneB');w.round();self.assertIsNotNone(st.job('laneA'))
 
+ def test_image_limit_rests_the_lane_until_chatgpt_says_it_resets(self):
+  st=FakeStudio(parts=1,scenes=2);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'} for _ in range(2)])
+  w=W(st,[worker('laneA')],tasks=('images',))
+  notice="ChatGPT báo hết lượt tạo ảnh (giới hạn tài khoản): You've hit the Plus plan limit for image generations requests. You can create more images when the limit resets in 5 hours."
+  w.round();st.finish('laneA',ok=False,error=notice);r=w.round()
+  self.assertIn('nghỉ tạo ảnh 5 giờ',r['context']['studio_attention'][0])
+  w.now+=901;w.round();self.assertIsNone(st.job('laneA'),'still resting after 15 minutes: ChatGPT said 5 hours')
+  w.now+=5*3600;w.round();self.assertIsNotNone(st.job('laneA'),'works again once the limit has reset')
+
+ def test_limit_wait_reads_chatgpt_reset_time(self):
+  f=studio_lanes.limit_wait
+  self.assertEqual(f('limit resets in 5 hours'),5*3600)
+  self.assertEqual(f('Try again in 30 minutes'),1800)
+  self.assertEqual(f('giới hạn, thử lại sau 2 giờ'),7200)
+  self.assertEqual(f("You've reached the image generation limit"),studio_lanes.LIMIT_COOLDOWN,'no time given: the usual 15 minutes')
+  self.assertEqual(f('resets in 2 minutes'),studio_lanes.LIMIT_COOLDOWN,'never shorter than the usual rest')
+  self.assertEqual(f('resets in 48 hours'),studio_lanes.LIMIT_MAX,'never longer than 6 hours')
+
  def test_rerun_remakes_existing_pictures_and_saves_only_new_ones(self):
   studio_lanes.IMAGE_LANES=2;self.addCleanup(setattr,studio_lanes,'IMAGE_LANES',1)
   st=FakeStudio(parts=1,scenes=2);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'complete','imageResults':[{'url':'https://x/old'}]} for _ in range(2)])
