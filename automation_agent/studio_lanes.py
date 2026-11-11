@@ -11,7 +11,7 @@ from pathlib import Path
 from .studio_images import rows
 from .project_files import layout,image_place,save_scene_image
 
-IMAGE_LANES=1        # tabs making pictures at the same time (one ChatGPT account)
+IMAGE_LANES=2        # tabs making pictures at the same time (one ChatGPT account)
 LANE_LOST=180        # a lane whose Studio tab stopped reporting this long loses its job
 JOB_LIMIT=1800       # one part/image may take this long before it is taken back
 LIMIT_COOLDOWN=900   # ChatGPT said "limit reached": rest this lane's images
