@@ -62,7 +62,12 @@ def wincontrol_notepad(name,a,target,settings):
 def dispatch(a,context,home,settings):
  os.environ['AI_MANAGER_AGENT_HOME']=str(home)
  name=a['action'];app=a.get('target_app') or context.get('target_app')
+ # The ChatGPT steps go through Chrome DevTools MCP whatever window a WinControl tool step opened last.
+ if name in ('OBSERVE_CHATGPT','SEND_CHATGPT','WINCONTROL_DECIDE') and context.get('wincontrol_task'):app='chrome'
  target=dict(context,target_app=app)
+ # A window bound for another app (e.g. the Notepad a WinControl step opened) is not this action's window.
+ if a.get('target_app') and context.get('target_app') and a['target_app']!=context['target_app']:
+  for key in ('hwnd','pid','process_started','title'):target.pop(key,None)
  if name=='MAN_STATUS':
   import urllib.request
   from .wincontrol_chat_loop import man_health
