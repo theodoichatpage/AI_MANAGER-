@@ -37,7 +37,10 @@ def type_text(target,selector,text):
  if not control.is_enabled():raise RuntimeError('Ô nhập bị vô hiệu hóa')
  validate_target(target,True);control.set_edit_text(text)
  # Do not return/log user text.
- if control.window_text()!=text:raise RuntimeError('Ô nhập không trả lại đúng text; cần kiểm tra trước khi nhập lại')
+ # window_text() is the control's UIA Name for many editors (Notepad says "Text Editor"); the typed text is its Value.
+ try:seen=control.get_value()
+ except Exception:seen=control.window_text()
+ if seen!=text and control.window_text()!=text:raise RuntimeError('Ô nhập không trả lại đúng text; cần kiểm tra trước khi nhập lại')
  return {'characters':len(text),'verified':True}
 
 def hotkey(target,keys):

@@ -9,11 +9,11 @@ WINCONTROL_ACTIONS = {
     'LIST_WINDOWS', 'LIST_PROCESSES', 'CHECK_PROCESS', 'OPEN_APP', 'WAIT_WINDOW',
     'FOCUS_WINDOW', 'RESTORE', 'MAXIMIZE', 'MINIMIZE', 'SCREENSHOT', 'FIND_ELEMENT',
     'READ_ELEMENT', 'CLICK', 'TYPE_TEXT', 'HOTKEY', 'WAIT', 'WAIT_ELEMENT',
-    'ENSURE_TEMP_DIR', 'VERIFY_FILE', 'OPEN_FILE', 'MAN_STATUS',
+    'ENSURE_TEMP_DIR', 'VERIFY_FILE', 'OPEN_FILE', 'SAVE_AS', 'MAN_STATUS',
 }
 TARGET_APPS = {'notepad', 'chrome', 'edge', 'capcut'}
 BROWSER_APPS = {'chrome', 'edge'}
-INPUT_ACTIONS = {'CLICK', 'TYPE_TEXT', 'HOTKEY', 'OPEN_FILE'}
+INPUT_ACTIONS = {'CLICK', 'TYPE_TEXT', 'HOTKEY', 'OPEN_FILE', 'SAVE_AS'}
 MAX_ROUNDS = 12
 MAX_CORRECTIONS = 2
 RESULT_CHARS = 1500
@@ -39,6 +39,7 @@ FIELDS = {
     'ENSURE_TEMP_DIR': {'action', 'timeout'},
     'VERIFY_FILE': {'action', 'path', 'expected_text', 'timeout'},
     'OPEN_FILE': {'action', 'target_app', 'path', 'timeout'},
+    'SAVE_AS': {'action', 'target_app', 'path', 'timeout'},
     'MAN_STATUS': {'action', 'timeout'},
 }
 SELECTOR_FIELDS = {'title', 'title_re', 'auto_id', 'control_type', 'class_name', 'control_id'}
@@ -85,7 +86,7 @@ def validate_actions(actions):
             raise ValueError('WINCONTROL_TEXT_INVALID')
         if name == 'HOTKEY' and action.get('keys') not in HOTKEYS:
             raise ValueError('WINCONTROL_HOTKEY_INVALID')
-        if name in {'VERIFY_FILE', 'OPEN_FILE'}:
+        if name in {'VERIFY_FILE', 'OPEN_FILE', 'SAVE_AS'}:
             action['path'] = _safe_temp_path(action.get('path'))
         if name == 'VERIFY_FILE' and (not isinstance(action.get('expected_text'), str) or len(action['expected_text']) > 8000):
             raise ValueError('WINCONTROL_FILE_EXPECTATION_INVALID')
@@ -171,8 +172,7 @@ CONTRACT = ('Reply with ONE JSON object only, as plain text (no code block, no o
             'Never request Studio production, Extension changes, SEND_CHATGPT, or files outside temp_dir. '
             'Never claim success before an observed result proves it. MAN_STATUS reads MAN, Agent, Studio and Extension health read-only. '
             'Every window action must name target_app; never CLICK, TYPE_TEXT, HOTKEY or OPEN_FILE in chrome or edge (they hold this ChatGPT tab and Studio). '
-            'For a Notepad text task: ENSURE_TEMP_DIR, OPEN_APP notepad, WAIT_WINDOW, TYPE_TEXT with selector {"class_name":"Edit"} '
-            '(Windows 11 Notepad: {"control_type":"Document"}), save with HOTKEY CTRL+S and type the full path under temp_dir, '
+            'For a Notepad text task: ENSURE_TEMP_DIR, OPEN_APP notepad (always opens a new window and focuses it), TYPE_TEXT with selector {"class_name":"Edit"}, SAVE_AS target_app notepad with a new full path under temp_dir (it refuses existing files), '
             'then VERIFY_FILE before complete. If a step fails, choose one corrective step or report blocked with the reason.')
 
 

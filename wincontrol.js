@@ -76,7 +76,7 @@ function winControlJobsHTML(){
 }
 function winControlHTML(){
  const task=winControlSelected();
- return `<main class="wc-shell"><header class="wc-top"><div><b>WinControl</b><small class="${state.automation?.online?'online':'offline'}">Windows Agent ${state.automation?.online?'đang hoạt động':'ngoại tuyến'}</small></div><nav class="wc-tabs" aria-label="WinControl"><button class="${winControlTab==='chat'?'active':''}" onclick="winControlTab='chat';render()">Trò chuyện</button><button class="${winControlTab==='jobs'?'active':''}" onclick="winControlTab='jobs';render()">Công việc ${winControlTasks().length?`<i>${winControlTasks().length}</i>`:''}</button></nav><button class="wc-refresh" onclick="winControlSubmitStatus()" aria-label="Làm mới">↻</button></header>${winControlTab==='chat'?winControlChatHTML(task):`<section class="wc-jobs-view"><h1>Công việc</h1><p>Theo dõi nhiệm vụ và checkpoint của Agent hiện có.</p>${winControlJobsHTML()}</section>`}</main>`;
+ return `<main class="wc-shell"><header class="wc-top"><div><button class="wc-back" type="button" onclick="goPage('Studio Automation')" aria-label="Quay lại Điều phối">←</button><b>WinControl</b><small class="${state.automation?.online?'online':'offline'}">Windows Agent ${state.automation?.online?'đang hoạt động':'ngoại tuyến'}</small></div><nav class="wc-tabs" aria-label="WinControl"><button class="${winControlTab==='chat'?'active':''}" onclick="winControlTab='chat';render()">Trò chuyện</button><button class="${winControlTab==='jobs'?'active':''}" onclick="winControlTab='jobs';render()">Công việc ${winControlTasks().length?`<i>${winControlTasks().length}</i>`:''}</button></nav><button class="wc-refresh" onclick="winControlSubmitStatus()" aria-label="Làm mới">↻</button></header>${winControlTab==='chat'?winControlChatHTML(task):`<section class="wc-jobs-view"><h1>Công việc</h1><p>Theo dõi nhiệm vụ và checkpoint của Agent hiện có.</p>${winControlJobsHTML()}</section>`}</main>`;
 }
 function winControlSelectTask(id){winControlLastTask=id;winControlTab='chat';winControlReply='';render()}
 function winControlFormatState(s){
@@ -124,7 +124,13 @@ async function winControlStop(){
   // The page refreshes every 2 s; keep what the user is typing, the caret and focus across the redraw.
   const old=document.getElementById('win_command');
   if(old){winControlDraft=old.value;winControlFocus=document.activeElement===old;winControlCaret=[old.selectionStart,old.selectionEnd]}
-  base();if(page!=='WinControl')return;
+  base();
+  if(page!=='WinControl'){
+   // MAN v0.2.25 (manager_ui.js) hides the old header and redraws its own top bar on every render: add the entry there.
+   const pills=document.querySelector('.mg-pills');
+   if(pills&&!pills.parentElement.querySelector('.wc-entry')){const entry=document.createElement('button');entry.type='button';entry.className='wc-entry';entry.dataset.page='WinControl';entry.textContent='WinControl';entry.title='Giao nhiệm vụ cho WinControl';entry.onclick=()=>goPage('WinControl');pills.after(entry)}
+   return;
+  }
   for(const id of ['mainToolbar','mainStats','mainNotice','studioPanel','extensionPanel','windowsAgentPanel','dashboard']){const el=document.getElementById(id);if(el)el.hidden=true}
   const extra=document.getElementById('extra');if(!extra)return;
   const html=winControlHTML();

@@ -16,6 +16,49 @@ def network_error(exc):
  if isinstance(exc,(FileNotFoundError,PermissionError,IsADirectoryError,NotADirectoryError,FileExistsError)):return False
  return isinstance(exc,(OSError,http.client.HTTPException,zlib.error,json.JSONDecodeError))
 
+def wincontrol_notepad(name,a,target,settings):
+ """WinControl's Notepad: always its own new window (never a Notepad the user already has open), and Save As only
+ into the WinControl temp folder, never over an existing file."""
+ deadline=time.monotonic()+min(60,float(a.get('timeout',30)))
+ if name=='OPEN_APP':
+  proc=subprocess.Popen([wm.executable('notepad',settings)],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+  while time.monotonic()<deadline:
+   rows=[r for r in wm.windows('notepad') if r['pid']==proc.pid]
+   if rows:
+    row=dict(rows[0],target_app='notepad')
+    try:wm.focus(row)
+    except Exception:pass
+    return {'launched_pid':proc.pid,'window':rows[0]['title'],'context':row}
+   time.sleep(.15)
+  raise TimeoutError('Notepad window did not appear')
+ from .wincontrol_chat_loop import _safe_temp_path
+ from pywinauto import Desktop
+ from pywinauto.keyboard import send_keys
+ path=Path(_safe_temp_path(a.get('path')))
+ if path.exists():raise FileExistsError('FILE_ALREADY_EXISTS_CHOOSE_NEW_NAME: '+str(path))
+ path.parent.mkdir(parents=True,exist_ok=True)
+ wm.focus(target);hwnd=wm.validate_target(target,True);pid=int(target['pid'])
+ send_keys('^+s',pause=.02)
+ dialog=None
+ while time.monotonic()<deadline and dialog is None:
+  found=[w for w in Desktop(backend='win32').windows(process=pid,class_name='#32770',visible_only=True) if w.handle!=hwnd]
+  if found:dialog=Desktop(backend='uia').window(handle=found[0].handle)
+  else:time.sleep(.2)
+ if dialog is None:raise TimeoutError('Save As dialog did not open')
+ name_box=dialog.child_window(auto_id='1001',control_type='Edit').wrapper_object()
+ name_box.set_edit_text(str(path))
+ try:typed=name_box.get_value()
+ except Exception:typed=name_box.window_text()
+ if typed!=str(path):raise RuntimeError('Save As file name was not accepted')
+ dialog.child_window(auto_id='1',control_type='Button').wrapper_object().invoke()
+ while time.monotonic()<deadline:
+  titles=[r['title'].casefold() for r in wm.windows('notepad') if r['pid']==pid]
+  if path.is_file() and any(path.stem.casefold() in t for t in titles):
+   return {'saved':True,'path':str(path),'bytes':path.stat().st_size}
+  time.sleep(.2)
+ if path.is_file():return {'saved':True,'path':str(path),'bytes':path.stat().st_size,'title_unconfirmed':True}
+ raise TimeoutError('Notepad did not save the file')
+
 def dispatch(a,context,home,settings):
  os.environ['AI_MANAGER_AGENT_HOME']=str(home)
  name=a['action'];app=a.get('target_app') or context.get('target_app')
@@ -25,6 +68,8 @@ def dispatch(a,context,home,settings):
   from .wincontrol_chat_loop import man_health
   with urllib.request.urlopen(str(context.get('man_state_url') or 'http://127.0.0.1:8765/api/state'),timeout=min(20,float(a.get('timeout',30)))) as r:
    return man_health(json.load(r))
+ if context.get('wincontrol_task') and app=='notepad' and name in ('OPEN_APP','SAVE_AS'):
+  return wincontrol_notepad(name,a,target,settings)
  if name in ('ENSURE_TEMP_DIR','VERIFY_FILE','OPEN_FILE'):
   import tempfile
   root=(Path(tempfile.gettempdir())/'WinControl').resolve()
@@ -38,7 +83,7 @@ def dispatch(a,context,home,settings):
   if name=='VERIFY_FILE':
    expected=a.get('expected_text')
    if not isinstance(expected,str):raise ValueError('FILE_EXPECTATION_REQUIRED')
-   actual=path.read_text(encoding='utf-8')
+   actual=path.read_text(encoding='utf-8-sig')
    if actual!=expected:raise ValueError('FILE_CONTENT_MISMATCH')
    return {'verified':True,'path':str(path),'characters':len(actual)}
   if app!='notepad':raise ValueError('OPEN_FILE_REQUIRES_NOTEPAD')
@@ -47,7 +92,7 @@ def dispatch(a,context,home,settings):
   deadline=time.monotonic()+min(20,float(a.get('timeout',30)))
   while time.monotonic()<deadline:
    rows=wm.windows('notepad',path.stem)
-   if rows:return {'opened':True,'path':str(path),'window':rows[0]}
+   if rows:return {'opened':True,'path':str(path),'window':rows[0],'context':dict(rows[0],target_app='notepad')}
    time.sleep(.15)
   raise TimeoutError('Notepad did not show the requested file window')
  if target.get('studio_project_id'):
