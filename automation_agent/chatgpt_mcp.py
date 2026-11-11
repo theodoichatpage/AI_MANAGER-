@@ -97,6 +97,8 @@ def observe(context,settings,url,samples=3):
 def send(context,settings,url,text,exchange_id,verified):
  if not isinstance(text,str) or not text.strip() or len(text)>12000:raise ValueError('INVALID_PROMPT')
  if not isinstance(exchange_id,str) or len(exchange_id)<8:raise ValueError('INVALID_EXCHANGE_ID')
+ # The bridge verifies the composer value line by line, so a multi-line prompt can never be verified (and is never sent).
+ text=' '.join(text.splitlines())
  tagged=exchange_id in text
  state=observe(context,settings,url)
  digest=hashlib.sha256(text.encode()).hexdigest()
