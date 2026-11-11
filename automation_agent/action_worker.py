@@ -7,6 +7,9 @@ from .browser_controller import BrowserController
 
 NET_GRACE=900
 
+class NotExecuted(RuntimeError):
+ """Refused before any input reached a window: safe to report back to ChatGPT instead of stopping for review."""
+
 def network_error(exc):
  """True for a connection problem (timeout, refused, DNS, SSL, cut-off or garbled reply, 5xx gateway),
  not for a Studio answer we refused or a local file problem."""
@@ -16,10 +19,90 @@ def network_error(exc):
  if isinstance(exc,(FileNotFoundError,PermissionError,IsADirectoryError,NotADirectoryError,FileExistsError)):return False
  return isinstance(exc,(OSError,http.client.HTTPException,zlib.error,json.JSONDecodeError))
 
+def wincontrol_notepad(name,a,target,settings):
+ """WinControl's Notepad: always its own new window (never a Notepad the user already has open), and Save As only
+ into the WinControl temp folder, never over an existing file."""
+ deadline=time.monotonic()+min(60,float(a.get('timeout',30)))
+ if name=='OPEN_APP':
+  proc=subprocess.Popen([wm.executable('notepad',settings)],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+  while time.monotonic()<deadline:
+   rows=[r for r in wm.windows('notepad') if r['pid']==proc.pid]
+   if rows:
+    row=dict(rows[0],target_app='notepad')
+    try:wm.focus(row)
+    except Exception:pass
+    return {'launched_pid':proc.pid,'window':rows[0]['title'],'context':row}
+   time.sleep(.15)
+  raise TimeoutError('Notepad window did not appear')
+ from .wincontrol_chat_loop import _safe_temp_path
+ from pywinauto import Desktop
+ from pywinauto.keyboard import send_keys
+ path=Path(_safe_temp_path(a.get('path')))
+ if path.exists():raise FileExistsError('FILE_ALREADY_EXISTS_CHOOSE_NEW_NAME: '+str(path))
+ path.parent.mkdir(parents=True,exist_ok=True)
+ wm.focus(target);hwnd=wm.validate_target(target,True);pid=int(target['pid'])
+ send_keys('^+s',pause=.02)
+ dialog=None
+ while time.monotonic()<deadline and dialog is None:
+  found=[w for w in Desktop(backend='win32').windows(process=pid,class_name='#32770',visible_only=True) if w.handle!=hwnd]
+  if found:dialog=Desktop(backend='uia').window(handle=found[0].handle)
+  else:time.sleep(.2)
+ if dialog is None:raise TimeoutError('Save As dialog did not open')
+ name_box=dialog.child_window(auto_id='1001',control_type='Edit').wrapper_object()
+ name_box.set_edit_text(str(path))
+ try:typed=name_box.get_value()
+ except Exception:typed=name_box.window_text()
+ if typed!=str(path):raise RuntimeError('Save As file name was not accepted')
+ dialog.child_window(auto_id='1',control_type='Button').wrapper_object().invoke()
+ while time.monotonic()<deadline:
+  titles=[r['title'].casefold() for r in wm.windows('notepad') if r['pid']==pid]
+  if path.is_file() and any(path.stem.casefold() in t for t in titles):
+   return {'saved':True,'path':str(path),'bytes':path.stat().st_size}
+  time.sleep(.2)
+ if path.is_file():return {'saved':True,'path':str(path),'bytes':path.stat().st_size,'title_unconfirmed':True}
+ raise TimeoutError('Notepad did not save the file')
+
 def dispatch(a,context,home,settings):
  os.environ['AI_MANAGER_AGENT_HOME']=str(home)
  name=a['action'];app=a.get('target_app') or context.get('target_app')
+ # The ChatGPT steps go through Chrome DevTools MCP whatever window a WinControl tool step opened last.
+ if name in ('OBSERVE_CHATGPT','SEND_CHATGPT','WINCONTROL_DECIDE') and context.get('wincontrol_task'):app='chrome'
  target=dict(context,target_app=app)
+ # A window bound for another app (e.g. the Notepad a WinControl step opened) is not this action's window.
+ if a.get('target_app') and context.get('target_app') and a['target_app']!=context['target_app']:
+  for key in ('hwnd','pid','process_started','title'):target.pop(key,None)
+ if name=='MAN_STATUS':
+  import urllib.request
+  from .wincontrol_chat_loop import man_health
+  with urllib.request.urlopen(str(context.get('man_state_url') or 'http://127.0.0.1:8765/api/state'),timeout=min(20,float(a.get('timeout',30)))) as r:
+   return man_health(json.load(r))
+ if context.get('wincontrol_task') and app=='notepad' and name in ('OPEN_APP','SAVE_AS'):
+  return wincontrol_notepad(name,a,target,settings)
+ if name in ('ENSURE_TEMP_DIR','VERIFY_FILE','OPEN_FILE'):
+  import tempfile
+  root=(Path(tempfile.gettempdir())/'WinControl').resolve()
+  if name=='ENSURE_TEMP_DIR':
+   existed=root.is_dir();root.mkdir(parents=True,exist_ok=True)
+   return {'created':not existed,'exists':existed,'path':str(root)}
+  path=Path(str(a.get('path') or '')).expanduser().resolve()
+  try:path.relative_to(root)
+  except ValueError as exc:raise ValueError('FILE_PATH_OUTSIDE_WINCONTROL_TEMP') from exc
+  if path==root:raise ValueError('FILE_PATH_REQUIRED')
+  if name=='VERIFY_FILE':
+   expected=a.get('expected_text')
+   if not isinstance(expected,str):raise ValueError('FILE_EXPECTATION_REQUIRED')
+   actual=path.read_text(encoding='utf-8-sig')
+   if actual!=expected:raise ValueError('FILE_CONTENT_MISMATCH')
+   return {'verified':True,'path':str(path),'characters':len(actual)}
+  if app!='notepad':raise ValueError('OPEN_FILE_REQUIRES_NOTEPAD')
+  if not path.is_file():raise FileNotFoundError(str(path))
+  subprocess.Popen([wm.executable('notepad',settings),str(path)],shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+  deadline=time.monotonic()+min(20,float(a.get('timeout',30)))
+  while time.monotonic()<deadline:
+   rows=wm.windows('notepad',path.stem)
+   if rows:return {'opened':True,'path':str(path),'window':rows[0],'context':dict(rows[0],target_app='notepad')}
+   time.sleep(.15)
+  raise TimeoutError('Notepad did not show the requested file window')
  if target.get('studio_project_id'):
   from .resource_lock import StudioResource
   StudioResource(home).acquire(target,name)
@@ -111,7 +194,7 @@ def dispatch(a,context,home,settings):
    except wm.WindowNotFoundError:
     if name=='FIND_WINDOW' or time.monotonic()>=deadline:raise
     time.sleep(.2)
- if not target.get('hwnd') and name not in ('OBSERVE_CHATGPT','SEND_CHATGPT'):
+ if not target.get('hwnd') and name not in ('OBSERVE_CHATGPT','SEND_CHATGPT','WINCONTROL_DECIDE'):
   target.update(wm.find_window(app,a.get('title')))
  if name=='FOCUS_WINDOW':return wm.focus(target)
  if name in ('RESTORE','MAXIMIZE','MINIMIZE'):return wm.set_state(target,name)
@@ -121,6 +204,10 @@ def dispatch(a,context,home,settings):
  if name=='SCREENSHOT':return ui.screenshot(target,Path(home)/'screenshots',bool(a.get('full_screen')))
  if name=='FIND_ELEMENT':return {'element':ui.describe(ui.element(target,a.get('selector')))}
  if name=='READ_ELEMENT':return {'element':ui.describe(ui.element(target,a.get('selector')))}
+ if context.get('wincontrol_task') and name in ('CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY') and app not in ('chrome','edge'):
+  # Bring WinControl's own window to the front first; the foreground check inside each input step still applies.
+  try:wm.focus(target)
+  except Exception as exc:raise NotExecuted('Không đưa được cửa sổ '+str(app)+' lên trước; chưa nhập/click gì: '+str(exc)) from exc
  if name in ('CLICK','DOUBLE_CLICK','RIGHT_CLICK'):return ui.click(target,a.get('selector'),'right' if name=='RIGHT_CLICK' else 'left',name=='DOUBLE_CLICK')
  if name=='TYPE_TEXT':return ui.type_text(target,a.get('selector'),a.get('text',''))
  if name=='HOTKEY':return ui.hotkey(target,a.get('keys'))
@@ -141,8 +228,35 @@ def dispatch(a,context,home,settings):
   from . import chatgpt_mcp
   verified=context.get('chatgpt_verified') or {}
   url=context.get('expected_url') or (context.get('chrome_mcp_config') or {}).get('page_url')
-  result=chatgpt_mcp.send(context,settings,url,a.get('text'),a.get('exchange_id'),verified)
+  result=chatgpt_mcp.send(context,settings,url,a.get('text'),a.get('exchange_id'),verified,fresh=bool(context.get('wincontrol_task')))
   return dict(result,context={'chatgpt_exchange_id':result['exchange_id'],'chatgpt_submission':'received','chatgpt_verified':None})
+ if name=='WINCONTROL_DECIDE':
+  if not context.get('wincontrol_task'):raise RuntimeError('WINCONTROL_TASK_CONTEXT_REQUIRED')
+  from .chatgpt_mcp import observe
+  from .wincontrol_chat_loop import parse_decision
+  url=context.get('expected_url') or (context.get('chrome_mcp_config') or {}).get('page_url')
+  if not url:raise RuntimeError('EXACT_CHATGPT_URL_REQUIRED')
+  since=float(context.get('wincontrol_wait_since') or 0) or time.time()
+  limit=float(a.get('response_limit',context.get('wincontrol_response_limit',600)))
+  try:observed=observe(context,settings,url,3)
+  except RuntimeError as exc:
+   # Reading is safe to repeat: a dropped MCP connection or a half-rendered page is waited out, not failed.
+   if time.time()-since>limit:raise TimeoutError('CHATGPT_RESPONSE_TIMEOUT: '+str(exc)) from exc
+   return {'waiting':True,'context':{'wincontrol_wait_since':since,'wincontrol_wait_reason':str(exc)[:300]}}
+  if not observed.get('completion_verified') or observed.get('lastRole')!='assistant':
+   if time.time()-since>limit:raise TimeoutError('CHATGPT_RESPONSE_TIMEOUT')
+   return {'waiting':True,'context':{'wincontrol_wait_since':since,'wincontrol_wait_reason':'generating' if observed.get('generating') else 'unverified'}}
+  # Only the reply to this round's prompt counts: the latest user turn must carry this round's exchange id.
+  if a.get('exchange_id') and a['exchange_id'] not in str(observed.get('lastUserText') or ''):
+   if time.time()-since>limit:raise TimeoutError('CHATGPT_REPLY_FOR_THIS_ROUND_NOT_FOUND')
+   return {'waiting':True,'context':{'wincontrol_wait_since':since,'wincontrol_wait_reason':'other_turn'}}
+  verified={'completed':True,'url':url,'fingerprint':observed['fingerprint'],'turn_count':observed['turnCount']}
+  done={'chatgpt_verified':verified,'wincontrol_round':int(context.get('wincontrol_round',0))+1,'wincontrol_wait_since':None,'wincontrol_wait_reason':None}
+  try:decision=parse_decision(observed.get('lastAssistant'))
+  except ValueError as exc:
+   # The reply is complete but unusable: hand it back to the runtime, which asks ChatGPT for a corrected reply.
+   decision={'status':'invalid','summary':str(exc),'actions':[],'reply':str(observed.get('lastAssistant') or '')[:800]}
+  return {'decision':decision,'context':done}
  if name=='WAIT_PAGE':return browser.wait_page(a.get('url') or context.get('expected_url'),float(a.get('timeout',30))-.1)
  key={'NEW_TAB':'CTRL+T','CLOSE_TAB':'CTRL+W','SWITCH_TAB':'CTRL+TAB','REFRESH':'F5'}.get(name)
  if key:return browser.key(key)
@@ -153,5 +267,5 @@ def main():
  try:
   result=dispatch(data['action'],data.get('context',{}),data['home'],data.get('settings',{}))
   print(json.dumps({'success':True,'result':result},ensure_ascii=True),flush=True)
- except Exception as e:print(json.dumps({'success':False,'error':str(e),'error_code':'WINDOW_LOST' if isinstance(e,wm.WindowLostError) else 'SCRIPT_MISSING' if type(e).__name__=='StudioScriptMissing' else 'STUDIO_REVIEW' if type(e).__name__=='StudioReviewRequired' or (data.get('context',{}).get('studio_project_id') and not str(data.get('action',{}).get('action','')).startswith('STUDIO_')) else 'ACTION_ERROR'},ensure_ascii=True),flush=True)
+ except Exception as e:print(json.dumps({'success':False,'error':str(e),'error_code':'WINDOW_LOST' if isinstance(e,wm.WindowLostError) else 'SCRIPT_MISSING' if type(e).__name__=='StudioScriptMissing' else 'NOT_EXECUTED' if isinstance(e,NotExecuted) else 'STUDIO_REVIEW' if type(e).__name__=='StudioReviewRequired' or (data.get('context',{}).get('studio_project_id') and not str(data.get('action',{}).get('action','')).startswith('STUDIO_')) else 'ACTION_ERROR'},ensure_ascii=True),flush=True)
 if __name__=='__main__':main()

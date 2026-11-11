@@ -6,6 +6,7 @@ def now(): return datetime.now(timezone.utc).isoformat()
 
 class QueueManager:
  def __init__(self,root):
+  import test_guard;test_guard.refuse_production(root,'queue root')
   self.root=Path(root); self.root.mkdir(parents=True,exist_ok=True); self.lock=threading.RLock()
   self.db=sqlite3.connect(self.root/'.ai_manager_queue.sqlite3',check_same_thread=False); self.db.row_factory=sqlite3.Row
   self.db.execute('PRAGMA journal_mode=WAL'); self.db.execute('PRAGMA synchronous=FULL')

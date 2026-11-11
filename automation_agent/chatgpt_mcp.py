@@ -19,7 +19,7 @@ def _config(context,settings,url):
  if c.get('page_url')!=url:raise RuntimeError('EXACT_OWNED_PAGE_REQUIRED')
  return c
 
-def _call(c,operation,text=None):
+def _call_once(c,operation,text=None):
  payload=dict(c,operation='action',action={'action':'CHATGPT_SNAPSHOT' if operation=='snapshot' else 'CHATGPT_SEND','text':text})
  process=subprocess.run([c['node'],str(Path(__file__).with_name('chrome_mcp_bridge.mjs'))],
   input=json.dumps(payload),text=True,encoding='utf-8',capture_output=True,timeout=18,
@@ -29,19 +29,43 @@ def _call(c,operation,text=None):
  if process.returncode or result.get('error'):raise RuntimeError('MCP_ACTION_FAILED: '+str(result.get('error','unknown')))
  return result
 
+SNAPSHOT_ATTEMPTS=3
+
+def _call(c,operation,text=None):
+ """A read-only snapshot reconnects (new bridge process) after a dropped MCP connection; a send never repeats."""
+ if operation!='snapshot':return _call_once(c,operation,text)
+ for attempt in range(SNAPSHOT_ATTEMPTS):
+  try:return _call_once(c,operation,text)
+  except (RuntimeError,subprocess.TimeoutExpired):
+   if attempt+1==SNAPSHOT_ATTEMPTS:raise
+   time.sleep(1+attempt)
+
+def _same_prompt(seen,text):
+ a=' '.join(str(seen or '').split());b=' '.join(str(text or '').split())
+ return bool(a) and a==b
+
 def parse_snapshot(raw,url):
  """Conservative parser: only explicitly attributed assistant turns qualify."""
  import re
  turns=[];current=None;composer=False;generating=False;end=False;saw_root=False
- for line in raw.splitlines():
+ # A text may run over several lines (links); lines that do not start a new uid belong to the element above.
+ logical=[]
+ for row in raw.splitlines():
+  if re.match(r'\s*uid=',row) or not logical:logical.append(row)
+  else:logical[-1]+='\n'+row
+ for line in logical:
   match=re.match(r'\s*uid=(\S+)\s+(\S+)(?:\s+("(?:[^"\\]|\\.)*"))?',line)
   if not match:continue
   if match[2].startswith('"'):
-   plain=re.match(r'\s*uid=\S+\s+("(?:[^"\\]|\\.)*")',line)
+   # take_snapshot prints text verbatim (inner quotes are not escaped): a text line is everything between the
+   # first and the last quote, so a JSON reply from ChatGPT is not cut at its first inner quote.
+   plain=re.match(r'\s*uid=\S+\s+"(.*)"\s*$',line,re.S)
    if not plain:continue
-   role='StaticText';name=json.loads(plain[1])
+   role='StaticText';name=plain[1]
   else:
-   role=match[2];name=json.loads(match[3]) if match[3] else ''
+   role=match[2]
+   try:name=json.loads(match[3]) if match[3] else ''
+   except ValueError:name=match[3][1:-1]
   if role=='RootWebArea':
    saw_root=True
    observed=re.search(r'\burl=("(?:[^"\\]|\\.)*")',line)
@@ -51,7 +75,7 @@ def parse_snapshot(raw,url):
    current={'role':author,'text':[]};turns.append(current);end=False;continue
   if role=='heading' and name=='Latest response':current=None
   if role=='textbox':
-   composer=name in ('Ask anything','Ask ChatGPT','Message ChatGPT','Message','Send a message') and not re.search(r'\b(?:disabled|readonly)\b',line)
+   composer=name in ('Ask anything','Ask ChatGPT','Message ChatGPT','Message','Send a message') and not re.search(r'\b(?:disabled|readonly)\b',line.split(' value="',1)[0])
    current=None
   if role=='button':
    generating|=name.lower() in ('stop generating','stop responding','stop streaming','dừng tạo','dừng phản hồi')
@@ -79,20 +103,36 @@ def observe(context,settings,url,samples=3):
  completed=stable and ready and all(r['turnCount']==last['turnCount'] for r in rows)
  return {k:v for k,v in dict(last,stable=stable,completion_verified=completed,state='completed' if completed else 'unverified').items() if k!='snapshot'}
 
-def send(context,settings,url,text,exchange_id,verified):
+def send(context,settings,url,text,exchange_id,verified,fresh=False):
  if not isinstance(text,str) or not text.strip() or len(text)>12000:raise ValueError('INVALID_PROMPT')
  if not isinstance(exchange_id,str) or len(exchange_id)<8:raise ValueError('INVALID_EXCHANGE_ID')
+ # The bridge verifies the composer value line by line, so a multi-line prompt can never be verified (and is never sent).
+ text=' '.join(text.splitlines())
+ tagged=exchange_id in text
  state=observe(context,settings,url)
- if not state['completion_verified'] or not verified.get('completed') or verified.get('url')!=url or state['fingerprint']!=verified.get('fingerprint') or state['turnCount']!=verified.get('turn_count'):
+ digest=hashlib.sha256(text.encode()).hexdigest()
+ # A prompt that carries its exchange id and is already the latest user turn was delivered before an interruption:
+ # report it as received instead of sending a duplicate.
+ if tagged and exchange_id in state.get('lastUserText',''):
+  return {'exchange_id':exchange_id,'submission':'received','url':url,'turnCount':state['turnCount'],'prompt_sha256':digest,'recovered':True}
+ # fresh (WinControl): the page is checked now (idle, reply complete) instead of against an earlier observation, so a
+ # task resumed after an interruption can send; its exchange id above already prevents a second copy.
+ stale=not fresh and (not verified.get('completed') or verified.get('url')!=url or state['fingerprint']!=verified.get('fingerprint') or state['turnCount']!=verified.get('turn_count'))
+ if not state['completion_verified'] or stale:
   raise RuntimeError('CHATGPT_UNVERIFIED_NO_SEND')
  c=_config(context,settings,url)
  _call(c,'fill_click',text)
  # Click alone is not receipt. A snapshot must show exact user text.
- for _ in range(5):
+ for _ in range(8):
   snap=_call(c,'snapshot')['snapshot']
   receipt=parse_snapshot(snap,url)
-  if receipt['turnCount']>state['turnCount'] and receipt['lastUserText']==text:
+  seen=receipt['lastUserText']
+  # ChatGPT virtualizes older turns, so the visible turn count can stay flat
+  # even after a successful send. The verified click/fill above plus a changed
+  # latest user turn containing the exact prompt (or its unique exchange id) is also a receipt.
+  changed=receipt['turnCount']>state['turnCount'] or state.get('lastUserText')!=seen
+  if changed and (_same_prompt(seen,text) or (tagged and exchange_id in seen)):
    return {'exchange_id':exchange_id,'submission':'received','url':url,'turnCount':receipt['turnCount'],
-           'prompt_sha256':hashlib.sha256(text.encode()).hexdigest()}
+           'prompt_sha256':digest}
   time.sleep(.5)
  raise RuntimeError('CHATGPT_RECEIPT_UNVERIFIED_NO_RETRY')

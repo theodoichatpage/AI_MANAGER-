@@ -20,7 +20,7 @@ class AgentHandler(BaseHTTPRequestHandler):
  def do_GET(self):
   if not self.authorized():return self.reply(403,{'error':'Forbidden'})
   r=self.server.runtime
-  if self.path=='/state':return self.reply(200,{'online':True,'agent_identity':self.server.agent_identity,'windows_api_contract':self.server.api_contract,'windows':sys.platform=='win32','pid':os.getpid(),'uptime':time.time()-self.server.started,'current_task':r.current,'enabled':r.enabled,'tasks':r.store.list(),'logs':r.store.logs()})
+  if self.path=='/state':return self.reply(200,{'online':True,'agent_identity':self.server.agent_identity,'windows_api_contract':self.server.api_contract,'windows':sys.platform=='win32','pid':os.getpid(),'uptime':time.time()-self.server.started,'current_task':r.current,'wincontrol_task':r.wc_current,'enabled':r.enabled,'tasks':r.store.list(),'logs':r.store.logs()})
   self.reply(404,{'error':'Not found'})
  def do_POST(self):
   if not self.authorized():return self.reply(403,{'error':'Forbidden'})
@@ -35,7 +35,14 @@ class AgentHandler(BaseHTTPRequestHandler):
      result.setdefault('result',{}).update(agent_identity=self.server.agent_identity,windows_api_contract=self.server.api_contract)
     return self.reply(200,result)
    if self.path=='/submit':
-    tid=r.store.submit(data['actions'],data.get('project'),data.get('stage','Automation'),data.get('context'),initial_status='held' if data.get('held') else 'waiting')
+    if data.get('exclusive'):
+     # WinControl: one user task at a time in its own lane; production keeps running and is not started by it.
+     with r.lock:
+      if not (data.get('context') or {}).get('wincontrol_task'):raise ValueError('Exclusive submit is for WinControl tasks')
+      active=[t for t in r.store.list() if t['status'] in ('running','waiting') and t.get('context',{}).get('wincontrol_task')]
+      if r.wc_current or active:raise ValueError('WinControl đang có nhiệm vụ chạy; chờ xong hoặc dừng nhiệm vụ đó')
+      tid=r.store.submit(data['actions'],data.get('project'),data.get('stage','Automation'),data.get('context'),initial_status='waiting')
+    else:tid=r.store.submit(data['actions'],data.get('project'),data.get('stage','Automation'),data.get('context'),initial_status='held' if data.get('held') else 'waiting')
     return self.reply(200,{'task_id':tid})
    if self.path=='/requeue':
     with r.store.lock,r.store.db:
@@ -51,7 +58,7 @@ class AgentHandler(BaseHTTPRequestHandler):
      t.update(status='held',in_flight=False);r.store.save(t)
     return self.reply(200,{'ok':True})
    if self.path=='/release':
-    with r.store.lock,r.store.db:
+    with r.lock,r.store.lock,r.store.db:
      t=r.store.get(data['task_id'])
      if t['status'] not in ('held','paused','stopped') and not(t['status']=='needs_review' and t.get('context',{}).get('work_config')):raise ValueError('Task không thể bắt đầu lại; chỉ đối soát Studio read-before-send được Resume')
      t.update(status='waiting',in_flight=False);r.store.save(t)
@@ -59,7 +66,12 @@ class AgentHandler(BaseHTTPRequestHandler):
    if self.path=='/start':r.start();return self.reply(200,{'ok':True})
    if self.path=='/pause':r.pause();return self.reply(200,{'ok':True})
    if self.path=='/stop':r.stop();return self.reply(200,{'ok':True})
-   if self.path=='/resume':r.store.resume(data['task_id']);r.start();return self.reply(200,{'ok':True})
+   if self.path=='/resume':
+    wincontrol=bool(r.store.get(data['task_id']).get('context',{}).get('wincontrol_task'))
+    r.store.resume(data['task_id'])
+    if not wincontrol:r.start()
+    return self.reply(200,{'ok':True})
+   if self.path=='/cancel':return self.reply(200,r.cancel_task(str(data.get('task_id',''))))
    self.reply(404,{'error':'Not found'})
   except Exception as e:self.reply(400,{'error':str(e)})
 

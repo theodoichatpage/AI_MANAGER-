@@ -1,8 +1,9 @@
 import json, sqlite3, threading, time, uuid
 from pathlib import Path
 
-ACTIONS={'STUDIO_FILES','STUDIO_OPEN','STUDIO_IMAGES','STUDIO_LANES','STUDIO_PARALLEL','STUDIO_READY','STUDIO_TRANSCRIPT','STUDIO_ANALYZE','STUDIO_SCENES','EDGE_DIAGNOSTICS','LIST_EDGE_PROFILES','OPEN_APP','CLOSE_APP','RESTART_APP','LIST_PROCESSES','LIST_WINDOWS','CHECK_PROCESS','FIND_WINDOW','WAIT_WINDOW','FOCUS_WINDOW','RESTORE','MAXIMIZE','MINIMIZE','OPEN_URL','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','READ_URL','OBSERVE_CHATGPT','SEND_CHATGPT','WAIT_PAGE','FIND_ELEMENT','READ_ELEMENT','CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','WAIT','WAIT_ELEMENT','WAIT_ELEMENT_GONE','SCREENSHOT','OPEN_TEST_WINDOW'}
-UNSAFE={'SEND_CHATGPT','CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','CLOSE_APP','RESTART_APP','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','OPEN_URL'}
+ACTIONS={'STUDIO_FILES','STUDIO_OPEN','STUDIO_IMAGES','STUDIO_LANES','STUDIO_PARALLEL','STUDIO_READY','STUDIO_TRANSCRIPT','STUDIO_ANALYZE','STUDIO_SCENES','EDGE_DIAGNOSTICS','LIST_EDGE_PROFILES','OPEN_APP','CLOSE_APP','RESTART_APP','LIST_PROCESSES','LIST_WINDOWS','CHECK_PROCESS','FIND_WINDOW','WAIT_WINDOW','FOCUS_WINDOW','RESTORE','MAXIMIZE','MINIMIZE','OPEN_URL','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','READ_URL','OBSERVE_CHATGPT','SEND_CHATGPT','WINCONTROL_DECIDE','WAIT_PAGE','FIND_ELEMENT','READ_ELEMENT','CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','WAIT','WAIT_ELEMENT','WAIT_ELEMENT_GONE','SCREENSHOT','OPEN_TEST_WINDOW','ENSURE_TEMP_DIR','VERIFY_FILE','OPEN_FILE','MAN_STATUS','SAVE_AS'}
+WINCONTROL_REPLAY_SAFE={'SEND_CHATGPT','WINCONTROL_DECIDE','OBSERVE_CHATGPT'}
+UNSAFE={'SEND_CHATGPT','WINCONTROL_DECIDE','CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY','SCROLL','DRAG_DROP','CLOSE_APP','RESTART_APP','NEW_TAB','CLOSE_TAB','SWITCH_TAB','REFRESH','OPEN_URL','OPEN_FILE','SAVE_AS'}
 
 class TaskStore:
  def __init__(self,path):
@@ -44,8 +45,9 @@ class TaskStore:
    return json.loads(row['payload'])
  def claim(self,tid):
   with self.lock,self.db:
-   if any(t['status']=='running' for t in self.list()):raise ValueError('Agent đang xử lý task khác')
-   t=self.get(tid)
+   t=self.get(tid);lane=bool(t.get('context',{}).get('wincontrol_task'))
+   # Two lanes: production and WinControl each run one task at a time, independently.
+   if any(o['status']=='running' and bool(o.get('context',{}).get('wincontrol_task'))==lane for o in self.list()):raise ValueError('Agent đang xử lý task khác')
    if t['status'] not in ('waiting','paused','failed','stopped'):raise ValueError('Task cần kiểm tra thủ công trước khi tiếp tục')
    t.update(status='running',error=None);self.save(t)
  def mark_action(self,tid,index,retry=0):
@@ -58,11 +60,15 @@ class TaskStore:
    t=self.get(tid)
    if t['status']!='running':return
    if index!=t['next_action']:raise ValueError('Checkpoint không khớp')
-   t['results'].append(result);t['in_flight']=False
+   t['results'].append(dict(result,index=index));t['in_flight']=False
    if result.get('success'):
     t['next_action']=index+1;t['last_successful_action']=t['current_action'];t['last_successful_checkpoint']=time.time()
     t['context'].update(result.get('result',{}).get('context',{}))
     if t['next_action']==len(t['actions']):t['status']='completed'
+   elif t.get('context',{}).get('wincontrol_task') and (t['current_action'] not in UNSAFE or result.get('error_code')=='NOT_EXECUTED'):
+    from .wincontrol_chat_loop import WINCONTROL_ACTIONS
+    if t['current_action'] in WINCONTROL_ACTIONS:t['next_action']=index+1;t['error']=result.get('error')
+    else:t['status']=result.get('status','failed');t['error']=result.get('error')
    else:t['status']=result.get('status','failed');t['error']=result.get('error')
    self.save(t)
  def pending_action(self,tid,index,result):
@@ -75,9 +81,22 @@ class TaskStore:
    for t in self.list():
     if t['status'] in ('waiting','running','paused'):
      t['status']='needs_review' if t.get('in_flight') and t.get('current_action') in UNSAFE else 'stopped';t['error']='Đã dừng. Thao tác đang thực hiện cần kiểm tra trước khi chạy lại.';self.save(t)
+ def stop_task(self,tid):
+  with self.lock,self.db:
+   t=self.get(tid)
+   if t['status'] not in ('waiting','running','paused'):raise ValueError('Task khong con hoat dong')
+   uncertain=bool(t.get('in_flight') and t.get('current_action') in UNSAFE)
+   t['status']='needs_review' if uncertain else 'stopped'
+   t['error']='Action dang chay da dung; kiem tra checkpoint truoc khi tiep tuc.' if uncertain else 'Task da dung tai checkpoint.'
+   if not uncertain:t['in_flight']=False
+   self.save(t)
  def resume(self,tid,reviewed=False):
   with self.lock,self.db:
    t=self.get(tid)
+   # WinControl stopped at a ChatGPT send/read: both are replay-safe (the send carries its exchange id and is skipped
+   # when ChatGPT already shows it; the read only observes), so the task continues from its checkpoint.
+   if t['status']=='needs_review' and t.get('context',{}).get('wincontrol_task') and t.get('current_action') in WINCONTROL_REPLAY_SAFE:
+    t.update(status='waiting',in_flight=False,error=None);self.save(t);return
    if t['status']=='needs_review':
     if not reviewed:raise ValueError('Cần xác nhận đã kiểm tra tác động của action trước')
     raise ValueError('Không tự chạy lại thao tác chưa rõ kết quả. Tạo workflow mới từ bước cần thực hiện.')

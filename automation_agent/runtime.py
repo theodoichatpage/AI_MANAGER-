@@ -1,4 +1,4 @@
-import threading,time
+import json,threading,time
 from .task_store import TaskStore,UNSAFE
 from .action_executor import ActionExecutor
 from .automation_log import AutomationLog
@@ -17,15 +17,28 @@ class AgentRuntime:
  def __init__(self,home,settings=None):
   self.store=TaskStore(home/'agent.sqlite3');self.executor=ActionExecutor(home,settings);self.log=AutomationLog(home,self.store)
   self.cancel=threading.Event();self.shutdown=threading.Event();self.lock=threading.RLock();self.enabled=False;self.current=None
+  # WinControl has its own lane in this same Agent: its own executor, cancel flag and current task, so a user task
+  # runs while a Studio production task runs, and stopping one never cancels the other.
+  self.wc_executor=ActionExecutor(home,settings);self.wc_cancel=threading.Event();self.wc_current=None
   self.thread=threading.Thread(target=self.loop,daemon=True);self.thread.start()
+  self.wc_thread=threading.Thread(target=self.wincontrol_loop,daemon=True);self.wc_thread.start()
  def start(self):
   with self.lock:
    if self.current and self.enabled and not self.cancel.is_set():return
    if self.current:raise ValueError('Đợi action hiện tại dừng hoàn toàn trước khi chạy tiếp')
    self.cancel.clear();self.enabled=True
+ def cancel_task(self,tid):
+  with self.lock:
+   task=self.store.get(tid)
+   if not task.get('context',{}).get('wincontrol_task'):raise ValueError('Chi co the huy task WinControl tu giao dien nay')
+   self.store.stop_task(tid)
+   if self.wc_current==tid:self.wc_cancel.set();self.wc_executor.cancel()
+  self.log.write(self.store.get(tid),'CANCEL',message='Huy task WinControl don le; giu nguyen cac task khac')
+  return {'ok':True,'task_id':tid,'status':self.store.get(tid)['status']}
  def stop(self):
   with self.lock:
    self.enabled=False;self.cancel.set();self.store.stop_all();self.executor.cancel()
+   if getattr(self,'wc_cancel',None):self.wc_cancel.set();self.wc_executor.cancel()
   self.suspend_ledgers('STOPPED')
   contexts=[t.get('context',{}) for t in self.store.list() if t.get('context',{}).get('studio_project_id') and t['status'] not in ('completed','held')]
   threading.Thread(target=self.release_idle_resources,args=(contexts,),daemon=True).start()
@@ -55,7 +68,7 @@ class AgentRuntime:
    self.enabled=False;self.cancel.set();self.executor.cancel()
    with self.store.lock,self.store.db:
     for task in self.store.list():
-     if task['status'] in ('running','waiting'):
+     if task['status'] in ('running','waiting') and not task.get('context',{}).get('wincontrol_task'):
       task['status']='needs_review' if task.get('in_flight') and task.get('current_action') in UNSAFE else 'paused';self.store.save(task)
    self.suspend_ledgers('PAUSED')
   self.log.write({},'PAUSE',message='Tạm dừng; giữ vị trí hiện tại, không chuyển dự án')
@@ -69,55 +82,134 @@ class AgentRuntime:
     for key,row in list(record['subtasks'].items()):
      if row['status'] not in ('COMPLETED','SKIPPED','ERROR'):ledger.update(stage,key,status)
  def loop(self):
+  """Production lane: Studio/automation tasks, gated by enabled (Start/Pause/Stop)."""
   while not self.shutdown.wait(.1):
    with self.lock:
     if not self.enabled:continue
-    candidates=[t for t in self.store.list() if t['status']=='waiting']
+    candidates=[t for t in self.store.list() if t['status']=='waiting' and not t.get('context',{}).get('wincontrol_task')]
     if not candidates:continue
     task=candidates[0];self.store.claim(task['id']);self.current=task['id']
-   tid=task['id']
-   try:
-    while True:
-     with self.lock:
-      task=self.store.get(tid)
-      if self.cancel.is_set() or task['status']!='running' or task['next_action']>=len(task['actions']):break
-      idx=task['next_action'];action=task['actions'][idx]
-     maximum=0 if action['action'] in UNSAFE else int(action.get('retries',0))
-     for retry in range(maximum+1):
-      with self.lock:
-       if self.cancel.is_set() or not self.store.mark_action(tid,idx,retry):break
-      if not task['context'].get('studio_waiting_action'):self.log.write(self.store.get(tid),action['action'],message='Bắt đầu action' if retry==0 else 'Thử lại action')
-      result=self.executor.run(tid,action,task['context'],self.cancel,retry)
-      if not result.get('result',{}).get('waiting'):self.log.write(self.store.get(tid),action['action'],result)
-      if result['success'] or self.cancel.is_set():break
-      if retry<maximum and self.cancel.wait(min(2**retry,8)):break
-     if self.cancel.is_set():break
-     if slow_round(action,result,task):
-      since=float(task['context'].get('studio_slow_since') or 0) or time.time()
-      if time.time()-since<SLOW_GRACE:
-       # One slow round (Studio or Supabase answering slowly) is waited out like a network drop: the next round
-       # reconciles from the journal, which never re-sends a command whose outcome is unknown.
-       self.store.pending_action(tid,idx,{'result':{'context':{'studio_slow_since':since,'studio_message':'Một lượt Studio chạy quá %d giây; Manager đang thử lại'%int(float(action.get('timeout',30)))}}})
-       self.log.write(task,action['action'],message='Quá thời gian một lượt; thử lại');self.cancel.wait(4);continue
-     if result['success'] and task['context'].get('studio_slow_since'):
-      result.setdefault('result',{}).setdefault('context',{})['studio_slow_since']=None
-     if task['context'].get('studio_project_id') and result.get('error_code')=='WINDOW_LOST' and task.get('recoveries',0)<2:
-      self.recover_studio(task);continue
-     if may_recover(action,result,task.get('recoveries',0)) and task['context'].get('target_app') in ('chrome','capcut'):
-      self.recover(task);continue
-     if result['success'] and result.get('result',{}).get('waiting'):
-      previous=task.get('context',{});fresh=result.get('result',{}).get('context',{})
-      if fresh.get('subtask_id')!=previous.get('subtask_id') or fresh.get('work_status')!=previous.get('work_status'):self.log.write(task,action['action'],result,message='Cập nhật task/subtask/checkpoint')
-      self.store.pending_action(tid,idx,result);self.cancel.wait(4);continue
-     if result.get('error_code')=='STUDIO_REVIEW':result['status']='needs_review'
-     if not result['success'] and action['action'] in UNSAFE:result['status']='needs_review'
-     self.store.complete_action(tid,idx,result)
-     if not result['success']:break
-   except Exception as e:
-    with self.store.lock,self.store.db:
-     t=self.store.get(tid);t.update(status='needs_review',error=str(e));self.store.save(t)
-    self.log.write(task,'ERROR',message='Worker lỗi; kiểm tra task trước khi tiếp tục')
+   try:self.run_task(task,self.executor,self.cancel)
    finally:self.current=None
+ def wincontrol_loop(self):
+  """WinControl lane: one user task at a time, alongside production."""
+  while not self.shutdown.wait(.2):
+   with self.lock:
+    candidates=[t for t in self.store.list() if t['status']=='waiting' and t.get('context',{}).get('wincontrol_task')]
+    if not candidates:continue
+    task=candidates[0];self.store.claim(task['id']);self.wc_current=task['id'];self.wc_cancel.clear()
+   try:self.run_task(task,self.wc_executor,self.wc_cancel)
+   finally:self.wc_current=None
+ def run_task(self,task,executor,cancel):
+  tid=task['id']
+  try:
+   while True:
+    with self.lock:
+     task=self.store.get(tid)
+     if cancel.is_set() or task['status']!='running' or task['next_action']>=len(task['actions']):break
+     idx=task['next_action'];action=task['actions'][idx]
+    maximum=0 if action['action'] in UNSAFE else int(action.get('retries',0))
+    for retry in range(maximum+1):
+     with self.lock:
+      if cancel.is_set() or not self.store.mark_action(tid,idx,retry):break
+     if not task['context'].get('studio_waiting_action'):self.log.write(self.store.get(tid),action['action'],message='Bắt đầu action' if retry==0 else 'Thử lại action')
+     if action['action']=='SEND_CHATGPT' and (action.get('wincontrol_feedback') or action.get('wincontrol_correction')):
+      action=dict(action,text=self.wincontrol_prompt(task,idx,action))
+      with self.store.lock,self.store.db:
+       persisted=self.store.get(tid);persisted['actions'][idx]['text']=action['text'];self.store.save(persisted)
+     result=executor.run(tid,action,task['context'],cancel,retry)
+     if not result.get('result',{}).get('waiting'):self.log.write(self.store.get(tid),action['action'],result)
+     if result.get('success') and action['action']=='WINCONTROL_DECIDE':self.wincontrol_next(tid,idx,task,result)
+     if result['success'] or cancel.is_set():break
+     if retry<maximum and cancel.wait(min(2**retry,8)):break
+    if cancel.is_set():break
+    if slow_round(action,result,task):
+     since=float(task['context'].get('studio_slow_since') or 0) or time.time()
+     if time.time()-since<SLOW_GRACE:
+      # One slow round (Studio or Supabase answering slowly) is waited out like a network drop: the next round
+      # reconciles from the journal, which never re-sends a command whose outcome is unknown.
+      self.store.pending_action(tid,idx,{'result':{'context':{'studio_slow_since':since,'studio_message':'Một lượt Studio chạy quá %d giây; Manager đang thử lại'%int(float(action.get('timeout',30)))}}})
+      self.log.write(task,action['action'],message='Quá thời gian một lượt; thử lại');cancel.wait(4);continue
+    if result['success'] and task['context'].get('studio_slow_since'):
+     result.setdefault('result',{}).setdefault('context',{})['studio_slow_since']=None
+    if task['context'].get('studio_project_id') and result.get('error_code')=='WINDOW_LOST' and task.get('recoveries',0)<2:
+     self.recover_studio(task);continue
+    # A WinControl tool error goes back to ChatGPT; reopening the task's Chrome page would act on the wrong window.
+    if may_recover(action,result,task.get('recoveries',0)) and task['context'].get('target_app') in ('chrome','capcut') and not task['context'].get('wincontrol_task'):
+     self.recover(task);continue
+    if result['success'] and result.get('result',{}).get('waiting'):
+     previous=task.get('context',{});fresh=result.get('result',{}).get('context',{})
+     if fresh.get('subtask_id')!=previous.get('subtask_id') or fresh.get('work_status')!=previous.get('work_status'):self.log.write(task,action['action'],result,message='Cập nhật task/subtask/checkpoint')
+     self.store.pending_action(tid,idx,result);cancel.wait(4);continue
+    if result.get('error_code')=='STUDIO_REVIEW':result['status']='needs_review'
+    if not result['success'] and action['action'] in UNSAFE and result.get('error_code')!='NOT_EXECUTED':result['status']='needs_review'
+    self.store.complete_action(tid,idx,result)
+    if self.store.get(tid)['status']!='running':break
+  except Exception as e:
+   with self.store.lock,self.store.db:
+    t=self.store.get(tid);t.update(status='needs_review',error=str(e));self.store.save(t)
+   self.log.write(task,'ERROR',message='Worker lỗi; kiểm tra task trước khi tiếp tục')
+ def wincontrol_prompt(self,task,idx,action):
+  """The text of a WinControl SEND, rebuilt from the stored checkpoint so a resumed task sends the same prompt."""
+  from .wincontrol_chat_loop import feedback_prompt,correction_prompt
+  c=task.get('context',{});command=c.get('wincontrol_command','')
+  if action.get('wincontrol_correction'):
+   fix=action['wincontrol_correction'];text=correction_prompt(command,fix.get('error'),fix.get('reply'))
+  else:
+   start=int(action.get('feedback_start',idx));observed=[]
+   # results is a log (a step stopped and resumed has two entries), so each entry is matched by its action index;
+   # entries written before the index was recorded fall back to the newest ones.
+   results=task.get('results',[]);latest={}
+   for entry in results:
+    if isinstance(entry.get('index'),int) and start<=entry['index']<idx:latest[entry['index']]=entry
+   if not latest:
+    for offset in range(start,idx):
+     name=task['actions'][offset].get('action')
+     found=next((e for e in reversed(results) if e.get('action')==name and 'index' not in e),None)
+     if found:latest[offset]=found
+   for offset in sorted(latest):
+    entry=latest[offset];prior=task['actions'][offset]
+    observed.append({'action':prior.get('action'),'success':bool(entry.get('success')),'error':entry.get('error'),'result':entry.get('result')})
+   text=feedback_prompt(command,c.get('wincontrol_last_summary',''),observed)
+  # The exchange id travels in the prompt, so a resend after an interruption is recognised and skipped.
+  return '['+action['exchange_id']+'] '+text
+ def wincontrol_next(self,tid,idx,task,result):
+  """Turn ChatGPT's decision into the next checkpointed steps: one tool action, its result back to ChatGPT, then decide again."""
+  from .wincontrol_chat_loop import validate_actions,MAX_ROUNDS,MAX_CORRECTIONS
+  if result.get('result',{}).get('waiting'):return  # ChatGPT is still answering: nothing to decide yet
+  decision=result.get('result',{}).get('decision') or {};status=decision.get('status')
+  fresh=result.setdefault('result',{}).setdefault('context',{})
+  round_number=int(fresh.get('wincontrol_round',task.get('context',{}).get('wincontrol_round',0)+1))
+  if status=='blocked':
+   result.update(success=False,status='needs_review',error=decision.get('summary') or 'ChatGPT cannot safely continue');return
+  if status=='complete':return
+  try:
+   if round_number>MAX_ROUNDS:raise ValueError('WINCONTROL_MAX_ROUNDS_REACHED')
+   problem=None;steps=[]
+   if status=='continue':
+    try:steps=[validate_actions(decision.get('actions'))[0]]
+    except ValueError as exc:problem=str(exc)
+   else:problem=decision.get('summary') or 'WINCONTROL_CHATGPT_STATUS_INVALID'
+   exchange_id='wincontrol-'+tid+'-'+str(round_number)
+   if problem:
+    corrections=int(task.get('context',{}).get('wincontrol_corrections',0))
+    if corrections>=MAX_CORRECTIONS:raise ValueError(problem+' (ChatGPT vẫn trả lời sai sau '+str(corrections)+' lần yêu cầu sửa)')
+    fresh['wincontrol_corrections']=corrections+1;exchange_id+='-fix'
+    send={'action':'SEND_CHATGPT','exchange_id':exchange_id,'wincontrol_correction':{'error':problem,'reply':decision.get('reply') or json.dumps(decision.get('actions'),ensure_ascii=False)[:600]},'timeout':120,'retries':0}
+   else:
+    fresh['wincontrol_corrections']=0
+    send={'action':'SEND_CHATGPT','exchange_id':exchange_id,'wincontrol_feedback':True,'feedback_start':idx+1,'timeout':120,'retries':0}
+   with self.store.lock,self.store.db:
+    current=self.store.get(tid)
+    if current['status']!='running' or current['next_action']!=idx:raise ValueError('WINCONTROL_CHECKPOINT_MOVED')
+    existing={a.get('exchange_id') for old in self.store.list() for a in old.get('actions',[]) if a.get('action')=='SEND_CHATGPT'}
+    if exchange_id in existing:raise ValueError('WINCONTROL_DUPLICATE_EXCHANGE')
+    # Every later step comes from ChatGPT's newest decision, so it replaces anything still queued after this one.
+    current['actions'][idx+1:]=steps+[send,{'action':'WINCONTROL_DECIDE','exchange_id':exchange_id,'timeout':120,'retries':0}]
+    if not problem:fresh['wincontrol_last_summary']=str(decision.get('summary') or '')[:1000]
+    self.store.save(current)
+  except Exception as exc:
+   result.update(success=False,status='needs_review',error=str(exc))
  def recover_studio(self,task):
   tid=task['id'];context=dict(task['context']);app=context['target_app'];url=context.get('expected_url')
   if not url:

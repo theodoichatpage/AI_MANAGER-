@@ -24,16 +24,25 @@ try {
    const snapshot=await call('take_snapshot',{pageId});
    if(a.action==='CHATGPT_SNAPSHOT')result={...result,snapshot,url:input.page_url};
    else if(a.action==='CHATGPT_SEND'){
-    const elements=raw=>[...raw.matchAll(/^\s*uid=(\S+)\s+(\S+)(?:\s+("(?:[^"\\]|\\.)*"))?(.*)$/gm)].map(m=>({uid:m[1],role:m[2],name:m[3]?JSON.parse(m[3]):'',extra:m[4]}));
+    // take_snapshot prints names and values verbatim (inner quotes are not escaped) and a value may run over several
+    // lines (the composer puts a line break around links). Lines that do not start a new uid belong to the element
+    // above; a value is the text between ' value="' and the element's closing quote.
+    const plain=q=>{try{return JSON.parse(q)}catch{return q.slice(1,-1)}};
+    const logical=raw=>raw.split('\n').reduce((rows,line)=>{if(/^\s*uid=/.test(line)||!rows.length)rows.push(line);else rows[rows.length-1]+='\n'+line;return rows},[]);
+    const elements=raw=>logical(raw).map(line=>line.match(/^\s*uid=(\S+)\s+(\S+)(?:\s+("(?:[^"\\]|\\.)*"))?([\s\S]*)$/)).filter(Boolean).map(m=>({uid:m[1],role:m[2],name:m[3]?plain(m[3]):'',extra:m[4]}));
+    const valueOf=extra=>{const i=extra.indexOf(' value="');if(i<0)return null;const rest=extra.slice(i+8).replace(/\s+$/,'');return rest.endsWith('"')?rest.slice(0,-1):null};
+    const same=(x,y)=>x.replace(/\s+/g,'')===y.replace(/\s+/g,'');
+    const tag=a.text.startsWith('[')?a.text.slice(0,a.text.indexOf(']')+1):'';
     const fields=elements(snapshot).filter(e=>e.role==='textbox'&&['Message ChatGPT','Ask anything','Ask ChatGPT','Message','Send a message'].includes(e.name));
-    if(fields.length!==1||/\b(disabled|readonly)\b/.test(fields[0].extra))throw new Error('COMPOSER_NOT_UNIQUE_OR_READY');
-    const previous=fields[0].extra.match(/\bvalue=("(?:[^"\\]|\\.)*")/);
-    if(previous&&JSON.parse(previous[1])!=='')throw new Error('UNSENT_DRAFT_PRESENT');
+    if(fields.length!==1||/\b(disabled|readonly)\b/.test(fields[0].extra.split(' value="')[0]))throw new Error('COMPOSER_NOT_UNIQUE_OR_READY');
+    // An unsent draft blocks the send, unless it is this prompt (or an earlier unsent try of the same exchange id).
+    const previous=valueOf(fields[0].extra);
+    if(previous&&previous.trim()&&!same(previous,a.text)&&!(tag.length>1&&previous.trim().startsWith(tag)))throw new Error('UNSENT_DRAFT_PRESENT');
     await call('fill',{pageId,uid:fields[0].uid,value:a.text});
     const filled=await call('take_snapshot',{pageId});
     const verified=elements(filled).filter(e=>e.role==='textbox'&&e.name===fields[0].name);
-    const value=verified.length===1?verified[0].extra.match(/\bvalue=("(?:[^"\\]|\\.)*")/):null;
-    if(!value||JSON.parse(value[1])!==a.text)throw new Error('COMPOSER_VALUE_UNVERIFIED_NO_SEND');
+    const value=verified.length===1?valueOf(verified[0].extra):null;
+    if(value===null||!same(value,a.text))throw new Error('COMPOSER_VALUE_UNVERIFIED_NO_SEND');
     const buttons=elements(filled).filter(e=>e.role==='button'&&['Send prompt','Send message','Send'].includes(e.name)&&!e.extra.includes('disabled'));
     if(buttons.length!==1)throw new Error('SEND_BUTTON_NOT_UNIQUE');
     await call('click',{pageId,uid:buttons[0].uid});result={...result,clicked:true,url:input.page_url};
