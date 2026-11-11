@@ -83,9 +83,18 @@ def dispatch(a,context,home,settings):
   wait=min(20,float(a.get('timeout',30)))
   def read():
    with urllib.request.urlopen(state_url,timeout=wait) as r:return json.load(r)
+  # MAN accepts writes only from its own page origin (anti-CSRF); the Agent on this PC is MAN's own component.
+  origin='/'.join(state_url.split('/')[:3])
   def post(body):
-   req=urllib.request.Request(queue_url,json.dumps(body).encode(),{'Content-Type':'application/json'})
-   with urllib.request.urlopen(req,timeout=wait) as r:return json.load(r)
+   import urllib.error
+   req=urllib.request.Request(queue_url,json.dumps(body).encode(),{'Content-Type':'application/json','Origin':origin})
+   try:
+    with urllib.request.urlopen(req,timeout=wait) as r:return json.load(r)
+   except urllib.error.HTTPError as exc:
+    # MAN's own reason; the outcome is still treated as uncertain (checked before any retry).
+    try:reason=json.loads(exc.read() or b'{}').get('error')
+    except ValueError:reason=None
+    raise RuntimeError('MAN_QUEUE_REFUSED ('+str(exc.code)+'): '+str(reason or exc.reason)) from exc
   sent=[]
   try:done=man_queue(read(),a.get('op'),a.get('project'),context.get('wincontrol_command',''),lambda body:(sent.append(body),post(body)))
   except ValueError as exc:

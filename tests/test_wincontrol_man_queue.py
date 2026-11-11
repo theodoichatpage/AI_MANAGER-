@@ -17,6 +17,10 @@ class FakeMan(BaseHTTPRequestHandler):
     def do_GET(self): self.reply({'queue': self.server.queue})
     def do_POST(self):
         data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        # Like server.py: writes only from MAN's own page origin.
+        if self.headers.get('Origin') != 'http://127.0.0.1:%d' % self.server.server_address[1]:
+            body = json.dumps({'error': 'Nguồn truy cập không hợp lệ'}).encode()
+            self.send_response(400); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(body); return
         self.server.posts.append(data)
         row = next(q for q in self.server.queue if q['id'] == data['id'])
         row['status'] = {'resume': 'running', 'pause': 'paused'}[data['action']]
@@ -63,6 +67,18 @@ class ManQueueTests(unittest.TestCase):
     def test_pause_of_a_project_not_running_changes_nothing(self):
         r = self.run_action('pause', 'Thái sư Trần Thủ Độ', 'tạm dừng sản xuất')
         self.assertFalse(r['changed']); self.assertEqual(self.http.posts, [])
+
+    def test_man_refusal_reason_is_reported(self):
+        self.http.queue[0]['status'] = 'paused'
+        real = FakeMan.do_POST
+        def refuse(h):
+            h.rfile.read(int(h.headers['Content-Length'])); body = json.dumps({'error': 'Dự án không ở trạng thái tạm dừng'}).encode()
+            h.send_response(400); h.send_header('Content-Type', 'application/json'); h.end_headers(); h.wfile.write(body)
+        FakeMan.do_POST = refuse; self.addCleanup(setattr, FakeMan, 'do_POST', real)
+        with self.assertRaises(RuntimeError) as e:
+            self.run_action('resume', 'Thái sư Trần Thủ Độ', 'tiếp tục Thái sư Trần Thủ Độ')
+        self.assertNotIsInstance(e.exception, action_worker.NotExecuted, 'sent to MAN: outcome uncertain, stop for review')
+        self.assertIn('Dự án không ở trạng thái tạm dừng', str(e.exception))
 
     def test_named_by_user_by_id_prefix(self):
         self.assertTrue(named_by_user('resume 99e63ac3', QUEUE[0]))
