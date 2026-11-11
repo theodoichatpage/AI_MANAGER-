@@ -16,7 +16,16 @@ $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
 $receipts = Join-Path $Prod "integration_reports\deploys\$stamp"
 New-Item -ItemType Directory -Path $receipts -Force | Out-Null
 
-function Git { param([Parameter(ValueFromRemainingArguments=$true)]$a) $out = & git -C $Prod @a 2>&1; if ($LASTEXITCODE) { throw "git $($a -join ' '): $out" }; $out }
+# git writes warnings (e.g. LF/CRLF) to stderr; only its exit code decides success. Returns stdout lines only.
+function Invoke-Git {
+  param([Parameter(ValueFromRemainingArguments=$true)]$a)
+  $ErrorActionPreference = 'Continue'
+  $all = & git.exe -C $Prod @a 2>&1
+  $code = $LASTEXITCODE
+  $out = @($all | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+  if ($code) { throw "git $($a -join ' ') failed ($code): $($all -join ' ')" }
+  $out
+}
 
 function Get-CheckpointView($state) {
   $tasks = @($state.automation.tasks | ForEach-Object {
@@ -63,20 +72,20 @@ if ($before.automation.current_task -or $active.Count -or $runningQueue.Count) {
 }
 
 # 2. Prod checkout: only untracked files and tracked .pyc may differ; the branch must fast-forward.
-$dirty = @(Git status --porcelain --untracked-files=no | Where-Object { $_ -notmatch '\.pyc$' })
+$dirty = @(Invoke-Git status --porcelain --untracked-files=no | Where-Object { $_ -notmatch '\.pyc$' })
 if ($dirty.Count) { throw "Prod checkout has uncommitted source changes: $($dirty -join '; ')" }
-$old = (Git rev-parse HEAD).Trim()
-$new = (Git rev-parse $Branch).Trim()
+$old = (Invoke-Git rev-parse HEAD).Trim()
+$new = (Invoke-Git rev-parse $Branch).Trim()
 if ($old -eq $new) { Write-Output 'Already deployed; restarting is not needed.'; return }
 & git -C $Prod merge-base --is-ancestor $old $new; if ($LASTEXITCODE) { throw "$Branch does not fast-forward from $old; merge it into main first." }
 
 $beforeView = Get-CheckpointView $before
 $beforeView | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $receipts 'before.json') -Encoding utf8
-[ordered]@{ owner=$Owner; branch=$Branch; from=$old; to=$new; files=@(Git diff --name-only $old $new) } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $receipts 'plan.json') -Encoding utf8
+[ordered]@{ owner=$Owner; branch=$Branch; from=$old; to=$new; files=@(Invoke-Git diff --name-only $old $new) } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $receipts 'plan.json') -Encoding utf8
 
 $moved = $false
 try {
-  Git merge --ff-only $new | Out-Null; $moved = $true
+  Invoke-Git merge --ff-only $new | Out-Null; $moved = $true
   Stop-Manager
   $after = Start-Manager
   $left = $beforeView | ConvertTo-Json -Depth 8 -Compress
@@ -95,7 +104,7 @@ catch {
   if ($moved) {
     Stop-Manager
     # Controlled rollback of this deploy only: --keep refuses if it would drop local changes.
-    Git reset --keep $old | Out-Null
+    Invoke-Git reset --keep $old | Out-Null
     try { $null = Start-Manager } catch { throw "Deploy failed ($failure); code rolled back to $old but Manager restart failed: $($_.Exception.Message)" }
   }
   throw "Deploy failed and was rolled back to ${old}: $failure"
