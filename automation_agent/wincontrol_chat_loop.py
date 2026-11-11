@@ -12,6 +12,8 @@ WINCONTROL_ACTIONS = {
     'ENSURE_TEMP_DIR', 'VERIFY_FILE', 'OPEN_FILE', 'MAN_STATUS',
 }
 TARGET_APPS = {'notepad', 'chrome', 'edge', 'capcut'}
+BROWSER_APPS = {'chrome', 'edge'}
+INPUT_ACTIONS = {'CLICK', 'TYPE_TEXT', 'HOTKEY', 'OPEN_FILE'}
 MAX_ROUNDS = 12
 MAX_CORRECTIONS = 2
 RESULT_CHARS = 1500
@@ -69,6 +71,12 @@ def validate_actions(actions):
         app = action.get('target_app')
         if app is not None and app not in TARGET_APPS:
             raise ValueError('WINCONTROL_TARGET_NOT_ALLOWED')
+        # Without an explicit app the worker falls back to the task's own app (the ChatGPT Chrome window).
+        if app is None and 'target_app' in FIELDS[name] and name not in {'LIST_WINDOWS'}:
+            raise ValueError('WINCONTROL_TARGET_APP_REQUIRED')
+        # Chrome/Edge hold the ChatGPT brain tab and Studio production tabs: no keyboard or mouse input there.
+        if app in BROWSER_APPS and name in INPUT_ACTIONS:
+            raise ValueError('WINCONTROL_BROWSER_INPUT_NOT_ALLOWED')
         if name in {'FIND_ELEMENT', 'READ_ELEMENT', 'CLICK', 'TYPE_TEXT', 'WAIT_ELEMENT'}:
             selector = action.get('selector')
             if not isinstance(selector, dict) or not selector or set(selector) - SELECTOR_FIELDS:
@@ -162,6 +170,7 @@ CONTRACT = ('Reply with ONE JSON object only, as plain text (no code block, no o
             'Choose one step, then wait for its observed result before deciding again. Use only available_actions with their fields. '
             'Never request Studio production, Extension changes, SEND_CHATGPT, or files outside temp_dir. '
             'Never claim success before an observed result proves it. MAN_STATUS reads MAN, Agent, Studio and Extension health read-only. '
+            'Every window action must name target_app; never CLICK, TYPE_TEXT, HOTKEY or OPEN_FILE in chrome or edge (they hold this ChatGPT tab and Studio). '
             'For a Notepad text task: ENSURE_TEMP_DIR, OPEN_APP notepad, WAIT_WINDOW, TYPE_TEXT with selector {"class_name":"Edit"} '
             '(Windows 11 Notepad: {"control_type":"Document"}), save with HOTKEY CTRL+S and type the full path under temp_dir, '
             'then VERIFY_FILE before complete. If a step fails, choose one corrective step or report blocked with the reason.')

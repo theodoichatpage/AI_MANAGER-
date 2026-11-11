@@ -27,6 +27,17 @@ class WinControlChatLoopTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'ONE_ACTION'):
             parse_decision('{"status":"continue","summary":"do both","actions":[{"action":"OPEN_APP","target_app":"notepad"},{"action":"WAIT","seconds":1}]}')
 
+    def test_window_actions_need_an_explicit_app_and_no_browser_input(self):
+        with self.assertRaisesRegex(ValueError, 'TARGET_APP_REQUIRED'):
+            validate_actions([{'action': 'TYPE_TEXT', 'selector': {'class_name': 'Edit'}, 'text': 'x'}])
+        for action in ({'action': 'TYPE_TEXT', 'target_app': 'chrome', 'selector': {'class_name': 'Edit'}, 'text': 'x'},
+                       {'action': 'HOTKEY', 'target_app': 'edge', 'keys': 'CTRL+W'},
+                       {'action': 'CLICK', 'target_app': 'chrome', 'selector': {'title': 'Send'}}):
+            with self.subTest(action=action), self.assertRaisesRegex(ValueError, 'BROWSER_INPUT'):
+                validate_actions([action])
+        self.assertEqual(validate_actions([{'action': 'TYPE_TEXT', 'target_app': 'notepad', 'selector': {'class_name': 'Edit'}, 'text': 'x'}])[0]['target_app'], 'notepad')
+        self.assertEqual(validate_actions([{'action': 'LIST_WINDOWS'}])[0]['action'], 'LIST_WINDOWS')
+
     def test_json_is_found_inside_chatgpt_page_text(self):
         text = 'json\nCopy code\n{"status":"continue","summary":"Mở Notepad",\n"actions":[{"action":"OPEN_APP","target_app":"notepad"}]}\nChatGPT can make mistakes. Check important info.'
         decision = parse_decision(text)
