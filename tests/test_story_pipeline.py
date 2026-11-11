@@ -20,7 +20,7 @@ class FakeAPI:
    if x['status']!='done':x.update(status='done',text=fn(x))
 
 def rows(score):
- return {'rows':[{'id':i,'score':None if i in sp.VISUAL else score(i),'part':None if i in sp.VISUAL else 1,'evidence':'','reason':'r','fix':'f'} for i in range(len(sp.CRITERIA))]}
+ return {'rows':[{'id':i,'score':None if i in sp.VISUAL else score(i),'part':None if i in sp.VISUAL else 1,'evidence':'','reason':'r','fix':'Cắt đoạn lặp ở câu thứ hai'} for i in range(len(sp.CRITERIA))]}
 
 class StoryTests(unittest.TestCase):
  def setUp(self):
@@ -68,5 +68,43 @@ class StoryTests(unittest.TestCase):
   import os;os.makedirs(self.tmp.name+'/analysis',exist_ok=True);os.replace(self.tmp.name+'/story.json',self.tmp.name+'/analysis/story.json')
   self.step();self.api.answer(lambda x:json.dumps(rows(lambda i:5)))
   with self.assertRaises(RuntimeError):self.step()
+
+ def test_long_script_body_is_read_in_full_chunks_and_every_weak_section_is_repaired(self):
+  secs=[{'id':'s%d'%(i+1),'title':'P%d'%(i+1),'role':'','source':'x'*5000,'text':('Câu %d. '%(i+1))*800} for i in range(8)]
+  groups=sp.review_groups(secs)
+  names=[g for g,_ in groups]
+  self.assertEqual(names[0],'open');self.assertEqual(names[-1],'end');self.assertGreaterEqual(len(names),5)
+  # Full text, not excerpts, and the whole video's table of contents.
+  p=sp.group_prompt(names[1],sp.BODY_IDS,{'title':'T'},secs,'g')
+  self.assertIn(secs[0]['text'],p);self.assertIn('TOÀN VĂN',p);self.assertIn('"P8"',p)
+  self.assertTrue(all(len(sp.group_prompt(g,ids,{'title':'T'},secs,'g'))<40000 for g,ids in groups))
+  # Contrast takes the best chunk, boring passages the worst; the other weak chunk is kept as a finding.
+  mk=lambda i,sc,pt:{'id':i,'score':sc,'part':pt,'evidence':'e','reason':'r','fix':'Cắt đoạn lặp'}
+  got={'open':[mk(i,9,1) for i in (0,2,3,4,5,7)],'end':[mk(11,9,8),mk(12,9,8)]}
+  bodies=names[1:-1]
+  for k,g in enumerate(bodies):got[g]=[mk(6,9 if k==0 else 5,k+2),mk(9,7,k+2),mk(10,9,k+2),mk(13,6 if k<2 else 9,k+2)]
+  rows,findings=sp.combine(groups,got)
+  by={r['id']:r for r in rows}
+  self.assertEqual(by[6]['score'],9);self.assertEqual(by[13]['score'],6);self.assertEqual(len(findings),1)
+  self.assertEqual(sp.failing_parts(rows,findings),sorted({by[9]['part']-1,2-1,3-1}))
+ def test_low_score_without_concrete_fix_is_asked_again(self):
+  bad={'rows':[{'id':6,'score':6,'part':1,'evidence':'e','reason':'r','fix':''}]}
+  with self.assertRaises(ValueError):sp.accept_group(json.dumps(bad),[6],1)
+ def test_repair_names_what_to_keep(self):
+  secs=[{'id':'s1','title':'A','role':'','source':'x'*100,'text':'Mở đầu hay. Đoạn lặp.'}]
+  rows=[{'id':0,'score':10,'part':1,'evidence':'Mở đầu hay.','reason':'r','fix':''},{'id':13,'score':5,'part':1,'evidence':'Đoạn lặp.','reason':'lặp','fix':'Cắt câu Đoạn lặp'}]
+  p=sp.repair_prompt(secs[0],0,1,{'title':'T'},'g',rows,secs)
+  self.assertIn('TIÊU CHÍ ĐANG ĐẠT',p);self.assertIn('Mở đầu hay.',p);self.assertIn('Cắt câu Đoạn lặp',p)
+ def test_a_worse_round_repairs_again_from_the_best_version(self):
+  import os
+  story={'stage':'review','tries':{},'round':1,'plan':{'title':'T'},'sections':[{'id':'s1','title':'A','role':'','source':'x'*100,'text':'bản tệ'}],
+   'best':{'passed':10,'texts':['bản tốt'],'rows':rows(lambda i:9 if i!=6 else 7)['rows']}}
+  os.makedirs(self.tmp.name+'/analysis',exist_ok=True);json.dump(story,open(self.tmp.name+'/analysis/story.json','w'))
+  self.step();self.api.answer(lambda x:json.dumps(rows(lambda i:5)))
+  w,r=self.step()
+  d=json.load(open(self.tmp.name+'/analysis/story.json',encoding='utf8'))
+  self.assertEqual(d['stage'],'repair');self.assertEqual(d['sections'][0]['text'],'bản tốt')
+  self.assertEqual(d['history'][-1]['passed'],0)
+  self.assertIn('bản tốt',self.api.s['rewrite']['sections'][0]['prompt'])
 
 if __name__=='__main__':unittest.main()

@@ -120,12 +120,44 @@ def review_prompt(plan,sections,style,last_error=''):
   json.dumps(style[:3000],ensure_ascii=False),reference(),plan.get('title',''),len(CRITERIA)-1,THRESHOLD,rules,len(CRITERIA),
   (' LƯU Ý: lần trước bị từ chối vì: '+last_error) if last_error else '',json.dumps({'plan':plan,'parts':parts},ensure_ascii=False))
 
-# One long review made ChatGPT think past the tab watchdog: three short reviews instead, each with only the text it needs.
+# One long review made ChatGPT think past the tab watchdog: short reviews instead, each with only the text it needs.
 GROUPS=[('open',[0,2,3,4,5,7]),('body',[6,9,10,13]),('end',[11,12])]
+BODY_IDS=[6,9,10,13]
+BODY_CHUNK=14000   # characters of full script per body review: deep enough to judge pace and boring passages, short enough to answer fast
+# A body criterion graded on several chunks: shown research and contrast count where they are strongest; pace and boring passages where they are weakest.
+BODY_BEST={6,9}
+def body_chunks(sections):
+ """Consecutive section indexes, each chunk at most BODY_CHUNK characters (a longer section stays alone)."""
+ out=[];cur=[];size=0
+ for i,s in enumerate(sections):
+  L=len(s.get('text') or '')
+  if cur and size+L>BODY_CHUNK:out.append(cur);cur=[];size=0
+  cur.append(i);size+=L
+ if cur:out.append(cur)
+ return out
+def review_groups(sections,legacy=False):
+ """(name, criteria ids) of one review round. A short script keeps the single 'body' review; a long one is read in full, chunk by chunk."""
+ chunks=body_chunks(sections)
+ if legacy or len(chunks)<=1:return GROUPS
+ return [GROUPS[0]]+[('body%d'%(k+1),BODY_IDS) for k in range(len(chunks))]+[GROUPS[2]]
+def combine(groups,got_rows):
+ """The 14 rows of a round, plus findings: weak sections seen by the other body chunks, so each of them is repaired too."""
+ by={};findings=[]
+ for g,ids in groups:
+  for r in got_rows[g]:
+   old=by.get(r['id'])
+   if old is None:by[r['id']]=r;continue
+   better=(r['score']>old['score']) if r['id'] in BODY_BEST else (r['score']<old['score'])
+   keep,drop=(r,old) if better else (old,r)
+   by[r['id']]=keep
+   if drop['score']<THRESHOLD and r['id'] not in BODY_BEST:findings.append(drop)
+ rows=[by.get(i) or {'id':i,'score':None,'part':None,'evidence':'','reason':'Cần ảnh bìa/cảnh dựng thật','fix':''} for i in range(len(CRITERIA))]
+ return rows,findings
 def group_parts(g,sections):
  n=len(sections)
  if g=='open':return [{'part':i+1,'title':sections[i]['title'],'text':sections[i]['text']} for i in range(min(2,n))]
  if g=='end':return [{'part':i+1,'title':sections[i]['title'],'text':sections[i]['text']} for i in range(max(0,n-3),n)]
+ if g!='body':return [{'part':i+1,'title':sections[i]['title'],'text':sections[i]['text']} for i in body_chunks(sections)[int(g[4:])-1]]
  out=[]
  for i,s in enumerate(sections):
   t=s['text'];m=len(t)//2
@@ -135,9 +167,15 @@ def group_parts(g,sections):
  return out
 def group_prompt(g,ids,plan,sections,style,last_error=''):
  rules=' '.join('mục %d — %s'%(k,v) for k,v in RULES.items() if k in ids)
- scope={'open':'phần mở đầu của video (các phần đầu, đầy đủ)','end':'phần kết của video (các phần cuối, đầy đủ)','body':'toàn video qua trích đoạn theo thứ tự; highlights là các đoạn về nguồn sử liệu, công sức tìm hiểu hoặc tuyến truyện phụ'}[g]
- return ('Bạn là biên tập viên kịch bản YouTube. Chấm nhanh, chỉ trả một JSON.\nCÔNG THỨC APRILYNNE (chỉ các tiêu chí cần chấm):\n%s\n'
-  'Đối chiếu %s. Tiêu đề đích: "%s". Chấm 0–10 đúng các ID %s; part là số phần chứa dẫn chứng; nếu dưới %d ghi cách sửa cụ thể. %s'
+ scope={'open':'phần mở đầu của video (các phần đầu, đầy đủ)','end':'phần kết của video (các phần cuối, đầy đủ)','body':'toàn video qua trích đoạn theo thứ tự; highlights là các đoạn về nguồn sử liệu, công sức tìm hiểu hoặc tuyến truyện phụ'}.get(g)
+ if scope is None:
+  ch=body_chunks(sections);idx=ch[int(g[4:])-1]
+  scope=('đoạn %s/%d của video: TOÀN VĂN các phần %d–%d trên tổng %d phần (mục lục cả video: %s). Đọc từng câu: chỉ ra đoạn lặp ý, giảng giải dài, câu hỏi tu từ lặp mô thức, chỗ nhịp phẳng; '
+   'chỗ dẫn sử liệu cụ thể (tên sách, điều sách chép) và chỗ hai tuyến truyện soi chiếu nhau. Chấm theo những gì có trong đoạn này')%(
+   g[4:],len(ch),idx[0]+1,idx[-1]+1,len(sections),json.dumps([s['title'] for s in sections],ensure_ascii=False))
+ return ('Bạn là biên tập viên kịch bản YouTube. Chấm kỹ nhưng trả lời ngay, chỉ trả một JSON.\nCÔNG THỨC APRILYNNE (chỉ các tiêu chí cần chấm):\n%s\n'
+  'Đối chiếu %s. Tiêu đề đích: "%s". Chấm 0–10 đúng các ID %s; part là số phần chứa dẫn chứng, evidence trích nguyên văn từ phần đó, reason nói vì sao được điểm ấy; '
+  'nếu dưới %d thì BẮT BUỘC có fix: cách sửa cụ thể (câu/đoạn nào, thêm hay cắt gì), không chung chung. %s'
   'Trả {"rows":[{"id":%d,"score":7,"part":1,"evidence":"trích ngắn","reason":"một câu","fix":"một câu"}]} gồm đúng %d dòng.%s\nPHONG CÁCH KÊNH: %s\nDÀN Ý: %s\nKỊCH BẢN: %s')%(
   reference(ids),scope,plan.get('title',''),ids,THRESHOLD,('Cách chấm riêng: '+rules+' ') if rules else '',ids[0],len(ids),
   (' LƯU Ý: lần trước bị từ chối vì: '+last_error) if last_error else '',json.dumps(style[:1500],ensure_ascii=False),
@@ -151,6 +189,8 @@ def accept_group(reply,ids,n):
   sc=r.get('score');pt=r.get('part')
   if not isinstance(sc,(int,float)) or not 0<=sc<=10:raise ValueError('Điểm không hợp lệ cho '+CRITERIA[i][0])
   if not isinstance(pt,int) or not 1<=pt<=n:pt=1
+  # A low score without a concrete fix cannot drive a repair: ask again.
+  if sc<THRESHOLD and len(str(r.get('fix') or '').strip())<8:raise ValueError('Thiếu cách sửa cụ thể cho '+CRITERIA[i][0]+' (điểm dưới %d)'%THRESHOLD)
   out.append({'id':i,'score':float(sc),'part':pt,'evidence':str(r.get('evidence') or '')[:800],'reason':str(r.get('reason') or '')[:800],'fix':str(r.get('fix') or '')[:800]})
  return out
 
@@ -172,16 +212,24 @@ def accept_review(reply,n):
  return out
 
 def passed(rows):return sum(1 for r in rows if r['score'] is not None and r['score']>=THRESHOLD)
-def failing_parts(rows):return sorted({r['part']-1 for r in rows if r['score'] is not None and r['score']<THRESHOLD})
+def total(rows):return sum(r['score'] for r in rows if r['score'] is not None)
+def better(rows,best):
+ """More criteria passed wins; on a tie the higher total score (a repair that lifts 6 to 7.5 still counts)."""
+ return not best or (passed(rows),total(rows))>(best['passed'],best.get('total',total(best.get('rows') or [])))
+def failing_parts(rows,findings=()):return sorted({r['part']-1 for r in list(rows)+list(findings) if r['score'] is not None and r['score']<THRESHOLD and r.get('part')})
 
-def repair_prompt(sec,i,n,plan,style,rows,sections):
- issues=[r for r in rows if r['part']==i+1 and r['score'] is not None and r['score']<THRESHOLD]
- rules=' '.join(RULES[r['id']] for r in issues if r['id'] in RULES)
- return ('Bạn là biên tập viên kịch bản YouTube. Chỉ sửa PHẦN %d/%d theo các tiêu chí Aprilynne chưa đạt gửi kèm. Giữ những đoạn tốt, dữ kiện, giọng kênh và liên kết với các phần khác; '
-  'không kéo dài quá %d ký tự. %s\nPHONG CÁCH CÁ NHÂN:\n%s\nDÀN Ý: %s\nVAI TRÒ PHẦN NÀY: %s\nTIÊU CHÍ CHƯA ĐẠT: %s\nĐOẠN CUỐI PHẦN TRƯỚC: %s\nĐOẠN ĐẦU PHẦN SAU: %s\n'
+def repair_prompt(sec,i,n,plan,style,rows,sections,findings=()):
+ issues=[r for r in list(rows)+list(findings) if r['part']==i+1 and r['score'] is not None and r['score']<THRESHOLD]
+ rules=' '.join(dict.fromkeys(RULES[r['id']] for r in issues if r['id'] in RULES))
+ # Criteria this section already meets: the repair must not break them (e.g. cutting the hook while trimming boring passages).
+ keep=[CRITERIA[r['id']][0]+(': "'+r['evidence'][:200]+'"' if r.get('evidence') else '') for r in rows if r['part']==i+1 and r['score'] is not None and r['score']>=THRESHOLD]
+ return ('Bạn là biên tập viên kịch bản YouTube. Chỉ sửa PHẦN %d/%d theo các tiêu chí Aprilynne chưa đạt gửi kèm, làm đúng từng "cách sửa". Giữ những đoạn tốt, dữ kiện, giọng kênh và liên kết với các phần khác; '
+  'không kéo dài quá %d ký tự; khi tiêu chí là nhịp độ hoặc đoạn gây chán thì ưu tiên CẮT và gộp ý lặp hơn là viết thêm. %s\nPHONG CÁCH CÁ NHÂN:\n%s\nDÀN Ý: %s\nVAI TRÒ PHẦN NÀY: %s\nTIÊU CHÍ CHƯA ĐẠT: %s\n'
+  'TIÊU CHÍ ĐANG ĐẠT Ở PHẦN NÀY (giữ nguyên ý và câu dẫn chứng, không làm yếu đi): %s\nĐOẠN CUỐI PHẦN TRƯỚC: %s\nĐOẠN ĐẦU PHẦN SAU: %s\n'
   'PHẦN HIỆN TẠI - %s:\n%s\nChỉ trả nội dung đầy đủ của phần này sau khi sửa, không markdown.')%(
   i+1,n,round(len(sec['source'])*1.4),rules,style,json.dumps(plan,ensure_ascii=False),sec.get('role') or '',
   json.dumps([{'tiêu chí':CRITERIA[r['id']][0],'điểm':r['score'],'lý do':r['reason'],'cách sửa':r['fix']} for r in issues],ensure_ascii=False),
+  json.dumps(keep,ensure_ascii=False) if keep else 'không có',
   sections[i-1]['text'][-800:] if i>0 else '',sections[i+1]['text'][:600] if i<n-1 else '',sec['title'],sec['text'])
 
 def fetch_transcript(url,language='vi'):
@@ -251,8 +299,10 @@ class Story:
    d['stage']='review';self.save()
   if d['stage']=='review':
    got_rows=d.setdefault('group_rows',{}).setdefault(str(d['round']),{})
-   # The list keeps all three groups for the round (a changing list would block handing out work); finished ones are only read.
-   todo=[(g,ids) for g,ids in GROUPS] if any(g not in got_rows for g,_ in GROUPS) else []
+   # A round started before the body was read in chunks keeps its single body review.
+   groups=review_groups(secs,legacy='body' in got_rows)
+   # The list keeps all groups for the round (a changing list would block handing out work); finished ones are only read.
+   todo=[(g,ids) for g,ids in groups] if any(g not in got_rows for g,_ in groups) else []
    tasks=[{'id':self.task_id('rv%d-%s'%(d['round'],g)),'title':'Chấm Aprilynne vòng %d · %s'%(d['round']+1,g),
     'prompt':group_prompt(g,ids,d['plan'],secs,self.style(),d.get('last_error') if d['tries'].get('rv%d-%s'%(d['round'],g)) else '')} for g,ids in todo]
    if tasks:
@@ -268,25 +318,31 @@ class Story:
      try:got_rows[g]=accept_group(r.get('text'),ids,n)
      except (ValueError,KeyError,TypeError) as e:self.retry(base,e)
     self.save()
-    if any(g not in got_rows for g,_ in GROUPS):
-     return self.wait('review:%d:%d'%(d['round'],len(got_rows)),'Đang chấm Aprilynne vòng %d/%d (%d/3 nhóm tiêu chí)'%(d['round']+1,ROUNDS,len(got_rows)))
-   by={r['id']:r for g,_ in GROUPS for r in got_rows[g]}
-   rows=[by.get(i) or {'id':i,'score':None,'part':None,'evidence':'','reason':'Cần ảnh bìa/cảnh dựng thật','fix':''} for i in range(len(CRITERIA))]
-   d['rows']=rows;d.setdefault('history',[]).append({'round':d['round'],'passed':passed(rows),'rows':rows})
-   if not d.get('best') or passed(rows)>d['best']['passed']:d['best']={'passed':passed(rows),'texts':[x['text'] for x in secs],'rows':rows}
-   todo=failing_parts(rows)
+    if any(g not in got_rows for g,_ in groups):
+     return self.wait('review:%d:%d'%(d['round'],len(got_rows)),'Đang chấm Aprilynne vòng %d/%d (%d/%d nhóm tiêu chí)'%(d['round']+1,ROUNDS,len(got_rows),len(groups)))
+   rows,findings=combine(groups,got_rows)
+   d['rows']=rows;d['findings']=findings
+   d.setdefault('history',[]).append({'round':d['round'],'passed':passed(rows),'total':total(rows),'rows':rows,'findings':findings})
+   if better(rows,d.get('best')):d['best']={'passed':passed(rows),'total':total(rows),'texts':[x['text'] for x in secs],'rows':rows,'findings':findings,'round':d['round']}
+   elif failing_parts(rows,findings) and d['round']+1<ROUNDS:
+    # This round's repairs made the script worse: the next repairs start again from the best version, never from a worse one.
+    best=d['best']
+    for x,t in zip(secs,best['texts']):x['text']=t
+    rows,findings=best['rows'],best.get('findings') or [];d['rows']=rows;d['findings']=findings
+    d['note']='Vòng %d kém hơn bản tốt nhất (%d/%d): sửa tiếp từ bản tốt nhất'%(d['round']+1,best['passed'],len(CRITERIA))
+   todo=failing_parts(rows,findings)
    if not todo:d['stage']='done'
    elif d['round']+1>=ROUNDS:
     best=d['best']
     for x,t in zip(secs,best['texts']):x['text']=t
-    d['rows']=best['rows']
+    d['rows']=best['rows'];d['findings']=best.get('findings') or []
     if best['passed']<PASS_AFTER_ROUNDS:
      self.save();raise RuntimeError('Kịch bản chưa đạt Aprilynne sau %d vòng: bản tốt nhất đạt %d/%d (cần %d). Xem điểm trong analysis/story.json.'%(ROUNDS,best['passed'],len(CRITERIA),PASS_AFTER_ROUNDS))
     d['stage']='done';d['note']='Hết %d vòng: dùng bản tốt nhất %d/%d'%(ROUNDS,best['passed'],len(CRITERIA))
    else:d['stage']='repair';d['repair']=todo
    self.save()
   if d['stage']=='repair':
-   todo=d['repair'];tasks=[{'id':'fix%d-%s'%(d['round'],secs[i]['id']),'title':'Sửa '+secs[i]['title'],'prompt':repair_prompt(secs[i],i,n,d['plan'],self.style(),d['rows'],secs)} for i in todo]
+   todo=d['repair'];tasks=[{'id':'fix%d-%s'%(d['round'],secs[i]['id']),'title':'Sửa '+secs[i]['title'],'prompt':repair_prompt(secs[i],i,n,d['plan'],self.style(),d['rows'],secs,d.get('findings') or [])} for i in todo]
    got=self.tasks(s,tasks)
    if got is None:return self.wait('repair:busy','Chờ tab ChatGPT rảnh')
    fixed=[i for i in todo if (got.get('fix%d-%s'%(d['round'],secs[i]['id'])) or {}).get('status')=='done']
