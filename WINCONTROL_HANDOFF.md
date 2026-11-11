@@ -39,7 +39,7 @@ Lỗi đã tìm và sửa trong đợt này:
 
 - Kết nối: Studio "connected", tab Studio mở, ChatGPT kết nối; origin nhánh `phase3-manager-presence` (không sửa).
 - Lỗi 402 (vượt hạn mức egress Supabase) trong báo cáo Codex 10/11: hiện **không tái hiện** — MAN đọc được dữ liệu phiên.
-- Sản xuất Thái Sư: 24/24 phần, 384 cảnh có prompt, 6/384 ảnh xong. Mục `image:part_cecarmg:6` (Cảnh 7) gửi lúc 01:27:49Z, chưa có kết quả; MAN tự thu hồi sau 30 phút (`JOB_LIMIT`). Không can thiệp tay.
+- Sản xuất Thái Sư: 24/24 phần, 384 cảnh có prompt, 6/384 ảnh xong. Mục `image:part_cecarmg:6` (Cảnh 7) gửi lúc 01:27:49Z, chưa có kết quả; Đã quan sát MAN tự khôi phục, không can thiệp tay: 01:57:59Z thu hồi job treo ("Quá thời gian chờ"), 01:58:04Z gửi lại (lần 2), 01:58:49Z Cảnh 7 hoàn tất, Cảnh 8 bắt đầu.
 
 ## 4. Extension
 
@@ -62,4 +62,3 @@ Lỗi đã tìm và sửa trong đợt này:
 1. Khi Agent rảnh: gửi lại lệnh thử từ giao diện WinControl, theo dõi đủ vòng tới `complete`.
 2. Triển khai lại (script trên) để MAN nạp `wincontrol_chat_loop.py` mới cho prompt đầu (đã có lớp làm phẳng trong `chatgpt_mcp.send` nên không bắt buộc).
 3. Tìm tiến trình đã khởi tạo DB hàng đợi thật lúc 01:30:47Z.
-4. Xác nhận mục ảnh Cảnh 7 được tự thu hồi và tạo lại không trùng.
