@@ -55,7 +55,8 @@ $listener = Get-NetTCPConnection -State Listen | Where-Object LocalPort -eq 8765
 if (-not $listener) { throw 'Manager listener is missing; refusing.' }
 $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)").CommandLine
 if ($cmd -notmatch [regex]::Escape((Join-Path $Prod 'server.py')) -and $cmd -notmatch 'server\.py') { throw "Port 8765 is not this MAN: $cmd" }
-$active = @($before.automation.tasks | Where-Object { $_.status -in @('running','waiting') -or $_.in_flight })
+# A stopped task can keep an old in_flight flag (kept on purpose for review); only running/waiting work blocks a restart.
+$active = @($before.automation.tasks | Where-Object { $_.status -in @('running','waiting') })
 $runningQueue = @($before.queue | Where-Object { $_.status -eq 'running' })
 if ($before.automation.current_task -or $active.Count -or $runningQueue.Count) {
   throw "Active work (tasks: $(@($active.id) -join ','); queue: $(@($runningQueue.name) -join ',')); refusing restart. Pause production at a safe point first."
