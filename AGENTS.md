@@ -7,4 +7,5 @@
 5. Không commit `__pycache__/*.pyc`, `integration_reports/`, `logs/`.
 6. Chạy test với `AI_MANAGER_HOME` trỏ sang thư mục tạm. Interpreter: `C:\Users\PC\AppData\Local\AI_MANAGER\runtime-v02\Scripts\python.exe`.
 7. Không khởi động lại MAN/Studio, không chạm queue production nếu người dùng chưa duyệt bước triển khai.
+   Chỉ phiên ghi trong `%LOCALAPPDATA%\AI_MANAGER\DEPLOY_OWNER.json` được triển khai/khởi động lại MAN, và chỉ qua `tools\deploy_man.ps1 -Owner <owner>` (tự từ chối khi có việc đang chạy, so checkpoint, tự hoàn lại). Đổi chủ triển khai phải do người dùng quyết.
 8. Báo cáo theo ba mức: đã sửa mã / đã triển khai trên PC / đã kiểm thử thực tế.
