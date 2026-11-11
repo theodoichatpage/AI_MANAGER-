@@ -48,13 +48,18 @@ def parse_snapshot(raw,url):
  """Conservative parser: only explicitly attributed assistant turns qualify."""
  import re
  turns=[];current=None;composer=False;generating=False;end=False;saw_root=False
- for line in raw.splitlines():
+ # A text may run over several lines (links); lines that do not start a new uid belong to the element above.
+ logical=[]
+ for row in raw.splitlines():
+  if re.match(r'\s*uid=',row) or not logical:logical.append(row)
+  else:logical[-1]+='\n'+row
+ for line in logical:
   match=re.match(r'\s*uid=(\S+)\s+(\S+)(?:\s+("(?:[^"\\]|\\.)*"))?',line)
   if not match:continue
   if match[2].startswith('"'):
    # take_snapshot prints text verbatim (inner quotes are not escaped): a text line is everything between the
    # first and the last quote, so a JSON reply from ChatGPT is not cut at its first inner quote.
-   plain=re.match(r'\s*uid=\S+\s+"(.*)"\s*$',line)
+   plain=re.match(r'\s*uid=\S+\s+"(.*)"\s*$',line,re.S)
    if not plain:continue
    role='StaticText';name=plain[1]
   else:
@@ -70,7 +75,7 @@ def parse_snapshot(raw,url):
    current={'role':author,'text':[]};turns.append(current);end=False;continue
   if role=='heading' and name=='Latest response':current=None
   if role=='textbox':
-   composer=name in ('Ask anything','Ask ChatGPT','Message ChatGPT','Message','Send a message') and not re.search(r'\b(?:disabled|readonly)\b',line)
+   composer=name in ('Ask anything','Ask ChatGPT','Message ChatGPT','Message','Send a message') and not re.search(r'\b(?:disabled|readonly)\b',line.split(' value="',1)[0])
    current=None
   if role=='button':
    generating|=name.lower() in ('stop generating','stop responding','stop streaming','dừng tạo','dừng phản hồi')

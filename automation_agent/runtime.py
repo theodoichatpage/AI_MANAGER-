@@ -157,8 +157,18 @@ class AgentRuntime:
    fix=action['wincontrol_correction'];text=correction_prompt(command,fix.get('error'),fix.get('reply'))
   else:
    start=int(action.get('feedback_start',idx));observed=[]
-   for offset,entry in enumerate(task.get('results',[])[start:idx],start):
-    prior=task['actions'][offset]
+   # results is a log (a step stopped and resumed has two entries), so each entry is matched by its action index;
+   # entries written before the index was recorded fall back to the newest ones.
+   results=task.get('results',[]);latest={}
+   for entry in results:
+    if isinstance(entry.get('index'),int) and start<=entry['index']<idx:latest[entry['index']]=entry
+   if not latest:
+    for offset in range(start,idx):
+     name=task['actions'][offset].get('action')
+     found=next((e for e in reversed(results) if e.get('action')==name and 'index' not in e),None)
+     if found:latest[offset]=found
+   for offset in sorted(latest):
+    entry=latest[offset];prior=task['actions'][offset]
     observed.append({'action':prior.get('action'),'success':bool(entry.get('success')),'error':entry.get('error'),'result':entry.get('result')})
    text=feedback_prompt(command,c.get('wincontrol_last_summary',''),observed)
   # The exchange id travels in the prompt, so a resend after an interruption is recognised and skipped.

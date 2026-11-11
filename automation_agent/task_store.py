@@ -60,7 +60,7 @@ class TaskStore:
    t=self.get(tid)
    if t['status']!='running':return
    if index!=t['next_action']:raise ValueError('Checkpoint không khớp')
-   t['results'].append(result);t['in_flight']=False
+   t['results'].append(dict(result,index=index));t['in_flight']=False
    if result.get('success'):
     t['next_action']=index+1;t['last_successful_action']=t['current_action'];t['last_successful_checkpoint']=time.time()
     t['context'].update(result.get('result',{}).get('context',{}))
