@@ -11,7 +11,10 @@ from automation_agent.manager_service import AutomationService
 
 VERSION = '0.2.23'
 DOWNLOAD_URL = 'https://github.com/theodoichatpage/AI_MANAGER-/archive/refs/heads/main.zip'
+import test_guard
+test_guard.isolate()
 BASE = Path(os.environ.get('AI_MANAGER_HOME', Path.home() / '.ai_manager'))
+test_guard.refuse_production(BASE, 'Manager home')
 CONFIG = BASE / 'config.json'
 LOCK = threading.RLock()
 
@@ -145,7 +148,7 @@ def atomic(path, data):
 
 def config():
     if CONFIG.exists(): return json.loads(CONFIG.read_text(encoding='utf-8'))
-    return {'root': str(Path.home() / 'VIDEO_PROJECTS')}
+    return {'root': str((BASE if test_guard.under_test() else Path.home()) / 'VIDEO_PROJECTS')}
 def slug(name):
     name=unicodedata.normalize('NFKD',name.replace('đ','d').replace('Đ','D')).encode('ascii','ignore').decode(); name=re.sub(r'[^A-Za-z0-9]+','_',name).strip('_')[:70]; return name or 'Du_An'
 STUDIO_ORIGIN=re.compile(r'https://video-image-studio(?:-[a-z0-9-]+)?\.vercel\.app')
@@ -179,7 +182,7 @@ def create_project(name, script, test_key=None, kind='studio'):
     for d in ('analysis','scenes','prompts','images','logs'): (folder/d).mkdir()
     atomic(folder/'project.json',project); (folder/'logs'/'activity.log').write_text(f'{now} – Đã tạo dự án\n',encoding='utf-8'); return project
 
-MANAGER=None; WORKER=None; STUDIO=StudioMonitor(); EXTENSION=ExtensionMonitor(); STUDIO_STOP=threading.Event(); threading.Thread(target=STUDIO.run,args=(STUDIO_STOP,),kwargs={'busy':lambda:MANAGER is not None and any(x.get('status')=='running' for x in MANAGER.list())},daemon=True).start()
+MANAGER=None; WORKER=None; STUDIO=StudioMonitor(store=BASE/'studio_pairing.bin'); EXTENSION=ExtensionMonitor(); STUDIO_STOP=threading.Event(); threading.Thread(target=STUDIO.run,args=(STUDIO_STOP,),kwargs={'busy':lambda:MANAGER is not None and any(x.get('status')=='running' for x in MANAGER.list())},daemon=True).start()
 from extension_updater import ExtensionUpdater
 EXT_UPDATER=ExtensionUpdater(); threading.Thread(target=EXT_UPDATER.run,args=(STUDIO_STOP,),daemon=True).start()
 AUTOMATION=None

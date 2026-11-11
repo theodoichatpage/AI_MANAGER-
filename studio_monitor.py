@@ -1,17 +1,50 @@
 """Poll Studio's existing session endpoint and recover automatically from slow/lost reads."""
-import re, threading, time
+import re, sys, threading, time
+from pathlib import Path
 from studio_reader import read_session
 
+CODE=re.compile(r'[A-Za-z0-9-]{16,64}')
+
+def _protect(raw):
+ """Windows DPAPI: only this Windows user can read the saved pairing code. No other platform stores it."""
+ if sys.platform!='win32':return None
+ import win32crypt
+ return win32crypt.CryptProtectData(raw,'AI MANAGER Studio pairing',None,None,None,0)
+
+def _unprotect(blob):
+ if sys.platform!='win32':return None
+ import win32crypt
+ return win32crypt.CryptUnprotectData(blob,None,None,None,0)[1]
+
 class StudioMonitor:
- def __init__(self,reader=read_session,max_recovery=3,recovery_delay=2):
-  self.reader=reader;self.lock=threading.Lock();self.code='';self.status='unconfigured';self.data=None;self.error='';self.generation=0
+ def __init__(self,reader=read_session,max_recovery=3,recovery_delay=2,store=None):
+  self.store=Path(store) if store else None;self.reader=reader;self.lock=threading.Lock();self.code='';self.status='unconfigured';self.data=None;self.error='';self.generation=0
   self.max_recovery=max(1,int(max_recovery));self.recovery_delay=max(0,float(recovery_delay));self.failure_count=0;self.refresh_count=0;self.last_ok=None;self.recovering=False
+  self._restore()
+ def _restore(self):
+  """A Manager restart keeps the Studio pairing: the code saved (encrypted) by configure() is read back."""
+  if not self.store or not self.store.is_file():return
+  try:code=_unprotect(self.store.read_bytes()).decode('ascii')
+  except Exception:return
+  if code and CODE.fullmatch(code):
+   with self.lock:self.code=code;self.status='connecting';self.generation+=1
+ def _save(self,code):
+  if not self.store:return
+  try:
+   blob=_protect(code.encode('ascii')) if code else None
+   if blob is None:
+    if self.store.exists():self.store.unlink()
+    return
+   self.store.parent.mkdir(parents=True,exist_ok=True);tmp=self.store.with_suffix('.tmp');tmp.write_bytes(blob);tmp.replace(self.store)
+  except Exception:pass
  def configure(self,code):
   code=str(code).strip()
-  if not re.fullmatch(r'[A-Za-z0-9-]{16,64}',code): raise ValueError('Mã kết nối không hợp lệ')
+  if not CODE.fullmatch(code): raise ValueError('Mã kết nối không hợp lệ')
+  self._save(code)
   with self.lock:
    self.code=code;self.status='connecting';self.data=None;self.error='';self.failure_count=0;self.refresh_count=0;self.last_ok=None;self.recovering=False;self.generation+=1
  def disconnect(self):
+  self._save('')
   with self.lock:
    self.code='';self.status='unconfigured';self.data=None;self.error='';self.failure_count=0;self.recovering=False;self.generation+=1
  def snapshot(self):
