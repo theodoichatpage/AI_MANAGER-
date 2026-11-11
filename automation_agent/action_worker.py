@@ -7,6 +7,9 @@ from .browser_controller import BrowserController
 
 NET_GRACE=900
 
+class NotExecuted(RuntimeError):
+ """Refused before any input reached a window: safe to report back to ChatGPT instead of stopping for review."""
+
 def network_error(exc):
  """True for a connection problem (timeout, refused, DNS, SSL, cut-off or garbled reply, 5xx gateway),
  not for a Studio answer we refused or a local file problem."""
@@ -201,6 +204,10 @@ def dispatch(a,context,home,settings):
  if name=='SCREENSHOT':return ui.screenshot(target,Path(home)/'screenshots',bool(a.get('full_screen')))
  if name=='FIND_ELEMENT':return {'element':ui.describe(ui.element(target,a.get('selector')))}
  if name=='READ_ELEMENT':return {'element':ui.describe(ui.element(target,a.get('selector')))}
+ if context.get('wincontrol_task') and name in ('CLICK','DOUBLE_CLICK','RIGHT_CLICK','TYPE_TEXT','HOTKEY') and app not in ('chrome','edge'):
+  # Bring WinControl's own window to the front first; the foreground check inside each input step still applies.
+  try:wm.focus(target)
+  except Exception as exc:raise NotExecuted('Không đưa được cửa sổ '+str(app)+' lên trước; chưa nhập/click gì: '+str(exc)) from exc
  if name in ('CLICK','DOUBLE_CLICK','RIGHT_CLICK'):return ui.click(target,a.get('selector'),'right' if name=='RIGHT_CLICK' else 'left',name=='DOUBLE_CLICK')
  if name=='TYPE_TEXT':return ui.type_text(target,a.get('selector'),a.get('text',''))
  if name=='HOTKEY':return ui.hotkey(target,a.get('keys'))
@@ -260,5 +267,5 @@ def main():
  try:
   result=dispatch(data['action'],data.get('context',{}),data['home'],data.get('settings',{}))
   print(json.dumps({'success':True,'result':result},ensure_ascii=True),flush=True)
- except Exception as e:print(json.dumps({'success':False,'error':str(e),'error_code':'WINDOW_LOST' if isinstance(e,wm.WindowLostError) else 'SCRIPT_MISSING' if type(e).__name__=='StudioScriptMissing' else 'STUDIO_REVIEW' if type(e).__name__=='StudioReviewRequired' or (data.get('context',{}).get('studio_project_id') and not str(data.get('action',{}).get('action','')).startswith('STUDIO_')) else 'ACTION_ERROR'},ensure_ascii=True),flush=True)
+ except Exception as e:print(json.dumps({'success':False,'error':str(e),'error_code':'WINDOW_LOST' if isinstance(e,wm.WindowLostError) else 'SCRIPT_MISSING' if type(e).__name__=='StudioScriptMissing' else 'NOT_EXECUTED' if isinstance(e,NotExecuted) else 'STUDIO_REVIEW' if type(e).__name__=='StudioReviewRequired' or (data.get('context',{}).get('studio_project_id') and not str(data.get('action',{}).get('action','')).startswith('STUDIO_')) else 'ACTION_ERROR'},ensure_ascii=True),flush=True)
 if __name__=='__main__':main()

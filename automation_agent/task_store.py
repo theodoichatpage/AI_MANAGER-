@@ -65,7 +65,7 @@ class TaskStore:
     t['next_action']=index+1;t['last_successful_action']=t['current_action'];t['last_successful_checkpoint']=time.time()
     t['context'].update(result.get('result',{}).get('context',{}))
     if t['next_action']==len(t['actions']):t['status']='completed'
-   elif t.get('context',{}).get('wincontrol_task') and t['current_action'] not in UNSAFE:
+   elif t.get('context',{}).get('wincontrol_task') and (t['current_action'] not in UNSAFE or result.get('error_code')=='NOT_EXECUTED'):
     from .wincontrol_chat_loop import WINCONTROL_ACTIONS
     if t['current_action'] in WINCONTROL_ACTIONS:t['next_action']=index+1;t['error']=result.get('error')
     else:t['status']=result.get('status','failed');t['error']=result.get('error')

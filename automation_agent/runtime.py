@@ -142,7 +142,7 @@ class AgentRuntime:
      if fresh.get('subtask_id')!=previous.get('subtask_id') or fresh.get('work_status')!=previous.get('work_status'):self.log.write(task,action['action'],result,message='Cập nhật task/subtask/checkpoint')
      self.store.pending_action(tid,idx,result);cancel.wait(4);continue
     if result.get('error_code')=='STUDIO_REVIEW':result['status']='needs_review'
-    if not result['success'] and action['action'] in UNSAFE:result['status']='needs_review'
+    if not result['success'] and action['action'] in UNSAFE and result.get('error_code')!='NOT_EXECUTED':result['status']='needs_review'
     self.store.complete_action(tid,idx,result)
     if self.store.get(tid)['status']!='running':break
   except Exception as e:
