@@ -66,6 +66,7 @@ def validate_actions(actions):
         if not isinstance(raw, dict) or raw.get('action') not in WINCONTROL_ACTIONS:
             raise ValueError('WINCONTROL_ACTION_NOT_ALLOWED')
         name = raw['action']
+        raw = {k: v for k, v in raw.items() if k != 'retries'}  # set to 0 below; an already checked action keeps it
         if set(raw) - FIELDS[name]:
             raise ValueError('WINCONTROL_ACTION_FIELDS_NOT_ALLOWED')
         action = dict(raw)

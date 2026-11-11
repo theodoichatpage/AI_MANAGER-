@@ -52,11 +52,15 @@ def parse_snapshot(raw,url):
   match=re.match(r'\s*uid=(\S+)\s+(\S+)(?:\s+("(?:[^"\\]|\\.)*"))?',line)
   if not match:continue
   if match[2].startswith('"'):
-   plain=re.match(r'\s*uid=\S+\s+("(?:[^"\\]|\\.)*")',line)
+   # take_snapshot prints text verbatim (inner quotes are not escaped): a text line is everything between the
+   # first and the last quote, so a JSON reply from ChatGPT is not cut at its first inner quote.
+   plain=re.match(r'\s*uid=\S+\s+"(.*)"\s*$',line)
    if not plain:continue
-   role='StaticText';name=json.loads(plain[1])
+   role='StaticText';name=plain[1]
   else:
-   role=match[2];name=json.loads(match[3]) if match[3] else ''
+   role=match[2]
+   try:name=json.loads(match[3]) if match[3] else ''
+   except ValueError:name=match[3][1:-1]
   if role=='RootWebArea':
    saw_root=True
    observed=re.search(r'\burl=("(?:[^"\\]|\\.)*")',line)

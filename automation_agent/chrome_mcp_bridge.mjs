@@ -24,16 +24,21 @@ try {
    const snapshot=await call('take_snapshot',{pageId});
    if(a.action==='CHATGPT_SNAPSHOT')result={...result,snapshot,url:input.page_url};
    else if(a.action==='CHATGPT_SEND'){
-    const elements=raw=>[...raw.matchAll(/^\s*uid=(\S+)\s+(\S+)(?:\s+("(?:[^"\\]|\\.)*"))?(.*)$/gm)].map(m=>({uid:m[1],role:m[2],name:m[3]?JSON.parse(m[3]):'',extra:m[4]}));
+    // take_snapshot prints names and values verbatim (inner quotes are not escaped): a value is the text between
+    // ' value="' and the quote that ends the line, compared verbatim.
+    const plain=q=>{try{return JSON.parse(q)}catch{return q.slice(1,-1)}};
+    const elements=raw=>[...raw.matchAll(/^\s*uid=(\S+)\s+(\S+)(?:\s+("(?:[^"\\]|\\.)*"))?(.*)$/gm)].map(m=>({uid:m[1],role:m[2],name:m[3]?plain(m[3]):'',extra:m[4]}));
+    const valueOf=extra=>{const i=extra.indexOf(' value="');if(i<0)return null;const rest=extra.slice(i+8);return rest.endsWith('"')?rest.slice(0,-1):null};
     const fields=elements(snapshot).filter(e=>e.role==='textbox'&&['Message ChatGPT','Ask anything','Ask ChatGPT','Message','Send a message'].includes(e.name));
     if(fields.length!==1||/\b(disabled|readonly)\b/.test(fields[0].extra))throw new Error('COMPOSER_NOT_UNIQUE_OR_READY');
-    const previous=fields[0].extra.match(/\bvalue=("(?:[^"\\]|\\.)*")/);
-    if(previous&&JSON.parse(previous[1])!=='')throw new Error('UNSENT_DRAFT_PRESENT');
+    // An unsent draft blocks the send, unless it is this same prompt left by an earlier unverified attempt.
+    const previous=valueOf(fields[0].extra);
+    if(previous&&previous.trim()&&previous!==a.text)throw new Error('UNSENT_DRAFT_PRESENT');
     await call('fill',{pageId,uid:fields[0].uid,value:a.text});
     const filled=await call('take_snapshot',{pageId});
     const verified=elements(filled).filter(e=>e.role==='textbox'&&e.name===fields[0].name);
-    const value=verified.length===1?verified[0].extra.match(/\bvalue=("(?:[^"\\]|\\.)*")/):null;
-    if(!value||JSON.parse(value[1])!==a.text)throw new Error('COMPOSER_VALUE_UNVERIFIED_NO_SEND');
+    const value=verified.length===1?valueOf(verified[0].extra):null;
+    if(value!==a.text)throw new Error('COMPOSER_VALUE_UNVERIFIED_NO_SEND');
     const buttons=elements(filled).filter(e=>e.role==='button'&&['Send prompt','Send message','Send'].includes(e.name)&&!e.extra.includes('disabled'));
     if(buttons.length!==1)throw new Error('SEND_BUTTON_NOT_UNIQUE');
     await call('click',{pageId,uid:buttons[0].uid});result={...result,clicked:true,url:input.page_url};

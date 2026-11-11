@@ -166,6 +166,7 @@ class AgentRuntime:
  def wincontrol_next(self,tid,idx,task,result):
   """Turn ChatGPT's decision into the next checkpointed steps: one tool action, its result back to ChatGPT, then decide again."""
   from .wincontrol_chat_loop import validate_actions,MAX_ROUNDS,MAX_CORRECTIONS
+  if result.get('result',{}).get('waiting'):return  # ChatGPT is still answering: nothing to decide yet
   decision=result.get('result',{}).get('decision') or {};status=decision.get('status')
   fresh=result.setdefault('result',{}).setdefault('context',{})
   round_number=int(fresh.get('wincontrol_round',task.get('context',{}).get('wincontrol_round',0)+1))
@@ -193,7 +194,8 @@ class AgentRuntime:
     if current['status']!='running' or current['next_action']!=idx:raise ValueError('WINCONTROL_CHECKPOINT_MOVED')
     existing={a.get('exchange_id') for old in self.store.list() for a in old.get('actions',[]) if a.get('action')=='SEND_CHATGPT'}
     if exchange_id in existing:raise ValueError('WINCONTROL_DUPLICATE_EXCHANGE')
-    current['actions'][idx+1:idx+1]=steps+[send,{'action':'WINCONTROL_DECIDE','exchange_id':exchange_id,'timeout':120,'retries':0}]
+    # Every later step comes from ChatGPT's newest decision, so it replaces anything still queued after this one.
+    current['actions'][idx+1:]=steps+[send,{'action':'WINCONTROL_DECIDE','exchange_id':exchange_id,'timeout':120,'retries':0}]
     if not problem:fresh['wincontrol_last_summary']=str(decision.get('summary') or '')[:1000]
     self.store.save(current)
   except Exception as exc:
