@@ -8,6 +8,8 @@ assert.match(page, /src="\/manager_settings\.js"><\/script><script src="\/wincon
 assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /WinControl/);
 assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /winControlHTML\(\)/);
 assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /document\.querySelector\('aside'\)/, 'WinControl navigation must attach to the existing app sidebar');
+assert.match(page, /data-page="WinControl"/, 'WinControl must be a native app navigation entry');
+assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /Trò chuyện[\s\S]*Công việc/, 'WinControl must expose chat and jobs tabs');
 assert.match(server, /path=='\/wincontrol\.js'/);
 assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /api\('\/api\/automation'/);
 assert.match(fs.readFileSync('wincontrol.js', 'utf8'), /wincontrol_cancel/);

@@ -1,70 +1,99 @@
-/* WinControl command surface. All production control is delegated to MAN's existing APIs. */
+/* WinControl chat and jobs view. Execution stays in the existing Agent and TaskStore. */
 let winControlBusy=false;
 let winControlReply='';
 let winControlLastTask='';
+let winControlTab='chat';
 
-function winControlHTML(){
- const a=state.automation||{},tasks=[...(a.tasks||[])].reverse();
- const current=tasks.find(t=>t.id===winControlLastTask)||tasks.find(t=>t.status==='running')||tasks.find(t=>t.id===a.current_task)||null;
- const results=current?.results||[];
- const timeline=results.slice(-8).map((r,i)=>`<li><b>${esc(r.action||'Bước')}</b><span>${esc(r.success?'Hoàn tất':r.status||'Đang xử lý')}</span>${r.error?`<small class="wc-error">${esc(r.error)}</small>`:''}</li>`).join('');
- const err=current?.error||current?.results?.slice(-1)[0]?.error||'';
- let resultText=winControlReply;
- if(current?.current_stage==='WinControl'&&current.status==='completed'){const lastDecision=[...results].reverse().find(r=>r.action==='WINCONTROL_DECIDE'&&r.success);resultText=lastDecision?.result?.decision?.summary||'ChatGPT confirmed completion.'}
- else if(current?.current_stage==='WinControl'&&current.status==='needs_review')resultText='WinControl stopped for review: '+(err||'The result needs verification.');
- else if(current?.current_stage==='WinControl'&&current.status==='failed')resultText='WinControl task failed: '+(err||'No error details.');
- return `<div class="wc-page"><section class="card wc-header"><div><h1>WinControl</h1><p>Nhận lệnh Windows qua Agent hiện có; MAN tiếp tục sở hữu hàng đợi sản xuất.</p></div><div class="wc-agent ${a.online?'online':'offline'}"><b>Agent ${a.online?'Online':'Offline'}</b><small>${a.pid?'PID '+esc(a.pid):esc(a.error||'Chưa có tiến trình')}</small></div></section>
- <section class="card wc-command"><form onsubmit="winControlSubmit(event)"><label for="win_command">Lệnh tiếng Việt</label><textarea id="win_command" maxlength="4000" placeholder="Ví dụ: Kiểm tra MAN, các dự án và tác vụ đang lỗi."></textarea><div class="wc-buttons"><button class="btn primary" type="submit" ${winControlBusy?'disabled':''}>${winControlBusy?'Đang xử lý…':'Gửi nhiệm vụ'}</button><button class="btn danger" type="button" onclick="winControlStop()" ${!(current&&current.current_stage==='WinControl'&&current.status==='running')?'disabled':''}>Dừng an toàn · giữ checkpoint</button><button class="btn" type="button" onclick="winControlSubmitStatus()">Làm mới trạng thái</button></div></form><p class="muted">Lệnh Windows được gửi qua Agent API. Lệnh Studio phải đi qua MAN; không gửi thẳng tới Extension/ChatGPT.</p></section>
- <section class="wc-grid"><article class="card"><h2>Nhiệm vụ hiện tại</h2>${current?`<p><b>${esc(current.current_stage||'Automation')}</b> · ${esc(current.status)} · bước ${Number(current.next_action||0)+1}/${current.actions?.length||0}</p><p>${esc(current.current_action||'Đang chờ bước tiếp theo')}</p><ul class="wc-timeline">${timeline||'<li>Chưa có bước được ghi nhận.</li>'}</ul>${err?`<div class="wc-error-box"><b>Lỗi</b><p>${esc(err)}</p></div>`:''}`:'<p class="muted">Agent chưa có nhiệm vụ đang chạy.</p>'}</article>
- <article class="card"><h2>Kết quả</h2><div id="win_result" class="wc-result" aria-live="polite">${resultText?esc(resultText):'Type a request for ChatGPT to operate Windows or inspect MAN.'}</div><small>Trạng thái được làm mới cùng dữ liệu MAN; thao tác quan trọng được lưu trong TaskStore.</small></article></section></div>`;
+function winControlTasks(){
+ return (state.automation?.tasks||[]).filter(t=>t.current_stage==='WinControl'||t.context?.wincontrol_task).slice().reverse();
 }
-
-function winControlFormatState(s,projectId){
- const projects=(s.projects||[]).filter(p=>!projectId||p.id===projectId);
- const q=new Map((s.queue||[]).map(p=>[p.id,p]));
- const tasks=(s.automation?.tasks||[]).filter(t=>!projectId||t.project===projectId||t.current_project===projectId);
- const failures=tasks.filter(t=>['failed','needs_review','timeout'].includes(t.status));
- const lines=[`Windows Agent: ${s.automation?.online?'online':'offline'}${s.automation?.pid?' · PID '+s.automation.pid:''}`,`Dự án: ${projects.length}`];
- for(const p of projects){const row=q.get(p.id)||{};lines.push(`• ${p.name} [${p.id}] — ${row.status||p.status||'chưa có trạng thái hàng đợi'}${row.current_stage?' · '+row.current_stage:''}`)}
- lines.push(`Tác vụ Agent liên quan: ${tasks.length}; lỗi/cần xem xét: ${failures.length}`);
- for(const t of tasks.slice(-8)){lines.push(`• ${t.id} — ${t.status} — ${t.current_action||t.current_stage||'chưa chạy'}${t.error?' — '+t.error:''}`)}
- if(s.automation?.error)lines.push(`Lỗi Agent: ${s.automation.error}`);
+function winControlSelected(){
+ const tasks=winControlTasks();
+ return tasks.find(t=>t.id===winControlLastTask)||tasks.find(t=>t.status==='running')||tasks[0]||null;
+}
+function winControlDetails(value){
+ if(value===null||value===undefined)return '';
+ if(typeof value==='string')return value;
+ if(value.path)return String(value.path);
+ if(value.window?.title)return String(value.window.title);
+ if(value.decision?.summary)return String(value.decision.summary);
+ try{return JSON.stringify(value).slice(0,500)}catch{return String(value)}
+}
+function winControlMessages(task){
+ if(!task)return [];
+ const messages=[];
+ const command=task.context?.wincontrol_command||task.command||'';
+ if(command)messages.push({kind:'user',title:'Bạn',text:command});
+ for(const row of task.results||[]){
+  if(row.action==='OBSERVE_CHATGPT'||row.action==='SEND_CHATGPT')continue;
+  const decision=row.result?.decision;
+  if(row.action==='WINCONTROL_DECIDE'&&decision){
+   messages.push({kind:'assistant',title:'ChatGPT',text:decision.summary||'ChatGPT đã phân tích trạng thái.'});
+   if(decision.status==='continue'&&decision.actions?.[0])messages.push({kind:'tool',title:'Hành động được chọn',text:decision.actions[0].action});
+   continue;
+  }
+  const detail=row.error||winControlDetails(row.result);
+  if(detail)messages.push({kind:row.success?'tool':'error',title:row.action||'Kết quả công cụ',text:detail});
+ }
+ const last=messages[messages.length-1];
+ if(task.status==='completed'&&last?.kind!=='assistant')messages.push({kind:'assistant',title:'ChatGPT',text:'Nhiệm vụ đã hoàn tất.'});
+ if(task.status==='needs_review')messages.push({kind:'error',title:'Cần kiểm tra',text:task.error||'WinControl dừng an toàn tại checkpoint.'});
+ if(task.status==='failed')messages.push({kind:'error',title:'Lỗi',text:task.error||'Nhiệm vụ gặp lỗi.'});
+ return messages;
+}
+function winControlChatHTML(task){
+ const messages=winControlMessages(task);
+ const empty=!messages.length;
+ const transcript=messages.map(m=>`<article class="wc-message ${m.kind}"><small>${esc(m.title)}</small><div>${esc(m.text)}</div></article>`).join('');
+ const prompt=empty?`<div class="wc-welcome"><div class="wc-mark">W</div><h1>WinControl</h1><p>Giao một nhiệm vụ bằng tiếng Việt. ChatGPT sẽ quyết định từng bước và Agent sẽ xác minh kết quả.</p></div>`:'';
+ return `<section class="wc-chat-view">${prompt}<div class="wc-transcript" id="wc_transcript">${transcript}</div><form class="wc-composer" onsubmit="winControlSubmit(event)"><textarea id="win_command" maxlength="4000" rows="1" placeholder="Gửi lệnh cho WinControl" aria-label="Lệnh WinControl" ${winControlBusy?'disabled':''}></textarea><div class="wc-compose-actions"><span>${winControlBusy?'Đang xử lý…':task?`${esc(task.status)} · ${esc(task.current_action||'Đang chờ')}`:'ChatGPT điều khiển · Windows Agent hiện có'}</span><div>${task?.status==='running'?`<button class="wc-stop" type="button" onclick="winControlStop()">Dừng an toàn</button>`:''}<button class="wc-send" type="submit" ${winControlBusy?'disabled':''} aria-label="Gửi nhiệm vụ">${winControlBusy?'…':'↑'}</button></div></div></form>${winControlReply?`<div class="wc-live-result" aria-live="polite">${esc(winControlReply)}</div>`:''}</section>`;
+}
+function winControlJobsHTML(){
+ const tasks=winControlTasks();
+ if(!tasks.length)return '<div class="wc-empty-jobs">Chưa có công việc. Bắt đầu bằng một lệnh trong tab Trò chuyện.</div>';
+ return `<div class="wc-job-list">${tasks.map(t=>`<button class="wc-job ${t.id===winControlLastTask?'selected':''}" onclick="winControlSelectTask('${esc(t.id)}')"><span class="wc-job-status ${esc(t.status)}"></span><span><b>${esc(t.context?.wincontrol_command||t.command||'Nhiệm vụ WinControl')}</b><small>${esc(t.status)} · ${esc(t.current_action||'Chưa có bước')} · ${Number(t.results?.length||0)} bước đã ghi nhận</small>${t.error?`<small class="wc-job-error">${esc(t.error)}</small>`:''}</span></button>`).join('')}</div>`;
+}
+function winControlHTML(){
+ const task=winControlSelected();
+ return `<main class="wc-shell"><header class="wc-top"><div><b>WinControl</b><small class="${state.automation?.online?'online':'offline'}">Windows Agent ${state.automation?.online?'đang hoạt động':'ngoại tuyến'}</small></div><nav class="wc-tabs" aria-label="WinControl"><button class="${winControlTab==='chat'?'active':''}" onclick="winControlTab='chat';render()">Trò chuyện</button><button class="${winControlTab==='jobs'?'active':''}" onclick="winControlTab='jobs';render()">Công việc ${winControlTasks().length?`<i>${winControlTasks().length}</i>`:''}</button></nav><button class="wc-refresh" onclick="winControlSubmitStatus()" aria-label="Làm mới">↻</button></header>${winControlTab==='chat'?winControlChatHTML(task):`<section class="wc-jobs-view"><h1>Công việc</h1><p>Theo dõi nhiệm vụ và checkpoint của Agent hiện có.</p>${winControlJobsHTML()}</section>`}</main>`;
+}
+function winControlSelectTask(id){winControlLastTask=id;winControlTab='chat';winControlReply='';render()}
+function winControlFormatState(s){
+ const projects=s.projects||[],queue=new Map((s.queue||[]).map(p=>[p.id,p]));
+ const failures=(s.automation?.tasks||[]).filter(t=>['failed','needs_review','timeout'].includes(t.status));
+ const lines=[`Windows Agent: ${s.automation?.online?'online':'offline'}`,`Dự án MAN: ${projects.length}`];
+ for(const p of projects){const q=queue.get(p.id)||{};lines.push(`${p.name} [${p.id}] — ${q.status||p.status||'chưa có trạng thái'}`)}
+ lines.push(`Tác vụ lỗi/cần xem xét: ${failures.length}`);
+ for(const t of failures.slice(-8))lines.push(`${t.id} — ${t.status} — ${t.current_action||''}${t.error?' — '+t.error:''}`);
  return lines.join('\n');
 }
-
 async function winControlSubmitStatus(){
- try{winControlBusy=true;const s=await api('/api/state');state=s;winControlReply=winControlFormatState(s);const el=document.getElementById('win_result');if(el)el.textContent=winControlReply;render()}catch(e){winControlReply='Không đọc được MAN/Agent: '+e.message;const el=document.getElementById('win_result');if(el)el.textContent=winControlReply}finally{winControlBusy=false}
+ try{const s=await api('/api/state');state=s;winControlReply=winControlFormatState(s);render()}
+ catch(e){winControlReply='Không đọc được MAN/Agent: '+e.message;render()}
 }
 async function winControlSubmit(event){
- event?.preventDefault?.();const field=document.getElementById('win_command');const command=String(field?.value||'').trim();if(!command)return;
- winControlBusy=true;const box=document.getElementById('win_result');if(box)box.textContent='Planning with ChatGPT through the existing Chrome MCP and checking Agent/MAN state.';
+ event?.preventDefault?.();const field=document.getElementById('win_command');const command=String(field?.value||'').trim();if(!command||winControlBusy)return;
+ winControlBusy=true;winControlReply='';winControlTab='chat';render();
  try{
   const result=await api('/api/automation',{command:'wincontrol',text:command});
-  if(result.task_id){winControlLastTask=result.task_id;winControlReply=`Submitted Agent task ${result.task_id}; verifying its live result.`}
-  else if(result.projects){const live=await api('/api/state');state=live;winControlReply=winControlFormatState(live);}
-  else winControlReply=[result.summary,result.message].filter(Boolean).join('\n')||JSON.stringify(result,null,2);
-  const live=await api('/api/state');state=live;
-  if(box)box.textContent=winControlReply;else render();
- }catch(e){winControlReply='Not executed: '+e.message;if(box)box.textContent=winControlReply;else render()}
- finally{winControlBusy=false}
+  if(result.task_id)winControlLastTask=result.task_id;
+  else winControlReply=[result.summary,result.message].filter(Boolean).join('\n')||JSON.stringify(result);
+  state=await api('/api/state');
+ }catch(e){winControlReply='Chưa thực thi: '+e.message}
+ finally{winControlBusy=false;render()}
 }
 async function winControlStop(){
- const task=[...(state.automation?.tasks||[])].find(t=>t.id===winControlLastTask);
- if(!task||task.current_stage!=='WinControl'||task.status!=='running'){winControlReply='No active WinControl task to stop.';const el=document.getElementById('win_result');if(el)el.textContent=winControlReply;return}
- try{await api('/api/automation',{command:'wincontrol_cancel',task_id:task.id});winControlReply='Agent was asked to stop this WinControl task safely. Its checkpoint is retained; uncertain actions will not be retried.';await refresh()}catch(e){winControlReply='Safe stop failed: '+e.message}const el=document.getElementById('win_result');if(el)el.textContent=winControlReply
+ const task=winControlTasks().find(t=>t.id===winControlLastTask)||winControlSelected();
+ if(!task||task.status!=='running'){winControlReply='Không có nhiệm vụ WinControl đang chạy để dừng.';render();return}
+ try{await api('/api/automation',{command:'wincontrol_cancel',task_id:task.id});winControlReply='Đã yêu cầu dừng an toàn; checkpoint được giữ lại.';state=await api('/api/state')}
+ catch(e){winControlReply='Dừng an toàn thất bại: '+e.message}
+ render();
 }
-
 (function installWinControlPage(){
- if(typeof UI_PAGES==='undefined'||typeof goPage!=='function'||typeof render!=='function')return;
- if(!UI_PAGES.includes('WinControl'))UI_PAGES.push('WinControl');
+ if(typeof UI_PAGES!=='undefined'&&!UI_PAGES.includes('WinControl'))UI_PAGES.push('WinControl');
  const nav=document.querySelector('aside')||document.querySelector('.neo-main-nav');
- if(nav&&!nav.querySelector('[data-page="WinControl"]')){
-  const button=document.createElement('button');button.className='btn';button.dataset.page='WinControl';button.textContent='WinControl';button.setAttribute('aria-label','Mở giao diện WinControl');button.onclick=()=>goPage('WinControl');nav.appendChild(button);
- }
+ if(nav&&!nav.querySelector('[data-page="WinControl"]')){const button=document.createElement('button');button.dataset.page='WinControl';button.textContent='WinControl';button.onclick=()=>goPage('WinControl');nav.appendChild(button)}
+ if(typeof render!=='function')return;
  const base=render;
- render=function(){if(document.activeElement?.id==='win_command')return;base();if(page!=='WinControl')return;
-  for(const id of ['mainToolbar','mainStats','mainNotice','studioPanel','extensionPanel','windowsAgentPanel','dashboard']){const el=document.getElementById(id);if(el)el.hidden=true}
-  const extra=document.getElementById('extra');if(extra){extra.hidden=false;extra.innerHTML=winControlHTML()}
-  document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page==='WinControl'));
- };
+ render=function(){base();if(page!=='WinControl')return;for(const id of ['mainToolbar','mainStats','mainNotice','studioPanel','extensionPanel','windowsAgentPanel','dashboard']){const el=document.getElementById(id);if(el)el.hidden=true}const extra=document.getElementById('extra');if(extra){extra.hidden=false;extra.innerHTML=winControlHTML();const transcript=document.getElementById('wc_transcript');if(transcript)transcript.scrollTop=transcript.scrollHeight;const field=document.getElementById('win_command');if(field&&!winControlBusy)field.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();field.form.requestSubmit()}})}document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page==='WinControl'))};
 })();
