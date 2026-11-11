@@ -3,13 +3,20 @@ let winControlBusy=false;
 let winControlReply='';
 let winControlLastTask='';
 let winControlTab='chat';
+let winControlDraft='';
+let winControlFocus=false;
+let winControlCaret=[0,0];
+let winControlPending=null;
+let winControlSent='';
 
 function winControlTasks(){
  return (state.automation?.tasks||[]).filter(t=>t.current_stage==='WinControl'||t.context?.wincontrol_task).slice().reverse();
 }
 function winControlSelected(){
  const tasks=winControlTasks();
- return tasks.find(t=>t.id===winControlLastTask)||tasks.find(t=>t.status==='running')||tasks[0]||null;
+ const running=tasks.find(t=>t.status==='running'||t.status==='waiting');
+ if(winControlLastTask==='new')return running||null;
+ return tasks.find(t=>t.id===winControlLastTask)||running||null;
 }
 function winControlDetails(value){
  if(value===null||value===undefined)return '';
@@ -28,12 +35,13 @@ function winControlMessages(task){
   if(row.action==='OBSERVE_CHATGPT'||row.action==='SEND_CHATGPT')continue;
   const decision=row.result?.decision;
   if(row.action==='WINCONTROL_DECIDE'&&decision){
+   if(decision.status==='invalid'){messages.push({kind:'tool',title:'WinControl',text:'Phản hồi ChatGPT chưa đúng định dạng; đã yêu cầu ChatGPT trả lời lại.'});continue}
    messages.push({kind:'assistant',title:'ChatGPT',text:decision.summary||'ChatGPT đã phân tích trạng thái.'});
-   if(decision.status==='continue'&&decision.actions?.[0])messages.push({kind:'tool',title:'Hành động được chọn',text:decision.actions[0].action});
+   if(decision.status==='continue'&&decision.actions?.[0])messages.push({kind:'tool',title:'Bước tiếp theo',text:winControlActionName(decision.actions[0])});
    continue;
   }
   const detail=row.error||winControlDetails(row.result);
-  if(detail)messages.push({kind:row.success?'tool':'error',title:row.action||'Kết quả công cụ',text:detail});
+  if(detail)messages.push({kind:row.success?'tool':'error',title:(row.success?'Kết quả · ':'Lỗi · ')+(row.action||'công cụ'),text:detail});
  }
  const last=messages[messages.length-1];
  if(task.status==='completed'&&last?.kind!=='assistant')messages.push({kind:'assistant',title:'ChatGPT',text:'Nhiệm vụ đã hoàn tất.'});
@@ -41,12 +49,25 @@ function winControlMessages(task){
  if(task.status==='failed')messages.push({kind:'error',title:'Lỗi',text:task.error||'Nhiệm vụ gặp lỗi.'});
  return messages;
 }
+function winControlActionName(a){
+ const names={OPEN_APP:'Mở ứng dụng',WAIT_WINDOW:'Chờ cửa sổ',FOCUS_WINDOW:'Đưa cửa sổ lên trước',TYPE_TEXT:'Nhập văn bản',HOTKEY:'Bấm phím tắt',CLICK:'Bấm',SCREENSHOT:'Chụp màn hình',LIST_WINDOWS:'Liệt kê cửa sổ',LIST_PROCESSES:'Liệt kê tiến trình',ENSURE_TEMP_DIR:'Chuẩn bị thư mục tạm',VERIFY_FILE:'Kiểm tra tệp',OPEN_FILE:'Mở tệp',MAN_STATUS:'Kiểm tra MAN, Studio, Extension',WAIT:'Chờ',READ_ELEMENT:'Đọc phần tử',FIND_ELEMENT:'Tìm phần tử',WAIT_ELEMENT:'Chờ phần tử'};
+ const extra=a.target_app?' · '+a.target_app:a.keys?' · '+a.keys:a.path?' · '+a.path:'';
+ return (names[a.action]||a.action)+extra;
+}
+function winControlStatus(task){
+ if(winControlBusy)return 'Đang gửi…';
+ if(!task)return 'ChatGPT điều khiển · Windows Agent thực thi';
+ const step={OBSERVE_CHATGPT:'Đang đọc ChatGPT',SEND_CHATGPT:'Đang gửi cho ChatGPT',WINCONTROL_DECIDE:'ChatGPT đang trả lời…'}[task.current_action]||(task.current_action?'Đang thực hiện: '+winControlActionName({action:task.current_action}):'Đang chờ');
+ return {running:step,waiting:'Đang xếp hàng',completed:'Hoàn tất',needs_review:'Dừng an toàn · cần kiểm tra',failed:'Lỗi',stopped:'Đã dừng'}[task.status]||task.status;
+}
+function winControlNew(){winControlLastTask='new';winControlReply='';winControlTab='chat';render()}
 function winControlChatHTML(task){
  const messages=winControlMessages(task);
+ if(winControlSent&&!messages.length)messages.push({kind:'user',title:'Bạn',text:winControlSent});
  const empty=!messages.length;
  const transcript=messages.map(m=>`<article class="wc-message ${m.kind}"><small>${esc(m.title)}</small><div>${esc(m.text)}</div></article>`).join('');
  const prompt=empty?`<div class="wc-welcome"><div class="wc-mark">W</div><h1>WinControl</h1><p>Giao một nhiệm vụ bằng tiếng Việt. ChatGPT sẽ quyết định từng bước và Agent sẽ xác minh kết quả.</p></div>`:'';
- return `<section class="wc-chat-view">${prompt}<div class="wc-transcript" id="wc_transcript">${transcript}</div><form class="wc-composer" onsubmit="winControlSubmit(event)"><textarea id="win_command" maxlength="4000" rows="1" placeholder="Gửi lệnh cho WinControl" aria-label="Lệnh WinControl" ${winControlBusy?'disabled':''}></textarea><div class="wc-compose-actions"><span>${winControlBusy?'Đang xử lý…':task?`${esc(task.status)} · ${esc(task.current_action||'Đang chờ')}`:'ChatGPT điều khiển · Windows Agent hiện có'}</span><div>${task?.status==='running'?`<button class="wc-stop" type="button" onclick="winControlStop()">Dừng an toàn</button>`:''}<button class="wc-send" type="submit" ${winControlBusy?'disabled':''} aria-label="Gửi nhiệm vụ">${winControlBusy?'…':'↑'}</button></div></div></form>${winControlReply?`<div class="wc-live-result" aria-live="polite">${esc(winControlReply)}</div>`:''}</section>`;
+ return `<section class="wc-chat-view${empty?" empty":""}">${prompt}<div class="wc-transcript" id="wc_transcript">${transcript}</div><form class="wc-composer" onsubmit="winControlSubmit(event)"><textarea id="win_command" maxlength="4000" rows="1" placeholder="Gửi lệnh cho WinControl" aria-label="Lệnh WinControl" ${winControlBusy?'disabled':''}></textarea><div class="wc-compose-actions"><span>${esc(winControlStatus(task))}</span><div>${task&&task.status!=='running'?`<button class="wc-stop" type="button" onclick="winControlNew()">Nhiệm vụ mới</button>`:''}${task?.status==='running'?`<button class="wc-stop" type="button" onclick="winControlStop()">Dừng an toàn</button>`:''}<button class="wc-send" type="submit" ${winControlBusy?'disabled':''} aria-label="Gửi nhiệm vụ">${winControlBusy?'…':'↑'}</button></div></div></form>${winControlReply?`<div class="wc-live-result" aria-live="polite">${esc(winControlReply)}</div>`:''}</section>`;
 }
 function winControlJobsHTML(){
  const tasks=winControlTasks();
@@ -72,15 +93,18 @@ async function winControlSubmitStatus(){
  catch(e){winControlReply='Không đọc được MAN/Agent: '+e.message;render()}
 }
 async function winControlSubmit(event){
- event?.preventDefault?.();const field=document.getElementById('win_command');const command=String(field?.value||'').trim();if(!command||winControlBusy)return;
- winControlBusy=true;winControlReply='';winControlTab='chat';render();
+ event?.preventDefault?.();const field=document.getElementById('win_command');const command=String(field?.value||winControlDraft||'').trim();if(!command||winControlBusy)return;
+ // One id per typed command: a double click or a resent request returns the same task instead of a second one.
+ const requestId=winControlPending?.text===command?winControlPending.id:'req-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);
+ winControlPending={text:command,id:requestId};
+ winControlBusy=true;winControlReply='';winControlTab='chat';winControlSent=command;render();
  try{
-  const result=await api('/api/automation',{command:'wincontrol',text:command});
-  if(result.task_id)winControlLastTask=result.task_id;
+  const result=await api('/api/automation',{command:'wincontrol',text:command,request_id:requestId});
+  if(result.task_id){winControlLastTask=result.task_id;winControlDraft='';winControlPending=null}
   else winControlReply=[result.summary,result.message].filter(Boolean).join('\n')||JSON.stringify(result);
   state=await api('/api/state');
  }catch(e){winControlReply='Chưa thực thi: '+e.message}
- finally{winControlBusy=false;render()}
+ finally{winControlBusy=false;winControlSent='';render()}
 }
 async function winControlStop(){
  const task=winControlTasks().find(t=>t.id===winControlLastTask)||winControlSelected();
@@ -91,9 +115,26 @@ async function winControlStop(){
 }
 (function installWinControlPage(){
  if(typeof UI_PAGES!=='undefined'&&!UI_PAGES.includes('WinControl'))UI_PAGES.push('WinControl');
- const nav=document.querySelector('aside')||document.querySelector('.neo-main-nav');
+ // The visible navigation is the shell's header nav; the old document.querySelector('aside') sidebar is hidden by ui_shell.js.
+ const nav=document.querySelector('.neo-main-nav')||document.querySelector('aside');
  if(nav&&!nav.querySelector('[data-page="WinControl"]')){const button=document.createElement('button');button.dataset.page='WinControl';button.textContent='WinControl';button.onclick=()=>goPage('WinControl');nav.appendChild(button)}
  if(typeof render!=='function')return;
  const base=render;
- render=function(){base();if(page!=='WinControl')return;for(const id of ['mainToolbar','mainStats','mainNotice','studioPanel','extensionPanel','windowsAgentPanel','dashboard']){const el=document.getElementById(id);if(el)el.hidden=true}const extra=document.getElementById('extra');if(extra){extra.hidden=false;extra.innerHTML=winControlHTML();const transcript=document.getElementById('wc_transcript');if(transcript)transcript.scrollTop=transcript.scrollHeight;const field=document.getElementById('win_command');if(field&&!winControlBusy)field.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();field.form.requestSubmit()}})}document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page==='WinControl'))};
+ render=function(){
+  // The page refreshes every 2 s; keep what the user is typing, the caret and focus across the redraw.
+  const old=document.getElementById('win_command');
+  if(old){winControlDraft=old.value;winControlFocus=document.activeElement===old;winControlCaret=[old.selectionStart,old.selectionEnd]}
+  base();if(page!=='WinControl')return;
+  for(const id of ['mainToolbar','mainStats','mainNotice','studioPanel','extensionPanel','windowsAgentPanel','dashboard']){const el=document.getElementById(id);if(el)el.hidden=true}
+  const extra=document.getElementById('extra');if(!extra)return;
+  const html=winControlHTML();
+  if(extra.dataset.wc!==html||extra.hidden||!extra.querySelector('.wc-shell')){extra.hidden=false;extra.innerHTML=html;extra.dataset.wc=html;
+   const transcript=document.getElementById('wc_transcript');if(transcript)transcript.scrollTop=transcript.scrollHeight}
+  const field=document.getElementById('win_command');
+  if(field){
+   if(field.value!==winControlDraft)field.value=winControlDraft;
+   if(!field.dataset.bound){field.dataset.bound='1';field.addEventListener('input',()=>{winControlDraft=field.value});field.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();field.form.requestSubmit()}})}
+   if(winControlFocus&&document.activeElement!==field&&!winControlBusy){field.focus();try{field.setSelectionRange(...winControlCaret)}catch{}}
+  }
+  document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page==='WinControl'))};
 })();

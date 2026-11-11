@@ -20,6 +20,11 @@ def dispatch(a,context,home,settings):
  os.environ['AI_MANAGER_AGENT_HOME']=str(home)
  name=a['action'];app=a.get('target_app') or context.get('target_app')
  target=dict(context,target_app=app)
+ if name=='MAN_STATUS':
+  import urllib.request
+  from .wincontrol_chat_loop import man_health
+  with urllib.request.urlopen(str(context.get('man_state_url') or 'http://127.0.0.1:8765/api/state'),timeout=min(20,float(a.get('timeout',30)))) as r:
+   return man_health(json.load(r))
  if name in ('ENSURE_TEMP_DIR','VERIFY_FILE','OPEN_FILE'):
   import tempfile
   root=(Path(tempfile.gettempdir())/'WinControl').resolve()
@@ -174,10 +179,23 @@ def dispatch(a,context,home,settings):
   from .wincontrol_chat_loop import parse_decision
   url=context.get('expected_url') or (context.get('chrome_mcp_config') or {}).get('page_url')
   if not url:raise RuntimeError('EXACT_CHATGPT_URL_REQUIRED')
-  observed=observe(context,settings,url,3)
-  if not observed.get('completion_verified') or observed.get('lastRole')!='assistant':return {'waiting':True,'context':{}}
-  decision=parse_decision(observed.get('lastAssistant'))
-  return {'decision':decision,'context':{'chatgpt_verified':{'completed':True,'url':url,'fingerprint':observed['fingerprint'],'turn_count':observed['turnCount']},'wincontrol_round':int(context.get('wincontrol_round',0))+1}}
+  since=float(context.get('wincontrol_wait_since') or 0) or time.time()
+  limit=float(a.get('response_limit',context.get('wincontrol_response_limit',600)))
+  try:observed=observe(context,settings,url,3)
+  except RuntimeError as exc:
+   # Reading is safe to repeat: a dropped MCP connection or a half-rendered page is waited out, not failed.
+   if time.time()-since>limit:raise TimeoutError('CHATGPT_RESPONSE_TIMEOUT: '+str(exc)) from exc
+   return {'waiting':True,'context':{'wincontrol_wait_since':since,'wincontrol_wait_reason':str(exc)[:300]}}
+  if not observed.get('completion_verified') or observed.get('lastRole')!='assistant':
+   if time.time()-since>limit:raise TimeoutError('CHATGPT_RESPONSE_TIMEOUT')
+   return {'waiting':True,'context':{'wincontrol_wait_since':since,'wincontrol_wait_reason':'generating' if observed.get('generating') else 'unverified'}}
+  verified={'completed':True,'url':url,'fingerprint':observed['fingerprint'],'turn_count':observed['turnCount']}
+  done={'chatgpt_verified':verified,'wincontrol_round':int(context.get('wincontrol_round',0))+1,'wincontrol_wait_since':None,'wincontrol_wait_reason':None}
+  try:decision=parse_decision(observed.get('lastAssistant'))
+  except ValueError as exc:
+   # The reply is complete but unusable: hand it back to the runtime, which asks ChatGPT for a corrected reply.
+   decision={'status':'invalid','summary':str(exc),'actions':[],'reply':str(observed.get('lastAssistant') or '')[:800]}
+  return {'decision':decision,'context':done}
  if name=='WAIT_PAGE':return browser.wait_page(a.get('url') or context.get('expected_url'),float(a.get('timeout',30))-.1)
  key={'NEW_TAB':'CTRL+T','CLOSE_TAB':'CTRL+W','SWITCH_TAB':'CTRL+TAB','REFRESH':'F5'}.get(name)
  if key:return browser.key(key)

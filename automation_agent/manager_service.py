@@ -19,30 +19,38 @@ class AutomationService:
    task_id=str(data.get('task_id') or '')
    agent=self.client.request('/state',timeout=7)
    task=next((t for t in agent.get('tasks',[]) if t.get('id')==task_id),None)
-   if not task or task.get('current_stage')!='WinControl' or not task.get('context',{}).get('wincontrol_task'):raise ValueError('Chi huy duoc task WinControl dang duoc giao dien nay theo doi')
+   if not task or task.get('current_stage')!='WinControl' or not task.get('context',{}).get('wincontrol_task'):raise ValueError('Chỉ hủy được task WinControl đang được giao diện này theo dõi')
    return self.client.request('/cancel',{'task_id':task_id},timeout=7)
   if cmd=='wincontrol':
    with self.wincontrol_lock:
     text=str(data.get('text') or '').strip()
-    if not text:raise ValueError('Nh???p l???nh WinControl')
-    if not self.snapshot().get('online'):raise ValueError('Windows Agent ch??a k???t n???i')
-    agent=self.client.request('/state',timeout=7);active=[t for t in agent.get('tasks',[]) if t.get('status') in ('running','waiting')]
-    if agent.get('current_task') or active:raise ValueError('Agent ??ang c?? task ho???t ?????ng; kh??ng th??m l??nh ????? tr??nh tr??ng')
+    request_id=str(data.get('request_id') or '')[:80]
+    if not text:raise ValueError('Nhập lệnh WinControl')
+    if len(text)>4000:raise ValueError('Lệnh WinControl quá dài (tối đa 4000 ký tự)')
+    if not self.snapshot().get('online'):raise ValueError('Windows Agent chưa kết nối')
+    agent=self.client.request('/state',timeout=7)
+    # The same send (double click, browser retry) returns the task it already created instead of a second one.
+    same=next((t for t in agent.get('tasks',[]) if request_id and t.get('context',{}).get('wincontrol_request_id')==request_id),None)
+    if same:return {'intent':'WINCONTROL_CHATGPT_LOOP','summary':'Lệnh này đã được nhận trước đó; không gửi lại.','task_id':same['id'],'duplicate':True}
+    active=[t for t in agent.get('tasks',[]) if t.get('status') in ('running','waiting')]
+    if agent.get('current_task') or active:raise ValueError('Agent đang có task hoạt động; không thêm lệnh để tránh trùng')
     settings={}
     try:settings=json.loads((self.home/'settings.json').read_text(encoding='utf8'))
     except (OSError,ValueError):pass
     page_url=(settings.get('chrome_mcp') or {}).get('page_url')
     if not page_url:raise ValueError('CHROME_MCP_NOT_CONFIGURED')
-    q=self.queue_getter();projects=[{k:p.get(k) for k in ('id','name','status','current_stage','execution_mode','automation_task_id','action_done','action_total')} for p in q.list()]
-    tasks=[{k:t.get(k) for k in ('id','status','project','current_action','error','next_action')} for t in agent.get('tasks',[]) if t.get('status') in ('running','waiting','paused','failed','timeout','needs_review')][-12:]
+    q=self.queue_getter();projects=[{k:p.get(k) for k in ('id','name','status','current_stage')} for p in q.list()][:15]
+    tasks=[{k:(str(t.get(k))[:160] if k=='error' and t.get(k) else t.get(k)) for k in ('id','status','current_stage','current_action','error')} for t in agent.get('tasks',[]) if t.get('status') in ('running','waiting','paused','failed','timeout','needs_review')][-8:]
     live={'agent':{k:agent.get(k) for k in ('online','enabled','pid','current_task','error')},'projects':projects,'tasks':tasks}
     from .wincontrol_chat_loop import initial_prompt
     task_id=__import__('uuid').uuid4().hex
     exchange='wincontrol-'+task_id+'-initial'
-    context={'target_app':'chrome','expected_url':page_url,'wincontrol_task':True,'wincontrol_command':text,'wincontrol_round':0,'wincontrol_initial_state':live,'temp_dir':str(Path(__import__('tempfile').gettempdir())/'WinControl')}
-    actions=[{'action':'OBSERVE_CHATGPT','samples':3,'timeout':30},{'action':'SEND_CHATGPT','text':initial_prompt(text,dict(live,temp_dir=context['temp_dir'])),'exchange_id':exchange,'timeout':45,'retries':0},{'action':'WINCONTROL_DECIDE','timeout':30,'retries':0}]
+    context={'target_app':'chrome','expected_url':page_url,'wincontrol_task':True,'wincontrol_command':text,'wincontrol_request_id':request_id or task_id,'wincontrol_round':0,'wincontrol_initial_state':live,'man_state_url':'http://127.0.0.1:8765/api/state','temp_dir':str(Path(__import__('tempfile').gettempdir())/'WinControl')}
+    # A Chrome MCP snapshot takes several seconds on this PC; observe/send/decide budgets allow for it and a reconnect.
+    prompt='['+exchange+'] '+initial_prompt(text,dict(live,temp_dir=context['temp_dir']))
+    actions=[{'action':'OBSERVE_CHATGPT','samples':3,'timeout':90,'retries':2},{'action':'SEND_CHATGPT','text':prompt,'exchange_id':exchange,'timeout':120,'retries':0},{'action':'WINCONTROL_DECIDE','timeout':120,'retries':0}]
     submitted=self.client.request('/submit',{'actions':actions,'project':None,'stage':'WinControl','context':context,'exclusive':True},timeout=10)
-    return {'intent':'WINCONTROL_CHATGPT_LOOP','summary':'Task ???? ???????c g???i ?????n ChatGPT qua Chrome DevTools MCP; Agent s??? l??m c??ng c???, quan s??t v?? g???i k???t qu??? l???i.','task_id':submitted['task_id']}
+    return {'intent':'WINCONTROL_CHATGPT_LOOP','summary':'Đã gửi nhiệm vụ đến ChatGPT qua Chrome DevTools MCP; Agent thực thi từng bước, quan sát và gửi kết quả lại.','task_id':submitted['task_id']}
   if cmd=='studio_attach':
    from .studio_workflow import workflow as studio_workflow,validate_url
    q=self.queue_getter();p=q.get(data['project'])

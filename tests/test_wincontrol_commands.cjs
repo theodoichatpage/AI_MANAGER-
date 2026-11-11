@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const source = fs.readFileSync('wincontrol.js', 'utf8');
-assert.match(source, /api\('\/api\/automation',\{command:'wincontrol',text:command\}\)/);
+assert.match(source, /api\('\/api\/automation',\{command:'wincontrol',text:command,request_id:requestId\}\)/);
+assert.match(source, /winControlDraft/, 'the 2-second refresh must not erase what the user is typing');
+assert.match(source, /neo-main-nav/, 'WinControl must appear in the visible header navigation');
 assert.doesNotMatch(source, /function winControlPlan\(/);
 assert.match(fs.readFileSync('automation_agent/manager_service.py', 'utf8'), /cmd=='wincontrol'/);
 assert.match(fs.readFileSync('automation_agent/action_worker.py', 'utf8'), /name=='WINCONTROL_DECIDE'/);
