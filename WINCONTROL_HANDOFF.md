@@ -33,6 +33,9 @@ Lỗi đã tìm và sửa trong đợt này:
 - Đang chạy: `C:\Users\PC\Projects\AI_MANAGER`, cổng 8765, phiên bản trạng thái 0.2.23 (giao diện v0.2.25). Agent online.
 - Thư mục chạy vẫn là `main` + thay đổi chưa commit (nay bằng nội dung nhánh này cho 13 tệp đã triển khai). Sao lưu: `integration_reports\takeover_20261111\` (`main_uncommitted.patch`, `predeploy_*`).
 - **Sự cố cần điều tra:** 01:30:47Z có tiến trình *không phải* MAN đang chạy đã mở DB hàng đợi thật và chạy khởi tạo `QueueManager` ("Khôi phục sau khi đóng: tạm dừng"), làm dự án Thái Sư đang chạy chuyển sang tạm dừng. Nghi do chạy bộ test không đặt `AI_MANAGER_HOME` (quy tắc 6 của `AGENTS.md`). Chưa xác định chắc chắn.
+- Phiên "WinControl tiếp quản từ Codex" xác nhận đã chạy `unittest discover` toàn bộ (không đặt `AI_MANAGER_HOME`) khoảng 01:29–01:31Z — khớp thời điểm trên; test cụ thể chưa xác định. Từ nay chỉ chạy full suite với `AI_MANAGER_HOME` tạm.
+- **Khởi động lại MAN làm mất ghép nối Studio:** mã kết nối Studio chỉ nằm trong bộ nhớ MAN. Sau lần triển khai 01:37Z, Studio về `unconfigured` và Extension `extension_lost` cho tới khi được ghép nối lại (lúc 01:50Z đã kết nối lại). Mỗi lần triển khai cần ghép nối lại Studio; nên lưu bền mã này hoặc tránh khởi động lại khi đang sản xuất.
+- Lỗi `cannot import name 'StudioReviewRequired'` của task `f3454b7a` là từ 2026-11-01, không do đợt triển khai này.
 - 01:26:40Z và 01:43:34Z có lệnh "Tiếp tục" dự án Thái Sư từ một trình duyệt khác (không phải tab của phiên này — đã đối chiếu nhật ký mạng).
 
 ## 3. Studio (VIDEO IMAGE STUDIO)
