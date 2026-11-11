@@ -18,6 +18,18 @@ Test: 320 test Python (cô lập) — chỉ 3 lỗi có sẵn (`test_startup_por
 
 Triển khai bị dừng: lần chạy đầu `deploy_man.ps1` từ chối vì task `b359d508` (stopped từ đầu tháng 11, còn cờ `in_flight` cũ — một trong 3 cờ Codex dặn không xóa). Đã sửa script để chỉ chặn task running/waiting; lần chạy lại bị bộ kiểm tra an toàn chặn, chờ người dùng duyệt khởi động lại MAN.
 
+### Cập nhật sau khi người dùng cho phép (~22:30–22:50)
+
+- Triển khai `deploy_man.ps1` (sửa thêm 2 lỗi của script: hàm `Git` tự gọi chính nó; cảnh báo stderr của git bị coi là lỗi): 15:35:25Z `ecb9578→400bb4c`, rồi 15:40:58Z `→993c8d5`. Checkpoint không đổi cả hai lần; Studio tự ghép nối lại sau ~3 giây; Extension `responding` 0.5.20. Biên nhận: `AI_MANAGER\integration_reports\deploys\`.
+- **Kiểm thử thực tế (7) từ giao diện WinControl:**
+  - Lần 1 (`673f157e`): ChatGPT → MAN_STATUS → MAN_QUEUE resume → MAN từ chối 400 "Nguồn truy cập không hợp lệ" (Agent thiếu header `Origin`). Không có gì thay đổi; task dừng `needs_review` đúng thiết kế. Sửa `993c8d5` (gửi Origin của MAN, báo lý do MAN từ chối; MAN giả trong test kiểm Origin).
+  - Lần 2 (`a5884c05`): ChatGPT nhớ lỗi cũ, kiểm tra lại rồi tự `blocked` — không thử lại khi chưa rõ nguyên nhân.
+  - Lần 3 (`ea327664`, lệnh nêu rõ lỗi đã sửa): MAN_STATUS → **MAN_QUEUE resume: `paused → running`** → MAN_STATUS xác nhận → `complete`. Dự án Thái Sư chạy lại; 10 ảnh mới trong 30 phút sau đó.
+- **Kiểm thử thực tế (3):** task `046c161a` (lệnh chỉ đọc) chạy trọn vòng trong lúc Agent đang chạy sản xuất `f433e842`; sản xuất không bị gián đoạn.
+- Phát hiện khi chạy thật và đã sửa mã (`dcb7f0b`, **chưa triển khai** — sản xuất đang chạy nên script từ chối khởi động lại, đúng thiết kế): kết quả MAN_STATUS bị cắt 1500 ký tự nên ChatGPT không thấy Studio/Extension; nay phần tình trạng đứng trước danh sách dự án. Triển khai ở lần sản xuất tạm dừng tiếp theo.
+- (6) phía MAN đã triển khai; chưa gặp lại thông báo hết lượt ảnh thật để quan sát tab nghỉ.
+- Còn sót: task WinControl `673f157e`, `a5884c05` ở `needs_review` (vô hại, từ lần thử 1–2).
+
 ## 1. Bằng chứng READY (kiểm thử thực tế từ giao diện)
 
 Task `9213574d-0699-47c3-910d-1e875b8b6c2d`, gửi từ ô nhập WinControl: *"Mở Notepad, ghi dòng "WinControl sẵn sàng 11/11", lưu thành tệp wc_ready_1111.txt trong thư mục tạm WinControl rồi xác minh nội dung tệp."*
