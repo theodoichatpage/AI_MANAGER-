@@ -111,3 +111,13 @@ Triển khai: `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao
 3. Chặng 2: công cụ file/thư mục, PowerShell có kiểm soát, Chrome qua MCP, Git, build/test — thêm vào `wincontrol_chat_loop.FIELDS` + `action_worker`, có giới hạn và test.
 4. Chặng 3: hành động sửa chữa cho MAN/Studio/Extension dựa trên `MAN_STATUS` (hiện chỉ đọc).
 5. Commit 17 tệp đã triển khai vào `main` (hoặc merge nhánh này) để thư mục chạy hết "chưa commit".
+
+### Sáng 12/11 (tiếp): tài khoản ChatGPT thứ hai, Aprilynne một tuyến, ngưỡng mất kết nối
+
+- Ảnh người dùng gửi cho thấy kiểu thông báo thứ hai: "You're out of images… Try again at 10:46 PM". Extension **0.5.21** (Studio `0d8255a`) nhận kiểu này; MAN `6127fc3` đọc giờ "Try again at" (tin tới 24 giờ) và **cho nghỉ theo tài khoản** (mọi tab cùng tài khoản nghỉ cùng nhau; tab đã đổi sang tài khoản khác làm việc ngay). Lần nghỉ cũ ghi trước bản này không có tài khoản: đã tạm dừng qua WinControl, sao lưu `manager_639058….json.before_clear_rest_20261112T085054`, xóa 2 dòng nghỉ của `edge_Profile_1`/`edge_Default` (đã đổi sang tài khoản s***e), rồi chạy tiếp qua WinControl.
+- **Tài khoản thứ hai chứng minh thực tế:** `edge_Default` (s***e) tạo xong cảnh 23 lúc 09:23 (ảnh 181), 182 lúc ~09:40.
+- **WinControl tạm dừng/tiếp tục thật** nhiều lần (pause `54ab13cb`, `6ca42b52`; resume `df6bc08f`, `d70b5769`, …): mỗi lần ChatGPT đọc MAN_STATUS → MAN_QUEUE → đọc lại để xác nhận.
+- **Aprilynne một tuyến** (phiên Aprilynne làm; người dùng duyệt trực tiếp ở phiên này): MAN `567d981`+`2b6d520` (duyệt khi ≥8/12; presence gửi `storyReview`; bỏ `aprilynne_gate`) triển khai 02:33:17Z; Studio `b48c5a0` fast-forward lên `phase3-manager-presence`, Vercel success. (Trước đó `4c30aa6` đã có trên origin.)
+- **Lỗi mới, đã sửa:** lúc 09:27 và 09:42 dự án tự `needs_review` "Mất Studio/ChatGPT quá thời gian" — tab Studio tự tải lại theo bản Vercel mới và Extension tự lên 0.5.21 làm ChatGPT rời >120 giây. `b74b818`: chờ 10 phút (không gửi gì khi mất kết nối). Triển khai 06:03:48Z, rồi chạy tiếp qua WinControl.
+- Đề xuất từ phiên Aprilynne: phát hành theo đợt bằng `tools/release.ps1` (nhánh `aprilynne/release-script-20261112`, **chưa xem/chưa đưa vào**; cần thêm bước tạm dừng/tiếp tục sản xuất).
+- Đã đề xuất, chờ người dùng đồng ý: **Telegram** (nhận lệnh từ đúng tài khoản người dùng, chuyển vào WinControl, báo tình trạng; token do người dùng tự dán).
