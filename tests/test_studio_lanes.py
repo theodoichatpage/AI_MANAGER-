@@ -138,6 +138,21 @@ class Lanes(unittest.TestCase):
   w.now+=901;w.round();self.assertIsNone(st.job('laneA'),'still resting after 15 minutes: ChatGPT said 5 hours')
   w.now+=5*3600;w.round();self.assertIsNotNone(st.job('laneA'),'works again once the limit has reset')
 
+ def test_all_lanes_resting_is_waited_out_not_called_stuck(self):
+  # Found live 2026-11-12 02:54: every lane rested after the limit, and the progress watchdog failed the run.
+  class Watched(W):
+   def wait(self,name,limit,ctx=None):
+    start=self.j['stages'].setdefault(name,self.now)
+    if self.now-start>limit:raise TimeoutError('Studio quá thời gian tại '+name)
+    return super().wait(name,limit,ctx)
+  st=FakeStudio(parts=1,scenes=3);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'} for _ in range(3)])
+  w=Watched(st,[worker('laneA')],tasks=('images',))
+  w.round();st.finish('laneA',ok=False,error="ChatGPT báo hết lượt tạo ảnh (giới hạn tài khoản): You can create more images when the limit resets in 5 hours.")
+  r=w.round();self.assertIn('đang nghỉ vì hết lượt tạo ảnh',r['context']['studio_message'])
+  for _ in range(10):w.now+=1800;w.round()  # 5 hours of rest, checked every 30 minutes: no timeout
+  self.assertTrue(any(n.startswith('lanes:rest:') for n in w.waits))
+  w.now+=600;w.round();self.assertIsNotNone(st.job('laneA'),'the lane works again after its rest')
+
  def test_limit_wait_reads_chatgpt_reset_time(self):
   f=studio_lanes.limit_wait
   self.assertEqual(f('limit resets in 5 hours'),5*3600)

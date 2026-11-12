@@ -5,7 +5,7 @@ images as soon as a part has scenes; when scenes are done every lane makes image
 Safety: a lane command is idempotent on the Studio server (same lane + same target returns the same job),
 so an uncertain POST may be re-sent to the SAME lane only. A job on a lost lane is released before it is
 given to another lane, so no part or scene is ever sent twice at the same time."""
-import re,subprocess,urllib.parse
+import re,subprocess,time,urllib.parse
 from .studio_workflow import atomic,StudioReviewRequired
 from pathlib import Path
 from .studio_images import rows
@@ -273,8 +273,16 @@ def step(w,s,post=None):
   ctx['studio_message']='Chưa có tab ChatGPT nào kết nối (cần Extension 0.5.0+). Manager chờ, không gửi lệnh.'
  if not live and not in_flight:return w.wait('lanes:connection',1800,ctx)
  if waiting and scenes_done and images_done and not in_flight:return w.wait('lanes:rearm:'+str(sum(items[k].get('rearm',0) for k in items)),REARM_AFTER*2**REARM_MAX+JOB_LIMIT,ctx)
- # Watchdog keyed on progress: any finished part/image restarts the clock.
- return w.wait('lanes:'+str(done_parts)+':'+str(done_images),JOB_LIMIT+LANE_LOST+300,ctx)
+ # Every lane is resting after ChatGPT's limit and nothing is out: no progress is expected until the rest ends,
+ # so wait for it instead of letting the progress watchdog call Studio stuck.
+ rests=[float(st['cooldown'].get(lane) or 0) for lane in live]
+ if live and not in_flight and rests and min(rests)>now:
+  until=min(rests);ctx['studio_message']='Tất cả tab ChatGPT đang nghỉ vì hết lượt tạo ảnh; Manager chạy tiếp lúc '+time.strftime('%H:%M',time.localtime(until))+'.'
+  return w.wait('lanes:rest:'+str(int(until)),LIMIT_MAX+JOB_LIMIT+LANE_LOST+300,ctx)
+ # Watchdog keyed on progress: any finished part/image restarts the clock, and so does the end of a rest
+ # (time spent resting is not time without progress).
+ rested=max([float(v or 0) for v in st['cooldown'].values() if float(v or 0)<=now]+[0])
+ return w.wait('lanes:'+str(done_parts)+':'+str(done_images)+(':after'+str(int(rested)) if rested else ''),JOB_LIMIT+LANE_LOST+300,ctx)
 
 def rewrite_round(w,s,post=None,single=False):
  """Get Transcript on several tabs: give each free lane the next rewrite section the Studio tab uploaded.
