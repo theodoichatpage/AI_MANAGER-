@@ -132,3 +132,4 @@ Triển khai: `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao
 - Sửa `49d883c` (triển khai 07:38:05Z): WinControl tự mở lại **Chrome của chính nó** (hồ sơ + cổng đã cấu hình) khi không kết nối được; bản nháp chưa gửi bắt đầu bằng `[wincontrol-` được thay, chữ người dùng gõ vẫn bị chặn. Test `tests/test_bridge_draft.cjs`.
 - 14:41–14:59: WinControl `c35ef8fa` cho chạy tiếp **thành công**; MAN tự mở lại tab Studio trong Edge; ảnh 199 → 202.
 - **Telegram đã triển khai, chưa cấu hình:** người dùng dán token XuongAIbot ở tab Công việc → nhắn `/pair <mã>` cho bot.
+- **Telegram đã ghép nối (12/11 ~14:14 giờ VN, xác nhận từ ảnh chụp bot + `state.telegram`: configured, paired, đang poll).** Chưa kiểm thử thực tế `/status`, lệnh WinControl và báo cáo tự động qua bot.
