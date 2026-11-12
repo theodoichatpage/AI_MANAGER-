@@ -80,6 +80,27 @@ class MCPRegression(unittest.TestCase):
    self.assertEqual(result['submission'],'received')
    self.assertEqual(call.call_count,2)
 
+ def test_composer_not_yet_interactive_is_tried_again(self):
+  # Seen live 2026-11-12: "The element did not become interactive within the configured timeout." Nothing was typed.
+  prompt='round two'
+  received=SNAP.replace('  uid=1_6 textbox','  uid=1_7 heading "You said:" level="5"\n  uid=1_8 StaticText "round two"\n  uid=1_6 textbox')
+  busy=RuntimeError('MCP_ACTION_FAILED: Error: Failed to interact with the element with uid 2_3. The element did not become interactive within the configured timeout.')
+  state=dict(completion_verified=True,url=URL,fingerprint='a'*64,turnCount=2)
+  verified=dict(completed=True,url=URL,fingerprint='a'*64,turn_count=2)
+  with patch.object(m,'observe',return_value=state),patch.object(m,'_config',return_value={}),patch.object(m.time,'sleep'),\
+       patch.object(m,'_call',side_effect=[busy,{'snapshot':SNAP},{'clicked':True},{'snapshot':received}]) as call:
+   result=m.send({}, {},URL,prompt,'exchange-0004',verified)
+  self.assertEqual(result['submission'],'received')
+  self.assertEqual([c.args[1] for c in call.call_args_list],['fill_click','snapshot','fill_click','snapshot'])
+
+ def test_other_send_errors_are_not_tried_again(self):
+  state=dict(completion_verified=True,url=URL,fingerprint='a'*64,turnCount=2)
+  verified=dict(completed=True,url=URL,fingerprint='a'*64,turn_count=2)
+  with patch.object(m,'observe',return_value=state),patch.object(m,'_config',return_value={}),patch.object(m.time,'sleep'),\
+       patch.object(m,'_call',side_effect=[RuntimeError('MCP_ACTION_FAILED: COMPOSER_VALUE_UNVERIFIED_NO_SEND')]) as call:
+   with self.assertRaises(RuntimeError):m.send({}, {},URL,'hello','exchange-0005',verified)
+  self.assertEqual(call.call_count,1)
+
  def test_lost_receipt_never_resends(self):
   state=dict(completion_verified=True,url=URL,fingerprint='a'*64,turnCount=2)
   verified=dict(completed=True,url=URL,fingerprint='a'*64,turn_count=2)

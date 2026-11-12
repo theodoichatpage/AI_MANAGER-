@@ -30,6 +30,9 @@ def _call_once(c,operation,text=None):
  return result
 
 SNAPSHOT_ATTEMPTS=3
+FILL_ATTEMPTS=3
+FILL_GAP=3
+NOT_INTERACTIVE='did not become interactive'
 
 def _call(c,operation,text=None):
  """A read-only snapshot reconnects (new bridge process) after a dropped MCP connection; a send never repeats."""
@@ -121,7 +124,16 @@ def send(context,settings,url,text,exchange_id,verified,fresh=False):
  if not state['completion_verified'] or stale:
   raise RuntimeError('CHATGPT_UNVERIFIED_NO_SEND')
  c=_config(context,settings,url)
- _call(c,'fill_click',text)
+ # "did not become interactive" means the fill/click itself did not happen (seen live 2026-11-12: the composer was
+ # briefly disabled). Try again a few seconds later; before each new try, a prompt that arrived anyway stops it.
+ for attempt in range(FILL_ATTEMPTS):
+  try:_call(c,'fill_click',text);break
+  except RuntimeError as exc:
+   if NOT_INTERACTIVE not in str(exc) or attempt+1==FILL_ATTEMPTS:raise
+   time.sleep(FILL_GAP)
+   now=parse_snapshot(_call(c,'snapshot')['snapshot'],url)
+   if tagged and exchange_id in now.get('lastUserText',''):
+    return {'exchange_id':exchange_id,'submission':'received','url':url,'turnCount':now['turnCount'],'prompt_sha256':digest,'recovered':True}
  # Click alone is not receipt. A snapshot must show exact user text.
  for _ in range(8):
   snap=_call(c,'snapshot')['snapshot']
