@@ -154,6 +154,32 @@ class Lanes(unittest.TestCase):
   w.now+=600;r=w.round();self.assertIsNotNone(st.job('laneA'),'the lane works again after its rest')
   self.assertIsNone(r['context']['studio_message'],'the resting message is cleared once the lane works again')
 
+ def test_limit_wait_reads_an_exact_time(self):
+  import time as _t
+  now=_t.mktime((2026,11,12,8,40,0,0,0,-1))
+  card="ChatGPT báo hết lượt tạo ảnh (giới hạn tài khoản): You’re out of images You’re out of image creations for now. Try again at 10:46 PM."
+  self.assertEqual(studio_lanes.limit_wait(card,now),(22*60+46-(8*60+40))*60+60)
+  self.assertEqual(studio_lanes.limit_wait('Try again at 8:30 AM',now),86400-600+60,'already past today: tomorrow')
+  self.assertEqual(studio_lanes.limit_wait('thử lại lúc 09:00',now),20*60+60)
+  self.assertEqual(studio_lanes.limit_wait('Try again at 8:45 AM',now),studio_lanes.LIMIT_COOLDOWN,'never shorter than the usual rest')
+
+ def test_a_limit_rests_every_tab_of_that_account_but_not_another_account(self):
+  st=FakeStudio(parts=1,scenes=4);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'} for _ in range(4)])
+  w=W(st,[worker('laneA',key='aaa'),worker('laneB',key='aaa'),worker('laneC',key='bbb')],tasks=('images',))
+  w.round();first=next(j['lane'] for j in st.s['laneJobs'])
+  self.assertIn(first,('laneA','laneB'))
+  st.finish(first,ok=False,error='giới hạn: limit resets in 5 hours');r=w.round()
+  self.assertIn('2 tab dùng tài khoản này nghỉ tạo ảnh 5 giờ',r['context']['studio_attention'][0])
+  self.assertEqual([j['lane'] for j in st.s['laneJobs']],['laneC'],'the other account takes the picture at once')
+  view={v['lane']:v['cooldown'] for v in r['context']['studio_lanes']};self.assertEqual(view,{'laneA':True,'laneB':True,'laneC':False})
+
+ def test_a_tab_signed_in_to_another_account_stops_resting(self):
+  st=FakeStudio(parts=1,scenes=2);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'} for _ in range(2)])
+  w=W(st,[worker('laneA',key='aaa')],tasks=('images',))
+  w.round();st.finish('laneA',ok=False,error='giới hạn: limit resets in 5 hours');w.round();self.assertIsNone(st.job('laneA'))
+  w.workers=[worker('laneA',key='bbb')]  # the user signed this Edge profile in to another Plus account
+  w.now+=60;w.round();self.assertIsNotNone(st.job('laneA'),'the new account works without waiting for the old one')
+
  def test_limit_wait_reads_chatgpt_reset_time(self):
   f=studio_lanes.limit_wait
   self.assertEqual(f('limit resets in 5 hours'),5*3600)

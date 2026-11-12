@@ -23,9 +23,23 @@ LIMIT_MAX=6*3600     # never rest a lane longer than this, whatever ChatGPT says
 WAIT=re.compile(r'(?:resets? in|in|sau)\s+(\d+(?:[.,]\d+)?)\s*(hours?|hrs?|h\b|giờ|minutes?|mins?|phút)',re.I)
 MIN_VERSION=(0,5,0)
 
-def limit_wait(error):
- """Seconds to rest a lane after a limit error: ChatGPT's own "resets in 5 hours" when given, else LIMIT_COOLDOWN."""
- m=WAIT.search(str(error or ''))
+AT=re.compile(r'(?:try again|again|lại)\s+(?:at|lúc|vào)\s+(\d{1,2})[:.h](\d{2})\s*([AaPp])?\.?\s*[Mm]?',re.I)
+AT_MAX=24*3600       # an exact time ChatGPT gave ("Try again at 10:46 PM") is trusted up to a day ahead
+
+def limit_wait(error,now=None):
+ """Seconds to rest after a limit error: ChatGPT's own "resets in 5 hours" (at most LIMIT_MAX) or
+ "Try again at 10:46 PM" (local time, next occurrence, at most AT_MAX), else LIMIT_COOLDOWN."""
+ text=str(error or '');now=time.time() if now is None else now
+ at=AT.search(text)
+ if at:
+  hour,minute,half=int(at.group(1)),int(at.group(2)),(at.group(3) or '').upper()
+  if half=='P' and hour<12:hour+=12
+  if half=='A' and hour==12:hour=0
+  if hour<24 and minute<60:
+   t=time.localtime(now);target=time.mktime((t.tm_year,t.tm_mon,t.tm_mday,hour,minute,0,0,0,-1))
+   if target<=now:target+=86400
+   return int(min(AT_MAX,max(LIMIT_COOLDOWN,target-now+60)))
+ m=WAIT.search(text)
  if not m:return LIMIT_COOLDOWN
  n=float(m.group(1).replace(',','.'));unit=m.group(2).lower()
  seconds=n*(60 if unit.startswith(('min','phút')) else 3600)
@@ -156,6 +170,14 @@ def step(w,s,post=None):
  ensure_lanes(w,live)
  parts=scoped_parts(w,s.get('parts') or []);lane_jobs=s.get('laneJobs') or [];busy={j.get('lane'):j for j in lane_jobs}
  attention=[]
+ # A ChatGPT image limit belongs to the account, not the tab: tabs of the same account rest together, and a tab
+ # signed in to another account since its rest began is not resting.
+ rest_account=st.setdefault('cooldown_account',{})
+ account=lambda lane:(live.get(lane) or {}).get('account_key')
+ def resting(lane):
+  if float(st['cooldown'].get(lane) or 0)<=now:return False
+  was,cur=rest_account.get(lane),account(lane)
+  return not (was and cur and was!=cur)
  # 1. Results the server recorded per lane (errors, completions, releases).
  for lane,r in (s.get('laneLast') or {}).items():
   key=('part:'+str(r.get('partId'))) if r.get('type')=='part_analysis' else 'image:'+str(r.get('sceneKey'))
@@ -164,8 +186,11 @@ def step(w,s,post=None):
   item['state']=r.get('status');item['error']=r.get('error') or None
   if r.get('status')=='error' and r.get('type')=='image_generation' and RATE.search(str(r.get('error') or '')):
    item['tries']=max(0,item.get('tries',1)-1)  # the account's limit says nothing about this scene: not a used try
-   rest=limit_wait(r.get('error'))
-   st['cooldown'][lane]=now+rest;attention.append('ChatGPT báo hết lượt/giới hạn ở '+((live.get(lane) or {}).get('account_label') or lane)+'; tab này nghỉ tạo ảnh '+wait_text(rest)+'.')
+   rest=limit_wait(r.get('error'),now);acct=account(lane)
+   same=[lane]+[other for other in live if other!=lane and acct and account(other)==acct]
+   for other in same:
+    st['cooldown'][other]=max(float(st['cooldown'].get(other) or 0),now+rest);rest_account[other]=acct
+   attention.append('ChatGPT báo hết lượt/giới hạn ở '+((live.get(lane) or {}).get('account_label') or lane)+'; '+(str(len(same))+' tab dùng tài khoản này' if len(same)>1 else 'tab này')+' nghỉ tạo ảnh '+wait_text(rest)+'.')
  # 2. Take jobs back from lost or stuck lanes so another lane can do them.
  for job in lane_jobs:
   lane=job.get('lane');key=('part:'+str(job.get('partId'))) if job.get('type')=='part_analysis' else 'image:'+str(job.get('sceneKey'))
@@ -220,7 +245,7 @@ def step(w,s,post=None):
  for lane in order:
   # The server's lane jobs say who is busy; the job id an extension remembers can be an old, finished one.
   if lane in busy:continue
-  cool=float(st['cooldown'].get(lane) or 0)>now
+  cool=resting(lane)
   pick=None
   room=imaging<IMAGE_LANES
   if lane==image_lane and image_todo and not cool and room:pick=('image',image_todo.pop(0))
@@ -245,7 +270,7 @@ def step(w,s,post=None):
    if pick[0]=='part':w.ledger.update('scenes',key,'WAITING_RESULT',lane=lane)
    else:w.ledger.update('images',pick[1][1],'WAITING_RESULT',lane=lane,scene=pick[1][0])
  # 6. Report and decide.
- lanes_view=[{'lane':lane,'label':live[lane].get('account_label') or lane,'plan':live[lane].get('account_plan'),'job':(busy.get(lane) or {}).get('partId') or (busy.get(lane) or {}).get('sceneKey'),'kind':(busy.get(lane) or {}).get('type'),'cooldown':float(st['cooldown'].get(lane) or 0)>now} for lane in order]
+ lanes_view=[{'lane':lane,'label':live[lane].get('account_label') or lane,'plan':live[lane].get('account_plan'),'job':(busy.get(lane) or {}).get('partId') or (busy.get(lane) or {}).get('sceneKey'),'kind':(busy.get(lane) or {}).get('type'),'cooldown':resting(lane)} for lane in order]
  done_parts=sum(p.get('status')=='complete' for p in parts);done_images=sum(1 for _,k,_ in images if saved.get(mark(k)))
  failed_items=[k for k in items if failed(k)]
  waiting=[k for k in failed_items if items[k].get('rearm',0)<REARM_MAX]
@@ -277,10 +302,9 @@ def step(w,s,post=None):
  if waiting and scenes_done and images_done and not in_flight:return w.wait('lanes:rearm:'+str(sum(items[k].get('rearm',0) for k in items)),REARM_AFTER*2**REARM_MAX+JOB_LIMIT,ctx)
  # Every lane is resting after ChatGPT's limit and nothing is out: no progress is expected until the rest ends,
  # so wait for it instead of letting the progress watchdog call Studio stuck.
- rests=[float(st['cooldown'].get(lane) or 0) for lane in live]
- if live and not in_flight and rests and min(rests)>now:
-  until=min(rests);ctx['studio_message']='Tất cả tab ChatGPT đang nghỉ vì hết lượt tạo ảnh; Manager chạy tiếp lúc '+time.strftime('%H:%M',time.localtime(until))+'.'
-  return w.wait('lanes:rest:'+str(int(until)),LIMIT_MAX+JOB_LIMIT+LANE_LOST+300,ctx)
+ if live and not in_flight and all(resting(lane) for lane in live):
+  until=min(float(st['cooldown'][lane]) for lane in live);ctx['studio_message']='Tất cả tab ChatGPT đang nghỉ vì hết lượt tạo ảnh; Manager chạy tiếp lúc '+time.strftime('%H:%M',time.localtime(until))+'.'
+  return w.wait('lanes:rest:'+str(int(until)),AT_MAX+JOB_LIMIT+LANE_LOST+300,ctx)
  # Watchdog keyed on progress: any finished part/image restarts the clock, and so does the end of a rest
  # (time spent resting is not time without progress).
  rested=max([float(v or 0) for v in st['cooldown'].values() if float(v or 0)<=now]+[0])
