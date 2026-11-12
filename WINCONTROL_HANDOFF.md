@@ -39,6 +39,11 @@ Triển khai bị dừng: lần chạy đầu `deploy_man.ps1` từ chối vì t
 - Test: 328 Python (cô lập), chỉ 3 lỗi có sẵn; 4 test UI đạt.
 - Triển khai 01:08:35Z `993c8d5→6e35ea7` (gồm `dcb7f0b`, Aprilynne, `6e35ea7`): checkpoint không đổi; Studio `connected`, Extension 0.5.20 `responding` sau ~3 giây. MAN pid 33360, Agent pid 8792.
 - Dự án Thái Sư đang `failed` (task `f433e842`, bước 5, checkpoint giữ nguyên). `MAN_QUEUE` chỉ cho tiếp tục dự án `paused`, nên chạy lại dự án `failed` cần người dùng quyết.
+- 08:12 người dùng duyệt chạy lại: `/api/queue` `retry` (đối soát, giữ checkpoint) rồi `start_selected`. **`6e35ea7` chứng minh thực tế:** MAN hiện "Tất cả tab ChatGPT đang nghỉ vì hết lượt tạo ảnh; Manager chạy tiếp lúc 08:24" và chờ, không báo lỗi; sau 08:24 các tab nhận việc lại.
+- Tài khoản ChatGPT (cả 3 tab dùng chung h***6@gmail.com) **vẫn bị giới hạn**: 08:31 và 08:34 hai tab gặp lại thông báo và nghỉ tới 14:31/14:34; task vẫn `running`, không lỗi. Ảnh chạy tiếp khi tài khoản hết giới hạn (hoặc thêm tài khoản ChatGPT khác cho một hồ sơ Edge).
+- `50848c9` (chưa triển khai): xóa thông báo "đang nghỉ" cũ khi các tab đã làm việc lại (thấy lúc 08:32).
+- **Studio Aprilynne** (bàn giao từ phiên Aprilynne, người dùng duyệt trực tiếp): đẩy `442cac9` lên `phase3-manager-presence` (fast-forward từ `41a6e7e`, chỉ `AnalysisTab.tsx`); Vercel `success`. Bản triển khai được Vercel bảo vệ đăng nhập nên chưa đọc được bundle; tab Phân tích trong Edge cần F5 để nạp bản mới (chưa kiểm tra trên tab — không mở dự án ở trình duyệt thứ hai để tránh tranh quyền điều phối).
+- **Kiểm tra bằng WinControl** (task `2d9ebeee`, chỉ đọc, chạy song song sản xuất): MAN 0.2.23, Agent bật, Studio kết nối + tab mở, Extension 0.5.20 = mới nhất, Thái Sư `running`. Bản `MAN_STATUS` mới cho ChatGPT thấy đủ Studio/Extension.
 
 ## 1. Bằng chứng READY (kiểm thử thực tế từ giao diện)
 
