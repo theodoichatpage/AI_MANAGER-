@@ -107,6 +107,13 @@ class ManualStudioWorkTests(unittest.TestCase):
   api.s['activeJob']=None;self.now+=1
   with self.assertRaises(TimeoutError):StudioStep(self.c,api,lambda:dict(tab(),chat_connected=False),clock=lambda:self.now).step('STUDIO_SCENES')
   self.assertEqual(api.posts,[])
+ def test_a_studio_reload_of_a_few_minutes_is_waited_out(self):
+  # Found live 2026-11-12: a Studio/extension self-reload took ChatGPT away for more than 120 s and paused the run.
+  api=FakeAPI({'id':SID,'script':'S','parts':[{'id':'p1','status':'ready','scenes':[]}],'activeJob':None})
+  self.assertTrue(StudioStep(self.c,api,lambda:dict(tab(),chat_connected=False),clock=lambda:self.now).step('STUDIO_SCENES')['waiting'])
+  self.now+=300
+  self.assertTrue(StudioStep(self.c,api,lambda:dict(tab(),chat_connected=False),clock=lambda:self.now).step('STUDIO_SCENES')['waiting'])
+  self.assertEqual(api.posts,[])
  def test_unknown_job_still_needs_review(self):
   from automation_agent.studio_workflow import StudioReviewRequired
   api=FakeAPI({'id':SID,'parts':[],'script':'S','activeJob':{'id':'x','type':'something_else'}})

@@ -290,10 +290,12 @@ class StudioStep:
    return {'context':{'studio_external_job':(job or {}).get('id'),'studio_ready':True,'studio_script_hash':hashlib.sha256(str(s.get('script','')).encode()).hexdigest()}}
   if not self.ready():
    # Nothing is sent while disconnected. While a Studio job is still running (ChatGPT tab reloading or
-   # briefly hung), keep waiting for it like the job itself; otherwise give up after 120 s as before.
+   # briefly hung), keep waiting for it like the job itself; otherwise give up after 10 minutes.
+   # (120 s paused the run twice on 2026-11-12: the Studio tab reloads itself for a new build and the
+   # extension reloads itself for an update, and ChatGPT reconnects a few minutes later.)
    try:running=bool(self.api.request(self.sid).get('activeJob'))
    except Exception:running=False
-   return self.wait('connection',1800 if running else 120)
+   return self.wait('connection',1800 if running else 600)
   self.j['stages'].pop(self.stage_key('connection'),None)
   if name=='STUDIO_LANES':
    # Story line first: the outline runs on the main profile; the extra profiles open when the sections are written.
