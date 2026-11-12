@@ -50,7 +50,7 @@ class StoryTests(unittest.TestCase):
   self.api.answer(lambda x:'Viết lại '+x['id'])
   _,r=self.step()
   self.assertIn('Chấm Aprilynne',self.api.s['rewrite']['sections'][0]['title'])
-  self.api.answer(lambda x:json.dumps(rows(lambda i:6 if i==6 else 9)))
+  self.api.answer(lambda x:json.dumps(rows(lambda i:6 if i in (5,6,9,10,13) else 9)))
   _,r=self.step()
   self.assertTrue(self.api.s['rewrite']['sections'][0]['id'].startswith('fix0'))
   self.assertIn('THỂ HIỆN CÔNG SỨC',self.api.s['rewrite']['sections'][0]['prompt'])
@@ -63,7 +63,7 @@ class StoryTests(unittest.TestCase):
   self.assertTrue(w.j['aprilynne_done']);self.assertEqual(len(w.j['story_parts']),2)
  def test_rounds_used_up_keep_the_best_or_stop(self):
   story={'stage':'review','tries':{},'round':2,'plan':{'title':'T'},'sections':[{'id':'s1','title':'A','role':'','source':'x'*100,'text':'cuối'}],
-   'best':{'passed':8,'texts':['tốt nhất'],'rows':rows(lambda i:9)['rows']}}
+   'best':{'passed':5,'texts':['tốt nhất'],'rows':rows(lambda i:9 if i in (0,2,3,4,5) else 5)['rows']}}
   json.dump(story,open(self.tmp.name+'/story.json','w'))
   import os;os.makedirs(self.tmp.name+'/analysis',exist_ok=True);os.replace(self.tmp.name+'/story.json',self.tmp.name+'/analysis/story.json')
   self.step();self.api.answer(lambda x:json.dumps(rows(lambda i:5)))
@@ -98,7 +98,7 @@ class StoryTests(unittest.TestCase):
  def test_a_worse_round_repairs_again_from_the_best_version(self):
   import os
   story={'stage':'review','tries':{},'round':1,'plan':{'title':'T'},'sections':[{'id':'s1','title':'A','role':'','source':'x'*100,'text':'bản tệ'}],
-   'best':{'passed':10,'texts':['bản tốt'],'rows':rows(lambda i:9 if i!=6 else 7)['rows']}}
+   'best':{'passed':7,'texts':['bản tốt'],'rows':rows(lambda i:9 if i not in (5,6,9,10,13) else 7)['rows']}}
   os.makedirs(self.tmp.name+'/analysis',exist_ok=True);json.dump(story,open(self.tmp.name+'/analysis/story.json','w'))
   self.step();self.api.answer(lambda x:json.dumps(rows(lambda i:5)))
   w,r=self.step()
@@ -110,12 +110,36 @@ class StoryTests(unittest.TestCase):
  def test_rounds_go_on_past_three_while_the_score_rises(self):
   import os
   story={'stage':'review','tries':{},'round':2,'plan':{'title':'T'},'sections':[{'id':'s1','title':'A','role':'','source':'x'*100,'text':'bản vòng 3'}],
-   'best':{'passed':9,'total':100,'texts':['bản cũ'],'rows':rows(lambda i:9 if i not in (6,13,10) else 7)['rows']}}
+   'best':{'passed':6,'total':96,'texts':['bản cũ'],'rows':rows(lambda i:9 if i in (0,2,3,4,5,7) else 7)['rows']}}
   os.makedirs(self.tmp.name+'/analysis',exist_ok=True)
   with open(self.tmp.name+'/analysis/story.json','w',encoding='utf8') as f:json.dump(story,f)
-  self.step();self.api.answer(lambda x:json.dumps(rows(lambda i:9 if i!=13 else 7)))
+  self.step();self.api.answer(lambda x:json.dumps(rows(lambda i:9 if i in (0,2,3,4,5,7,11) else 7)))
   self.step()
   with open(self.tmp.name+'/analysis/story.json',encoding='utf8') as f:d=json.load(f)
-  self.assertEqual(d['stage'],'repair');self.assertEqual(d['best']['passed'],11)
+  self.assertEqual(d['stage'],'repair');self.assertEqual(d['best']['passed'],7)
+
+ def test_eight_of_twelve_criteria_at_eight_approve_the_analysis(self):
+  import os
+  story={'stage':'review','tries':{},'round':0,'plan':{'title':'T'},'sections':[{'id':'s1','title':'A','role':'','source':'x'*100,'text':'bản viết'}]}
+  os.makedirs(self.tmp.name+'/analysis',exist_ok=True)
+  with open(self.tmp.name+'/analysis/story.json','w',encoding='utf8') as f:json.dump(story,f)
+  # 8 of the 12 at 9, four at 6: approved at once, no repair round.
+  self.step();self.api.answer(lambda x:json.dumps(rows(lambda i:6 if i in (6,9,10,13) else 9)))
+  w,r=self.step()
+  with open(self.tmp.name+'/analysis/story.json',encoding='utf8') as f:d=json.load(f)
+  self.assertEqual(d['stage'],'saved');self.assertIn('8/12',d['note'])
+  self.assertFalse(any(x['id'].startswith('fix') for x in self.api.s['rewrite']['sections']))
+  rep=sp.studio_report(d)
+  self.assertEqual(rep['passed'],8);self.assertEqual(rep['needed'],8);self.assertEqual(len(rep['rows']),14)
+  self.assertEqual([h['passed'] for h in rep['history']],[8]);self.assertTrue(rep['rows'][6]['fix'])
+ def test_seven_of_twelve_goes_to_repair(self):
+  import os
+  story={'stage':'review','tries':{},'round':0,'plan':{'title':'T'},'sections':[{'id':'s1','title':'A','role':'','source':'x'*100,'text':'bản viết'}]}
+  os.makedirs(self.tmp.name+'/analysis',exist_ok=True)
+  with open(self.tmp.name+'/analysis/story.json','w',encoding='utf8') as f:json.dump(story,f)
+  self.step();self.api.answer(lambda x:json.dumps(rows(lambda i:6 if i in (5,6,9,10,13) else 9)))
+  self.step()
+  with open(self.tmp.name+'/analysis/story.json',encoding='utf8') as f:d=json.load(f)
+  self.assertEqual(d['stage'],'repair')
 
 if __name__=='__main__':unittest.main()

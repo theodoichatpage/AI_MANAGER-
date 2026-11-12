@@ -11,7 +11,8 @@ from pathlib import Path
 THRESHOLD=8
 ROUNDS=3
 MAX_ROUNDS=6        # after ROUNDS, repairing goes on while every round still raises the score, up to this many rounds
-PASS_AFTER_ROUNDS=10   # rounds used up: go on with the best version when it passes at least this many criteria
+PASS_NEEDED=8         # the analysis is approved when at least this many of the 12 criteria the script can show score 8 or more
+PASS_AFTER_ROUNDS=PASS_NEEDED   # rounds used up: the best version must still reach it, or the run stops for the user
 TASK_TRIES=5          # a task whose reply cannot be used is asked again this many times
 REVIEW_OPENING=350;REVIEW_MIDDLE=250;REVIEW_ENDING=350
 
@@ -233,6 +234,18 @@ def repair_prompt(sec,i,n,plan,style,rows,sections,findings=()):
   json.dumps(keep,ensure_ascii=False) if keep else 'không có',
   sections[i-1]['text'][-800:] if i>0 else '',sections[i+1]['text'][:600] if i<n-1 else '',sec['title'],sec['text'])
 
+def studio_report(d):
+ """What the Studio Analysis tab shows for a project whose story line AI MANAGER runs: stage, scores with reasons and fixes, scores per round."""
+ if not isinstance(d,dict) or not d.get('stage'):return None
+ rows=d.get('rows') or []
+ cut=lambda v,n:str(v or '')[:n]
+ return {'stage':str(d.get('stage')),'round':int(d.get('round') or 0),'rounds':ROUNDS,'maxRounds':MAX_ROUNDS,'needed':PASS_NEEDED,'threshold':THRESHOLD,
+  'title':cut((d.get('plan') or {}).get('title'),200),'sections':len(d.get('sections') or []),'passed':passed(rows) if rows else None,'note':cut(d.get('note'),300),
+  'error':cut(d.get('last_error'),300),
+  'rows':[{'id':r.get('id'),'score':r.get('score'),'part':r.get('part'),'evidence':cut(r.get('evidence'),300),'reason':cut(r.get('reason'),500),'fix':cut(r.get('fix'),500)} for r in rows],
+  'findings':[{'id':r.get('id'),'score':r.get('score'),'part':r.get('part'),'fix':cut(r.get('fix'),300)} for r in (d.get('findings') or [])][:30],
+  'history':[{'round':h.get('round'),'passed':h.get('passed')} for h in (d.get('history') or [])][-12:]}
+
 def fetch_transcript(url,language='vi'):
  body=json.dumps({'url':url,'languages':[language,'en']}).encode()
  with urllib.request.urlopen(urllib.request.Request(TRANSCRIPT_ENGINE,body,{'content-type':'application/json'},method='POST'),timeout=120) as r:d=json.loads(r.read())
@@ -333,7 +346,12 @@ class Story:
     rows,findings=best['rows'],best.get('findings') or [];d['rows']=rows;d['findings']=findings
     d['note']='Vòng %d kém hơn bản tốt nhất (%d/%d): sửa tiếp từ bản tốt nhất'%(d['round']+1,best['passed'],len(CRITERIA))
    todo=failing_parts(rows,findings)
-   if not todo:d['stage']='done'
+   best=d['best']
+   if not todo or best['passed']>=PASS_NEEDED:
+    # Approved: at least PASS_NEEDED criteria at 8 or more (the best version so far goes on to the scenes).
+    for x,t in zip(secs,best['texts']):x['text']=t
+    d['rows']=best['rows'];d['findings']=best.get('findings') or []
+    d['stage']='done';d['note']='Duyệt: đạt %d/%d tiêu chí từ 8 điểm (cần %d) sau %d lượt sửa'%(best['passed'],len(CRITERIA)-len(VISUAL),PASS_NEEDED,d['round'])
    elif d['round']+1>=ROUNDS and not (rising and d['round']+1<MAX_ROUNDS):
     best=d['best']
     for x,t in zip(secs,best['texts']):x['text']=t

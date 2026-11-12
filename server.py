@@ -159,6 +159,26 @@ def studio_project_folder(sid):
         if sid in (p.get('studio_project_id'),p.get('studio_import_id'),(p.get('studio_source') or {}).get('id')): return p.get('folder')
     return None
 
+_STORY_CACHE={}
+def story_review(sid):
+    """The Aprilynne review AI MANAGER ran for this Studio project (analysis/story.json), for Studio's Analysis tab; read again only when the file changes."""
+    try:
+        # The project list is read at most once a minute per Studio project (presence arrives every few seconds).
+        seen=_STORY_CACHE.get('sid:'+str(sid))
+        if seen and time.time()-seen[0]<60: folder=seen[1]
+        else: folder=studio_project_folder(sid);_STORY_CACHE['sid:'+str(sid)]=(time.time(),folder)
+        if not folder: return None
+        path=Path(folder)/'analysis'/'story.json'
+        if not path.is_file(): return None
+        stamp=path.stat().st_mtime_ns
+        hit=_STORY_CACHE.get(str(path))
+        if hit and hit[0]==stamp: return hit[1]
+        from automation_agent.story_pipeline import studio_report
+        report=studio_report(json.loads(path.read_text(encoding='utf8')))
+        _STORY_CACHE[str(path)]=(stamp,report)
+        return report
+    except (OSError,ValueError,TypeError,KeyError): return None
+
 def projects(include_duplicates=False):
     root=Path(config()['root']); result=[]
     if root.exists():
@@ -368,7 +388,9 @@ class Handler(BaseHTTPRequestHandler):
                 PRESENCE.update(data)
                 # Only the run's main Studio tab gets requests; extra ChatGPT lanes only take lane jobs.
                 lane_tab=isinstance(data.get('worker'),dict) and bool(data['worker'].get('lane'))
-                return self.send(200,{'ok':True,'command':PRESENCE.pending(data) if data.get('managerRunId') and not lane_tab else None,'renames':pending_renames()},cors=True)
+                main_tab=data.get('managerRunId') and not lane_tab
+                return self.send(200,{'ok':True,'command':PRESENCE.pending(data) if main_tab else None,'renames':pending_renames(),
+                    'storyReview':story_review(data.get('sessionId')) if main_tab else None},cors=True)
             if path=='/api/studio-command':
                 # Only the local Windows Agent (no browser Origin) may queue a request for a Studio tab.
                 if self.headers.get('Origin'): return self.send(403,{'error':'Nguồn không hợp lệ'})
