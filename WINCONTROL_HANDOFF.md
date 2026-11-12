@@ -30,6 +30,16 @@ Triển khai bị dừng: lần chạy đầu `deploy_man.ps1` từ chối vì t
 - (6) phía MAN đã triển khai; chưa gặp lại thông báo hết lượt ảnh thật để quan sát tab nghỉ.
 - Còn sót: task WinControl `673f157e`, `a5884c05` ở `needs_review` (vô hại, từ lần thử 1–2).
 
+### Đêm 11→12/11 và triển khai sáng 12/11
+
+- Sản xuất Thái Sư chạy từ 22:45 đến 02:17 (688 tệp ảnh mới; nhật ký luồng: 180 ảnh hoàn tất trong lượt này).
+- **(6) đã chứng minh thực tế:** 02:27 Extension 0.5.20 báo "ChatGPT báo hết lượt tạo ảnh (giới hạn tài khoản): You've hit the Plus plan limit…"; MAN cho 3 tab nghỉ tới 08:24–08:29, không gửi lại; cảnh bị lỗi không tính là đã thử.
+- **Lỗi mới tìm thấy:** khi mọi tab đều nghỉ, ~37 phút không tiến độ → bộ canh giữ tiến độ báo "Studio quá thời gian tại lanes:24:180" và đánh dấu task `failed` (02:54). Ngoài ra, ngay sau khi hết nghỉ, bộ canh giữ vẫn tính từ trước lúc nghỉ. Sửa `6e35ea7`: khi mọi tab đang nghỉ và không có việc đang gửi, MAN chờ tới hết nghỉ (`lanes:rest:*`, thông báo giờ chạy tiếp); hết nghỉ thì đồng hồ tiến độ tính lại. Test tái hiện đúng lỗi thật.
+- Gộp nhánh Aprilynne `aprilynne/review-depth-20261111` (`2bf54db`, `0141b39`: đọc trọn thân bài, sửa mọi phần yếu, tối đa 6 vòng khi điểm còn tăng) — `0712df6`.
+- Test: 328 Python (cô lập), chỉ 3 lỗi có sẵn; 4 test UI đạt.
+- Triển khai 01:08:35Z `993c8d5→6e35ea7` (gồm `dcb7f0b`, Aprilynne, `6e35ea7`): checkpoint không đổi; Studio `connected`, Extension 0.5.20 `responding` sau ~3 giây. MAN pid 33360, Agent pid 8792.
+- Dự án Thái Sư đang `failed` (task `f433e842`, bước 5, checkpoint giữ nguyên). `MAN_QUEUE` chỉ cho tiếp tục dự án `paused`, nên chạy lại dự án `failed` cần người dùng quyết.
+
 ## 1. Bằng chứng READY (kiểm thử thực tế từ giao diện)
 
 Task `9213574d-0699-47c3-910d-1e875b8b6c2d`, gửi từ ô nhập WinControl: *"Mở Notepad, ghi dòng "WinControl sẵn sàng 11/11", lưu thành tệp wc_ready_1111.txt trong thư mục tạm WinControl rồi xác minh nội dung tệp."*
