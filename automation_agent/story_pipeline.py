@@ -254,11 +254,13 @@ def fetch_transcript(url,language='vi'):
  return text
 
 class Story:
- def __init__(self,w):
+ def __init__(self,w,script=None):
   self.w=w;self.path=Path(w.folder)/'analysis'/'story.json'
   self.lanes={}
   try:self.d=json.loads(self.path.read_text(encoding='utf8'))
-  except FileNotFoundError:self.d={'stage':'fetch','tries':{}}
+  except FileNotFoundError:
+   # A script pasted in Manager (no YouTube link): outlined and split by ChatGPT, kept word for word, then graded and repaired.
+   self.d={'stage':'plan','tries':{},'transcript':script,'source':'script'} if script else {'stage':'fetch','tries':{}}
  def save(self):
   from .studio_workflow import atomic
   atomic(self.path,self.d)
@@ -289,7 +291,12 @@ class Story:
    tid=self.task_id('plan');got=self.tasks(s,[{'id':tid,'title':'Dàn ý Aprilynne','prompt':plan_prompt(d['transcript'],self.style())}])
    r=(got or {}).get(tid) or {}
    if r.get('status')=='done':
-    try:d['plan'],d['sections']=accept_plan(r.get('text'),d['transcript']);d['stage']='write';d['round']=0;self.save()
+    try:
+     d['plan'],d['sections']=accept_plan(r.get('text'),d['transcript']);d['stage']='write';d['round']=0
+     if d.get('source')=='script':
+      for x in d['sections']:x['text']=x['source']
+      d['stage']='review'
+     self.save()
     except (ValueError,KeyError,TypeError) as e:self.retry('plan',e);return self.wait('plan:retry','Dàn ý chưa hợp lệ, hỏi lại ChatGPT')
    elif r.get('status')=='error':self.retry('plan',r.get('error'));return self.wait('plan:retry','Lập dàn ý lỗi, hỏi lại')
    else:return self.wait('plan','Đang lập dàn ý Aprilynne và chia phần')

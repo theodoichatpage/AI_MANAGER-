@@ -142,4 +142,23 @@ class StoryTests(unittest.TestCase):
   with open(self.tmp.name+'/analysis/story.json',encoding='utf8') as f:d=json.load(f)
   self.assertEqual(d['stage'],'repair')
 
+ def test_pasted_script_is_outlined_kept_word_for_word_then_graded(self):
+  self.c.pop('studio_youtube_url')
+  script='Năm 1209 có biến loạn. Họ Trần nổi lên. Trần Thủ Độ nắm quyền. Nhà Lý suy tàn. Nhà Trần lập nghiệp.'
+  w=StudioStep(self.c,self.api,lambda:{'studio_tab_open':True,'chat_connected':True,'session_id':SID,'manager_run_id':'run','origin':self.c['studio_origin']})
+  w.post_command=lambda cmd:None;w.ready=lambda:True
+  self.assertTrue(sp.Story(w,script=script).step(self.api.request(SID))['waiting'])
+  self.assertIn('DÀN Ý',self.api.s['rewrite']['sections'][0]['prompt'])
+  plan={'plan':{'title':'Trần Thủ Độ','hook':'h','question':'q','promise':'p','tracks':['a','b'],'turns':'t','payoff':'y','ending':'e','sources':'s','cover':'c'},
+   'branches':[{'title':'Mở','end':2,'role':'hook'},{'title':'Kết','end':5,'role':'kết'}]}
+  self.api.answer(lambda x:json.dumps(plan))
+  sp.Story(w).step(self.api.request(SID))
+  with open(self.tmp.name+'/analysis/story.json',encoding='utf8') as f:d=json.load(f)
+  # No rewrite of the user's script: straight to grading.
+  self.assertEqual(d['stage'],'review');self.assertEqual(d['sections'][0]['text'],d['sections'][0]['source'])
+  self.assertIn('Chấm Aprilynne',self.api.s['rewrite']['sections'][0]['title'])
+  self.api.answer(lambda x:json.dumps(rows(lambda i:9)))
+  self.assertIsNone(sp.Story(w).step(self.api.request(SID)))
+  self.assertIn('Họ Trần nổi lên.',self.api.s['script'])
+
 if __name__=='__main__':unittest.main()

@@ -242,30 +242,6 @@ class StudioStep:
   key='transcript:'+(str(pipeline.get('stage'))+':'+str(pipeline.get('done',0)) if mine else 'sent')
   if extra.get('studio_rewrite_total'):key='transcript:parallel:'+str(extra['studio_rewrite_done'])
   return self.wait(key,1200,dict(actual,studio_stage='Transcript',studio_message=stage,studio_reconcile=facts,**extra))
- def aprilynne_gate(self,name,actual,script):
-  """The rewritten script is checked against the Aprilynne formula in the Studio tab (check, rewrite what fails, approve) before it is split into parts and scenes.
-  Studio answers `approved` with the SHA-256 of the script it saved on its server; only that exact script goes on."""
-  # The story line already reviewed and saved the script: no Studio-tab review.
-  if self.j.get('aprilynne_done'):
-   self.post_command(None);return None
-  if self.c.get('studio_aprilynne',True) is False:return None
-  epoch=self.c.get('studio_retry_epoch',0);cmd=self.j.get('aprilynne_command')
-  # A retry after a finished review (not passed / stopped) asks for a new one; after an error it keeps the same review so Studio carries on where it was.
-  if not cmd or (cmd.get('epoch')!=epoch and self.j.get('aprilynne_last_stage') not in ('error','running','paused','')):
-   cmd={'type':'analysis_review','source':'script','id':'apr-'+self.c['studio_run_id'][:20]+'-'+str(epoch),'epoch':epoch};self.j['aprilynne_command']=cmd;self.j.pop('aprilynne_done',None);self.save()
-  st=(self.presence().get('project_state') or {}).get('analysis_review') or {}
-  mine=st.get('id')==cmd['id'];stage=str(st.get('stage') or '') if mine else ''
-  want=hashlib.sha256(script.strip().encode('utf8')).hexdigest()
-  if stage=='approved' and st.get('fingerprint')==want:
-   self.j['aprilynne_done']=True;self.save();return None
-  if stage:self.j['aprilynne_last_stage']=stage;self.save()
-  if stage=='error':
-   # Studio stopped on a slow or broken ChatGPT reply: it carries on when "Tiếp tục" is pressed in its Analysis tab, so wait instead of failing.
-   self.post_command({k:v for k,v in cmd.items() if k!='epoch'})
-   return self.wait('aprilynne:error:'+str(st.get('progress',0)),7200,dict(actual,studio_stage='Phân tích Aprilynne',studio_message='Studio báo lỗi: '+str(st.get('error') or 'không rõ')+'. Bấm Tiếp tục trong tab Phân tích của Studio.'))
-  if stage in ('limited','stopped'):raise RuntimeError('Kịch bản chưa đạt Aprilynne ('+stage+'): '+str(st.get('error') or 'xem tab Phân tích của Studio')+'. Bấm Viết lại tất cả phần chưa đạt trong tab Phân tích rồi chạy lại.')
-  self.post_command({k:v for k,v in cmd.items() if k!='epoch'})
-  return self.wait('aprilynne:'+(stage or 'sent')+':'+str(st.get('progress',0)),3600,dict(actual,studio_stage='Phân tích Aprilynne',studio_message='Đang chấm và sửa kịch bản theo công thức Aprilynne'+(' ('+stage+')' if stage else '')))
  def post_command(self,command):
   body=json.dumps({'sessionId':self.sid,'runId':self.c['studio_run_id'],'command':command}).encode()
   try:urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8765/api/studio-command',body,{'Content-Type':'application/json'},method='POST'),timeout=3).read()
@@ -371,8 +347,12 @@ class StudioStep:
     if not script:
      from .studio_reconcile import reconcile
      return self.script_wait(name,s,actual,reconcile(s,self.presence()))
-    gate=self.aprilynne_gate(name,actual,script)
-    if gate is not None:return gate
+    # One route: a pasted script goes through Manager's own Aprilynne line too (outline, grade, rewrite what is weak, grade again);
+    # the Studio tab no longer grades on its own.
+    if self.c.get('studio_aprilynne',True) is not False and not self.j.get('aprilynne_done'):
+     from .story_pipeline import Story
+     waiting=Story(self,script=script).step(s)
+     if waiting is not None:return waiting
     # Studio saved the approved script on its server; read it again.
     script=str(self.api.request(self.sid).get('script') or script).strip()
     self.script_checkpoint(script)
