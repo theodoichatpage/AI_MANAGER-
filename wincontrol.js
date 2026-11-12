@@ -8,6 +8,9 @@ let winControlFocus=false;
 let winControlCaret=[0,0];
 let winControlPending=null;
 let winControlSent='';
+let winControlTgDraft='';
+let winControlTgFocus=false;
+let winControlTgMsg='';
 
 function winControlTasks(){
  return (state.automation?.tasks||[]).filter(t=>t.current_stage==='WinControl'||t.context?.wincontrol_task).slice().reverse();
@@ -69,6 +72,19 @@ function winControlChatHTML(task){
  const prompt=empty?`<div class="wc-welcome"><div class="wc-mark">W</div><h1>WinControl</h1><p>Giao một nhiệm vụ bằng tiếng Việt. ChatGPT sẽ quyết định từng bước và Agent sẽ xác minh kết quả.</p></div>`:'';
  return `<section class="wc-chat-view${empty?" empty":""}">${prompt}<div class="wc-transcript" id="wc_transcript">${transcript}</div><form class="wc-composer" onsubmit="winControlSubmit(event)"><textarea id="win_command" maxlength="4000" rows="1" placeholder="Gửi lệnh cho WinControl" aria-label="Lệnh WinControl" ${winControlBusy?'disabled':''}></textarea><div class="wc-compose-actions"><span>${esc(winControlStatus(task))}</span><div>${task&&task.status!=='running'?`<button class="wc-stop" type="button" onclick="winControlNew()">Nhiệm vụ mới</button>`:''}${task?.status==='running'?`<button class="wc-stop" type="button" onclick="winControlStop()">Dừng an toàn</button>`:['needs_review','paused','stopped'].includes(task?.status)?`<button class="wc-stop" type="button" onclick="winControlResume()">Tiếp tục</button>`:''}<button class="wc-send" type="submit" ${winControlBusy?'disabled':''} aria-label="Gửi nhiệm vụ">${winControlBusy?'…':'↑'}</button></div></div></form>${winControlReply?`<div class="wc-live-result" aria-live="polite">${esc(winControlReply)}</div>`:''}</section>`;
 }
+function winControlTelegramHTML(){
+ // The token is typed by the user, sent once to MAN (saved encrypted there) and never shown again.
+ const t=state.telegram||{};
+ const status=!t.configured?'Chưa có token bot':t.paired?'Đã ghép nối · nhận lệnh và gửi báo cáo':t.pair_code?`Mở bot trên Telegram và nhắn: /pair ${t.pair_code} (mã dùng trong 15 phút)`:'Đã có token · bấm "Mã ghép nối mới"';
+ return `<div class="wc-telegram"><b>Telegram</b><small>${esc(status)}${t.error?' · Lỗi: '+esc(t.error):''}</small><div class="wc-tg-row"><input id="wc_tg_token" type="password" autocomplete="off" spellcheck="false" placeholder="${t.configured?'Dán token mới để thay':'Dán token bot từ @BotFather'}" aria-label="Token bot Telegram"><button type="button" onclick="winControlTelegram('configure')">Lưu token</button>${t.configured&&!t.paired?`<button type="button" onclick="winControlTelegram('pair_code')">Mã ghép nối mới</button>`:''}${t.paired?`<button type="button" onclick="winControlTelegram('unpair')">Hủy ghép nối</button>`:''}</div>${winControlTgMsg?`<small>${esc(winControlTgMsg)}</small>`:''}</div>`;
+}
+async function winControlTelegram(action){
+ const body={action};
+ if(action==='configure'){body.token=String(document.getElementById('wc_tg_token')?.value||winControlTgDraft||'').trim();if(!body.token){winControlTgMsg='Dán token trước.';render();return}}
+ try{await api('/api/telegram',body);winControlTgDraft='';winControlTgMsg=action==='configure'?'Đã lưu token (mã hóa trên máy này).':'';state=await api('/api/state')}
+ catch(e){winControlTgMsg='Chưa thực hiện: '+e.message}
+ render();
+}
 function winControlJobsHTML(){
  const tasks=winControlTasks();
  if(!tasks.length)return '<div class="wc-empty-jobs">Chưa có công việc. Bắt đầu bằng một lệnh trong tab Trò chuyện.</div>';
@@ -76,7 +92,7 @@ function winControlJobsHTML(){
 }
 function winControlHTML(){
  const task=winControlSelected();
- return `<main class="wc-shell"><header class="wc-top"><div><button class="wc-back" type="button" onclick="goPage('Studio Automation')" aria-label="Quay lại Điều phối">←</button><b>WinControl</b><small class="${state.automation?.online?'online':'offline'}">Windows Agent ${state.automation?.online?'đang hoạt động':'ngoại tuyến'}</small></div><nav class="wc-tabs" aria-label="WinControl"><button class="${winControlTab==='chat'?'active':''}" onclick="winControlTab='chat';render()">Trò chuyện</button><button class="${winControlTab==='jobs'?'active':''}" onclick="winControlTab='jobs';render()">Công việc ${winControlTasks().length?`<i>${winControlTasks().length}</i>`:''}</button></nav><button class="wc-refresh" onclick="winControlSubmitStatus()" aria-label="Làm mới">↻</button></header>${winControlTab==='chat'?winControlChatHTML(task):`<section class="wc-jobs-view"><h1>Công việc</h1><p>Theo dõi nhiệm vụ và checkpoint của Agent hiện có.</p>${winControlJobsHTML()}</section>`}</main>`;
+ return `<main class="wc-shell"><header class="wc-top"><div><button class="wc-back" type="button" onclick="goPage('Studio Automation')" aria-label="Quay lại Điều phối">←</button><b>WinControl</b><small class="${state.automation?.online?'online':'offline'}">Windows Agent ${state.automation?.online?'đang hoạt động':'ngoại tuyến'}</small></div><nav class="wc-tabs" aria-label="WinControl"><button class="${winControlTab==='chat'?'active':''}" onclick="winControlTab='chat';render()">Trò chuyện</button><button class="${winControlTab==='jobs'?'active':''}" onclick="winControlTab='jobs';render()">Công việc ${winControlTasks().length?`<i>${winControlTasks().length}</i>`:''}</button></nav><button class="wc-refresh" onclick="winControlSubmitStatus()" aria-label="Làm mới">↻</button></header>${winControlTab==='chat'?winControlChatHTML(task):`<section class="wc-jobs-view"><h1>Công việc</h1><p>Theo dõi nhiệm vụ và checkpoint của Agent hiện có.</p>${winControlTelegramHTML()}${winControlJobsHTML()}</section>`}</main>`;
 }
 function winControlSelectTask(id){winControlLastTask=id;winControlTab='chat';winControlReply='';render()}
 function winControlFormatState(s){
@@ -132,6 +148,8 @@ async function winControlStop(){
   // The page refreshes every 2 s; keep what the user is typing, the caret and focus across the redraw.
   const old=document.getElementById('win_command');
   if(old){winControlDraft=old.value;winControlFocus=document.activeElement===old;winControlCaret=[old.selectionStart,old.selectionEnd]}
+  const tgOld=document.getElementById('wc_tg_token');
+  if(tgOld){winControlTgDraft=tgOld.value;winControlTgFocus=document.activeElement===tgOld}
   base();
   if(page!=='WinControl'){
    // MAN v0.2.25 (manager_ui.js) hides the old header and redraws its own top bar on every render: add the entry there.
@@ -144,6 +162,8 @@ async function winControlStop(){
   const html=winControlHTML();
   if(extra.dataset.wc!==html||extra.hidden||!extra.querySelector('.wc-shell')){extra.hidden=false;extra.innerHTML=html;extra.dataset.wc=html;
    const transcript=document.getElementById('wc_transcript');if(transcript)transcript.scrollTop=transcript.scrollHeight}
+  const tg=document.getElementById('wc_tg_token');
+  if(tg){if(tg.value!==winControlTgDraft)tg.value=winControlTgDraft;if(winControlTgFocus&&document.activeElement!==tg)tg.focus()}
   const field=document.getElementById('win_command');
   if(field){
    if(field.value!==winControlDraft)field.value=winControlDraft;

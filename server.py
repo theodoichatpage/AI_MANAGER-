@@ -205,6 +205,9 @@ def create_project(name, script, test_key=None, kind='studio'):
 MANAGER=None; WORKER=None; STUDIO=StudioMonitor(store=BASE/'studio_pairing.bin'); EXTENSION=ExtensionMonitor(); STUDIO_STOP=threading.Event(); threading.Thread(target=STUDIO.run,args=(STUDIO_STOP,),kwargs={'busy':lambda:MANAGER is not None and any(x.get('status')=='running' for x in MANAGER.list())},daemon=True).start()
 from extension_updater import ExtensionUpdater
 EXT_UPDATER=ExtensionUpdater(); threading.Thread(target=EXT_UPDATER.run,args=(STUDIO_STOP,),daemon=True).start()
+# Telegram for WinControl: idle until the user pastes a bot token on the WinControl page.
+from telegram_bridge import TelegramBridge
+TELEGRAM=TelegramBridge(BASE); threading.Thread(target=TELEGRAM.run,args=(STUDIO_STOP,),daemon=True).start()
 AUTOMATION=None
 def automation():
     global AUTOMATION
@@ -293,7 +296,7 @@ def synchronized_state(q):
     except (OSError,ValueError):pass
     batch=q.batch()
     engine=local_engine()
-    return {'engine':engine,'studio_batch':batch,'application_paths':application_paths,'version':VERSION,'download_url':DOWNLOAD_URL,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot(),'extension_update':EXT_UPDATER.snapshot()}
+    return {'engine':engine,'studio_batch':batch,'application_paths':application_paths,'version':VERSION,'download_url':DOWNLOAD_URL,'config':config(),'projects':ps,'queue':qs,'logs':q.logs(),'studio':studio,'studio_catalog':PRESENCE.snapshot(),'extension':ext,'automation':automation().snapshot(),'extension_update':EXT_UPDATER.snapshot(),'telegram':TELEGRAM.snapshot()}
 
 import story_orders
 _STORY=None
@@ -431,6 +434,13 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/api/automation':
                 result=automation().control(data)
                 return self.send(200,result)
+            if path=='/api/telegram':
+                action=data.get('action')
+                if action=='configure': return self.send(200,TELEGRAM.configure(data.get('token')))
+                if action=='pair_code': return self.send(200,TELEGRAM.new_pair_code())
+                if action=='unpair': return self.send(200,TELEGRAM.unpair())
+                if action=='forget': return self.send(200,TELEGRAM.forget())
+                raise ValueError('Lệnh không hợp lệ')
             with LOCK:
                 if path=='/api/studio':
                     if data.get('action')=='disconnect': STUDIO.disconnect()
