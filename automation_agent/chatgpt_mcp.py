@@ -21,8 +21,10 @@ def _config(context,settings,url):
 
 def _call_once(c,operation,text=None):
  payload=dict(c,operation='action',action={'action':'CHATGPT_SNAPSHOT' if operation=='snapshot' else 'CHATGPT_SEND','text':text})
+ # Filling and clicking a slow ChatGPT page took longer than 18 s live (2026-11-12 14:08), and a send that times out
+ # cannot be retried (its outcome is unknown): give the fill/click more time than a read.
  process=subprocess.run([c['node'],str(Path(__file__).with_name('chrome_mcp_bridge.mjs'))],
-  input=json.dumps(payload),text=True,encoding='utf-8',capture_output=True,timeout=18,
+  input=json.dumps(payload),text=True,encoding='utf-8',capture_output=True,timeout=SNAPSHOT_TIMEOUT if operation=='snapshot' else SEND_TIMEOUT,
   creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
  try:result=json.loads(process.stdout)
  except ValueError as exc:raise RuntimeError('MCP_RESPONSE_INVALID') from exc
@@ -30,6 +32,8 @@ def _call_once(c,operation,text=None):
  return result
 
 SNAPSHOT_ATTEMPTS=3
+SNAPSHOT_TIMEOUT=18
+SEND_TIMEOUT=45
 FILL_ATTEMPTS=3
 FILL_GAP=3
 NOT_INTERACTIVE='did not become interactive'
