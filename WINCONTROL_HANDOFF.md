@@ -123,3 +123,12 @@ Triển khai: `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao
 - Đã đề xuất, chờ người dùng đồng ý: **Telegram** (nhận lệnh từ đúng tài khoản người dùng, chuyển vào WinControl, báo tình trạng; token do người dùng tự dán).
 - 13:05–13:30: sau `b74b818` dự án chạy ổn định 25 phút, ảnh 182 → 191, không tạm dừng. Task WinControl `5afab052` cho chạy tiếp thành công nhưng dừng `needs_review` ở bước gửi kết quả cho ChatGPT: "element did not become interactive" (ô soạn tin tạm khóa; chưa gửi gì). Sửa `chatgpt_mcp.send`: thử lại tối đa 3 lần cho đúng lỗi này, kiểm tra trùng trước mỗi lần — **đã commit, chưa triển khai** (chờ lần sản xuất tạm dừng tới).
 - **Telegram** (`telegram_bridge.py`, commit sau `decf95b`): dùng lại thiết kế gateway cũ của Codex (`Documents\AI_MAN_TELEGRAM_TEST`, đang dừng từ 8/11 — **không chạy song song gateway cũ với cùng bot**, Telegram chỉ cho một nơi nhận tin). Token dán ở tab Công việc của WinControl, lưu DPAPI `~\.ai_manager\telegram_token.bin`; ghép nối bằng `/pair <mã 6 số>` trong 15 phút; chỉ nhận lệnh từ đúng người dùng trong chat riêng; mỗi tin xử lý một lần (`request_id` `tg-<update_id>`). Báo cáo: WinControl xong/dừng, dự án đổi trạng thái, thông báo Studio (hết lượt…), mất/kết nối lại. 7 test; **chưa triển khai**.
+
+### Chiều 12/11: triển khai Telegram và sự cố hệ thống
+
+- WinControl tạm dừng 2 lần thất bại (14:08, 14:13): gửi cho ChatGPT quá 18 giây → `needs_review` (an toàn). Sửa `b561a1f`: điền/gửi được 45 giây. Đã tạm dừng trực tiếp qua `/api/queue` (giống nút Tạm dừng) để triển khai.
+- Triển khai 07:14:08Z `b74b818→b561a1f` (Telegram `b90680b`, thử gửi lại khi ô soạn tin tạm khóa `aaa6c60`, 45 giây).
+- **Sự cố ~14:16–14:19**: Windows ghi `LiveKernelEvent` (tầng hệ điều hành); MAN, Edge và Chrome "bộ não" của WinControl đều tắt; không có lỗi Python trong `logs/manager.log`. Đã khởi động lại MAN (14:20) và Chrome WinControl (`--remote-debugging-port=63635`, đúng hồ sơ trong `settings.json`). Nguyên nhân gốc chưa xác định chắc.
+- Sửa `49d883c` (triển khai 07:38:05Z): WinControl tự mở lại **Chrome của chính nó** (hồ sơ + cổng đã cấu hình) khi không kết nối được; bản nháp chưa gửi bắt đầu bằng `[wincontrol-` được thay, chữ người dùng gõ vẫn bị chặn. Test `tests/test_bridge_draft.cjs`.
+- 14:41–14:59: WinControl `c35ef8fa` cho chạy tiếp **thành công**; MAN tự mở lại tab Studio trong Edge; ảnh 199 → 202.
+- **Telegram đã triển khai, chưa cấu hình:** người dùng dán token XuongAIbot ở tab Công việc → nhắn `/pair <mã>` cho bot.
