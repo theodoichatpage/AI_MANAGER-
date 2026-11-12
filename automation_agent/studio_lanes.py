@@ -269,6 +269,8 @@ def step(w,s,post=None):
  if scenes_done and images_done and not in_flight and not waiting:
   if failed_items and cfg.get('error_policy')=='stop':raise RuntimeError('Dừng: '+str(len(failed_items))+' mục lỗi sau '+str(limit)+' lần thử ('+', '.join(failed_items[:5])+')')
   return {'context':dict(ctx,studio_stage='Hoàn tất chạy song song'+(' · '+str(len(failed_items))+' mục lỗi' if failed_items else ''),studio_waiting_action=None)}
+ # The task context keeps keys between rounds: clear an old wait message (e.g. "đang nghỉ…") once it no longer applies.
+ ctx.setdefault('studio_message',None)
  if not live:
   ctx['studio_message']='Chưa có tab ChatGPT nào kết nối (cần Extension 0.5.0+). Manager chờ, không gửi lệnh.'
  if not live and not in_flight:return w.wait('lanes:connection',1800,ctx)

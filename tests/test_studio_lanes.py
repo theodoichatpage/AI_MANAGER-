@@ -151,7 +151,8 @@ class Lanes(unittest.TestCase):
   r=w.round();self.assertIn('đang nghỉ vì hết lượt tạo ảnh',r['context']['studio_message'])
   for _ in range(10):w.now+=1800;w.round()  # 5 hours of rest, checked every 30 minutes: no timeout
   self.assertTrue(any(n.startswith('lanes:rest:') for n in w.waits))
-  w.now+=600;w.round();self.assertIsNotNone(st.job('laneA'),'the lane works again after its rest')
+  w.now+=600;r=w.round();self.assertIsNotNone(st.job('laneA'),'the lane works again after its rest')
+  self.assertIsNone(r['context']['studio_message'],'the resting message is cleared once the lane works again')
 
  def test_limit_wait_reads_chatgpt_reset_time(self):
   f=studio_lanes.limit_wait
