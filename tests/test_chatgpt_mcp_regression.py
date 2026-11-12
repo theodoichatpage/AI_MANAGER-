@@ -101,6 +101,22 @@ class MCPRegression(unittest.TestCase):
    with self.assertRaises(RuntimeError):m.send({}, {},URL,'hello','exchange-0005',verified)
   self.assertEqual(call.call_count,1)
 
+ def test_gone_chrome_is_started_again_with_its_own_profile_and_port(self):
+  # Seen live 2026-11-12 14:24: "Could not connect to Chrome ... ECONNREFUSED 127.0.0.1:63635".
+  c={'browser_url':'http://127.0.0.1:63635','profile_dir':r'C:\wc\chrome-profile','page_url':URL}
+  answers=[OSError('refused'),OSError('refused'),None];started=[];now=[0.0]
+  class Resp:
+   def close(self):pass
+  def opener(url,timeout):
+   self.assertEqual(url,'http://127.0.0.1:63635/json/version');a=answers.pop(0)
+   if a:raise a
+   return Resp()
+  with patch('automation_agent.window_manager.executable',return_value=r'C:\Chrome\chrome.exe'):
+   self.assertTrue(m._ensure_chrome(c,63635,opener=opener,popen=lambda args,**k:started.append(args),clock=lambda:now[0],sleep=lambda s:now.__setitem__(0,now[0]+s)))
+  self.assertEqual(started,[[r'C:\Chrome\chrome.exe','--remote-debugging-port=63635',r'--user-data-dir=C:\wc\chrome-profile','--no-first-run',URL]])
+  # Already running: nothing is started.
+  self.assertFalse(m._ensure_chrome(c,63635,opener=lambda url,timeout:Resp(),popen=lambda *a,**k:self.fail('started')))
+
  def test_lost_receipt_never_resends(self):
   state=dict(completion_verified=True,url=URL,fingerprint='a'*64,turnCount=2)
   verified=dict(completed=True,url=URL,fingerprint='a'*64,turn_count=2)

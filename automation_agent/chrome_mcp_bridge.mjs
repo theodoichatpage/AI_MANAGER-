@@ -35,9 +35,12 @@ try {
     const tag=a.text.startsWith('[')?a.text.slice(0,a.text.indexOf(']')+1):'';
     const fields=elements(snapshot).filter(e=>e.role==='textbox'&&['Message ChatGPT','Ask anything','Ask ChatGPT','Message','Send a message'].includes(e.name));
     if(fields.length!==1||/\b(disabled|readonly)\b/.test(fields[0].extra.split(' value="')[0]))throw new Error('COMPOSER_NOT_UNIQUE_OR_READY');
-    // An unsent draft blocks the send, unless it is this prompt (or an earlier unsent try of the same exchange id).
+    // An unsent draft blocks the send, unless it is this prompt (or an earlier unsent try of the same exchange id),
+    // or WinControl's own unsent prompt from an interrupted task ("[wincontrol-…]", seen live 2026-11-12). Text the
+    // user typed is never replaced.
     const previous=valueOf(fields[0].extra);
-    if(previous&&previous.trim()&&!same(previous,a.text)&&!(tag.length>1&&previous.trim().startsWith(tag)))throw new Error('UNSENT_DRAFT_PRESENT');
+    const ownStale=tag.startsWith('[wincontrol-')&&previous&&previous.trim().startsWith('[wincontrol-');
+    if(previous&&previous.trim()&&!same(previous,a.text)&&!(tag.length>1&&previous.trim().startsWith(tag))&&!ownStale)throw new Error('UNSENT_DRAFT_PRESENT');
     await call('fill',{pageId,uid:fields[0].uid,value:a.text});
     const filled=await call('take_snapshot',{pageId});
     const verified=elements(filled).filter(e=>e.role==='textbox'&&e.name===fields[0].name);

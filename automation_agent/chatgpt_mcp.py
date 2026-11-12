@@ -1,5 +1,6 @@
 """ChatGPT operations over the existing Chrome DevTools MCP stdio transport.
-No raw CDP socket and no Chrome launch. Fail closed on ambiguous accessibility.
+No raw CDP socket. The only Chrome ever started is WinControl's own configured profile on its own loopback port,
+and only when that Chrome is gone (recovery). Fail closed on ambiguous accessibility.
 """
 import json,subprocess,time,hashlib
 from pathlib import Path
@@ -12,12 +13,33 @@ def _config(context,settings,url):
  u=urlsplit(c['browser_url'])
  if u.scheme!='http' or u.hostname!='127.0.0.1' or u.path not in ('','/') or u.username or u.password or u.query or u.fragment:
   raise RuntimeError('OWNED_LOOPBACK_CDP_REQUIRED')
+ _ensure_chrome(c,u.port)
  marker=Path(c['profile_dir'])/'DevToolsActivePort'
  if int(marker.read_text().splitlines()[0])!=u.port:raise RuntimeError('CHROME_PROFILE_ENDPOINT_MISMATCH')
  if urlsplit(url).scheme!='https' or urlsplit(url).hostname not in ('chatgpt.com','chat.openai.com') or not urlsplit(url).path.startswith('/c/'):
   raise RuntimeError('CHATGPT_CONVERSATION_REQUIRED')
  if c.get('page_url')!=url:raise RuntimeError('EXACT_OWNED_PAGE_REQUIRED')
  return c
+
+CHROME_START_WAIT=20
+
+def _ensure_chrome(c,port,opener=None,popen=subprocess.Popen,clock=time.time,sleep=time.sleep):
+ """Recovery: WinControl's own Chrome (its profile, its loopback port) was closed or crashed (seen live
+ 2026-11-12 14:24). Start that same profile again; nothing has been sent while it was gone."""
+ import urllib.request
+ opener=opener or urllib.request.urlopen
+ probe=c['browser_url'].rstrip('/')+'/json/version'
+ try:opener(probe,timeout=2).close();return False
+ except OSError:pass
+ from .window_manager import executable
+ popen([str(executable('chrome')),'--remote-debugging-port=%d'%port,'--user-data-dir='+str(c['profile_dir']),'--no-first-run',
+        c.get('page_url') or 'https://chatgpt.com/'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+       creationflags=getattr(subprocess,'DETACHED_PROCESS',0)|getattr(subprocess,'CREATE_BREAKAWAY_FROM_JOB',0))
+ end=clock()+CHROME_START_WAIT
+ while clock()<end:
+  try:opener(probe,timeout=2).close();return True
+  except OSError:sleep(.5)
+ raise RuntimeError('CHROME_RESTART_FAILED')
 
 def _call_once(c,operation,text=None):
  payload=dict(c,operation='action',action={'action':'CHATGPT_SNAPSHOT' if operation=='snapshot' else 'CHATGPT_SEND','text':text})
