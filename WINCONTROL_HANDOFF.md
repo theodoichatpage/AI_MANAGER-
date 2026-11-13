@@ -133,3 +133,8 @@ Triển khai: `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao
 - 14:41–14:59: WinControl `c35ef8fa` cho chạy tiếp **thành công**; MAN tự mở lại tab Studio trong Edge; ảnh 199 → 202.
 - **Telegram đã triển khai, chưa cấu hình:** người dùng dán token XuongAIbot ở tab Công việc → nhắn `/pair <mã>` cho bot.
 - **Telegram đã ghép nối (12/11 ~14:14 giờ VN, xác nhận từ ảnh chụp bot + `state.telegram`: configured, paired, đang poll).** Chưa kiểm thử thực tế `/status`, lệnh WinControl và báo cáo tự động qua bot.
+
+### 13/11: triển khai "kịch bản liền mạch" của Aprilynne (người dùng duyệt "Triển khai")
+- MAN: merge `2b282b8` (script_clean.py, story_pipeline.py: kiểm tra máy cả kịch bản, gỡ ghi chú, 4–8 hồi, lượt biên tập, duyệt ≥8/12 và sạch) → `d99bf1b`; 356 test, chỉ 3 lỗi có sẵn. Triển khai 15:46:54Z `49d883c→d99bf1b`, checkpoint không đổi.
+- Studio: origin đã tiến lên `4d9cee0` nên tạo merge `e6d4f64` (4d9cee0 + ee40947, không trùng file) và đẩy lên `phase3-manager-presence`. Lưu ý: `_vis_lanes_wt` có commit `95d4761` (Projects tab) của phiên khác **chưa đẩy**, giờ lệch với origin → phiên đó cần merge origin trước khi đẩy. Tôi không đụng commit đó.
+- Chưa kiểm thử thực tế: chưa chạy dự án thử viết lại kịch bản với ChatGPT.
