@@ -7,6 +7,7 @@ the same way the parallel rewrite already works. The tabs only execute; every de
 analysis/story.json, so reloading a Studio tab or the browser changes nothing."""
 import hashlib,json,re,urllib.request
 from pathlib import Path
+from . import script_clean
 
 THRESHOLD=8
 ROUNDS=3
@@ -34,12 +35,19 @@ CRITERIA=[
 ]
 # Graded later from the cover and the cut, not from the script.
 VISUAL={1,8}
+# Kịch bản liền mạch như một câu chuyện, không như nhiều tập phim nối lại (đo bằng máy trong script_clean, đọc thành quy tắc ở đây).
+FLOW_RULES=('LIỀN MẠCH: một lời chào và một "vào video" duy nhất ở mở đầu; lời kêu gọi theo dõi chỉ ở đầu và cuối video; '
+ 'mạch thời gian đi một chiều, mỗi sự kiện và giai thoại chỉ kể MỘT lần, không báo trước rồi kể lại, không tóm tắt lại điều vừa kể; '
+ 'không mở phần bằng "Các bác ạ" hay lời chào lại, nối thẳng từ câu cuối của phần trước bằng sự kiện; tối đa một câu hỏi treo ở cuối phần, còn lại là câu kể; '
+ 'mỗi câu cửa miệng của kênh dùng tối đa hai lần cả video; một câu rào đón chung (lời thoại theo sử cũ và giai thoại) chỉ ở đầu video; '
+ 'khi đổi giọng đánh giá nhân vật thì có câu bắc cầu; tính từ cường điệu dùng tiết chế.')
+CALL_TO_ACTION='Lời kêu gọi theo giọng của kênh, tự nhiên như nói với bạn bè, ví dụ: "Nếu đây là lần đầu bạn xem video của kênh, hãy bấm theo dõi và thích video để cùng đồng hành khám phá những câu chuyện lịch sử thú vị".'
 # How this channel meets a criterion: used to grade it and to repair a section that fails it.
 RULES={
- 6:'THỂ HIỆN CÔNG SỨC THỰC TẾ: không cần cảnh quay thật; người dẫn kể, giọng tâm sự như với bạn bè, công sức đã bỏ ra để tìm hiểu, ví dụ "trong rất nhiều tài liệu viết về ông, có hai bộ sách đáng tin nhất được giới sử học công nhận là…" hoặc "em đã mất cả tuần đối chiếu để các bác có thông tin đầy đủ nhất". Dẫn sử liệu, tài liệu có thật (với lịch sử Việt Nam: Đại Việt sử ký toàn thư, An Nam chí lược, Khâm định Việt sử thông giám cương mục, Lịch triều hiến chương loại chí…), nêu tên sách và điều sách chép, niên đại, con số. Nếu có công cụ tìm kiếm web thì tra cứu trước khi viết. Con số phải đúng hoặc nói là ước lượng, chỗ chưa chắc ghi [CẦN KIỂM TRA]; không bịa số quyển, số trang hay lời trích.',
+ 6:'THỂ HIỆN CÔNG SỨC THỰC TẾ: cả video chỉ cần MỘT HAI đoạn kể tự nhiên, giọng tâm sự, về công tìm hiểu, ví dụ "trong rất nhiều tài liệu viết về ông, có hai bộ sách đáng tin nhất là…, Toàn thư chép rằng…"; dẫn sử liệu có thật (Đại Việt sử ký toàn thư, An Nam chí lược, Khâm định Việt sử thông giám cương mục, Lịch triều hiến chương loại chí…), tên sách, điều sách chép, niên đại. Không bịa số quyển, số trang, lời trích hay thời gian tìm hiểu. TUYỆT ĐỐI không đưa ghi chú biên tập vào lời đọc ([CẦN KIỂM TRA], "theo tư liệu được cung cấp", "tư liệu đầu vào") và không rào đón ở từng đoạn; chi tiết chưa chắc thì bỏ hoặc nói gọn "sử cũ chép rằng". Sai sự thật (tên người, quan hệ, ai làm gì) bị trừ điểm nặng.',
+ 13:'KIỂM TRA VÀ CẮT ĐOẠN GÂY CHÁN: chấm theo quy tắc liền mạch: '+FLOW_RULES,
  9:'TƯƠNG PHẢN: hai tuyến truyện đối lập nhau về quy mô hoặc toan tính và đan xen nhau, ví dụ tuyến chính là đại sự triều chính, tuyến phụ là ngoại truyện về đời tư của nhân vật hoặc một sự kiện ít ai biết; hai tuyến soi chiếu nhau. Chỉ dùng chuyện có thật.',
 }
-CALL_TO_ACTION='Lời kêu gọi theo giọng của kênh, tự nhiên như nói với bạn bè, ví dụ: "Nếu đây là lần đầu bạn xem video của kênh, hãy bấm theo dõi và thích video để cùng đồng hành khám phá những câu chuyện lịch sử thú vị".'
 HIGHLIGHT=re.compile(r'sử ký|sử chép|chí lược|cương mục|hiến chương|chính sử|dã sử|tài liệu|bộ sách|ghi chép|văn bia|giai thoại|ít ai biết|đời tư|ngoại truyện|tuyến|kiểm chứng|tra cứu|đối chiếu|CẦN KIỂM TRA',re.I)
 TRANSCRIPT_ENGINE='http://127.0.0.1:8000/transcript'
 
@@ -57,6 +65,11 @@ def units(text):
  """Addressable sentences of the transcript; ChatGPT only chooses where parts end, the text itself is never retyped."""
  return [u for u in re.findall(r'.*?(?:[.!?…。！？]+["”\'’)\]]*(?=\s|$)|\n+|$)',text,re.S) if u]
 
+def acts(length):
+ """How many acts a transcript of this length is written in (about 7,000 characters each, 2 to 8)."""
+ n=max(2,min(8,round(length/7000)))
+ return max(2,n-1),min(8,n+1)
+
 def plan_prompt(text,style):
  us=units(text)
  numbered=json.dumps([[i+1,u] for i,u in enumerate(us)],ensure_ascii=False)
@@ -66,10 +79,10 @@ def plan_prompt(text,style):
   'tracks là hai tuyến truyện đối lập nhau về quy mô hoặc toan tính (tuyến chính và một ngoại truyện về đời tư hoặc sự kiện ít ai biết, có thật); '
   'turns là các điểm chuyển nhịp khoảng 2–4 phút một lần; payoff là phần thưởng lớn hé lộ gần cuối; ending là kết ở cao trào; '
   'sources là các sử liệu, tài liệu có thật nên dẫn để thể hiện công sức tìm hiểu; cover là ảnh bìa: nhân vật chính ở giữa, hai bên là hai kết quả đối lập. '
-  '2) Chia transcript thành các phần liền mạch, mỗi phần khoảng 1.000–2.500 ký tự, không cắt giữa một ý; mỗi phần có role là vai trò của nó trong dàn ý. '
+  '2) Chia transcript thành %d–%d HỒI lớn theo các chặng của câu chuyện (ví dụ khởi nghiệp, đoạt quyền, khủng hoảng, chiến tranh, kỷ cương, kết), mỗi hồi khoảng 5.000–10.000 ký tự, không cắt giữa một chặng; mỗi hồi có role là vai trò của nó trong dàn ý. '
   'end là số thứ tự đoạn nguồn CUỐI của phần; phần đầu bắt đầu ở đoạn 1, phần sau bắt đầu ngay sau end của phần trước, end tăng dần, end cuối bằng %d. Không chép lại transcript. '
   'Chỉ trả MỘT JSON: {"plan":{"title":"...","hook":"...","question":"...","promise":"...","tracks":["...","..."],"turns":"...","payoff":"...","ending":"...","sources":"...","cover":"..."},'
-  '"branches":[{"title":"tên ngắn","end":1,"role":"vai trò trong dàn ý"}]}.\nPHONG CÁCH KÊNH (để hiểu giọng, chưa viết): %s\nTRANSCRIPT: %s')%(len(us),len(us),json.dumps(style[:3000],ensure_ascii=False),numbered)
+  '"branches":[{"title":"tên ngắn","end":1,"role":"vai trò trong dàn ý"}]}.\nPHONG CÁCH KÊNH (để hiểu giọng, chưa viết): %s\nTRANSCRIPT: %s')%(len(us),*acts(len(text)),len(us),json.dumps(style[:3000],ensure_ascii=False),numbered)
 
 def parse_json(text):
  t=str(text or '').strip()
@@ -96,15 +109,29 @@ def write_prompt(sec,i,n,plan,style,sections):
  L=len(sec['source'])
  role=['Đây là PHẦN MỞ ĐẦU: câu đầu tiên chính là hook, khớp với tiêu đề; trong 20 giây đầu nêu bối cảnh, câu hỏi lớn, cái giá hoặc phần thưởng và lời hứa; sau đoạn mở đầu chèn một '+CALL_TO_ACTION if i==0 else '',
   'Đây là PHẦN KẾT: hé lộ phần thưởng lớn, kết thúc ở cao trào, rồi kết bằng một '+CALL_TO_ACTION+' và mời bình luận.' if i==n-1 else '',
-  'Giữ nhịp: mở phần bằng một điểm chuyển hoặc câu hỏi mới, kết phần bằng một móc nối sang phần sau.' if 0<i<n-1 else '']
+  'Đây là một hồi ở giữa: nối thẳng từ chỗ hồi trước dừng (không chào lại, không mở bằng "Các bác ạ", không tóm tắt lại); kết hồi bằng sự kiện dẫn sang hồi sau, tối đa một câu hỏi treo.' if 0<i<n-1 else '']
  ctx=' | '.join(x for x in (sections[i-1]['title'] if i>0 else '',sections[i+1]['title'] if i<n-1 else '') if x)
  return ('Bạn là biên tập viên viết lại kịch bản YouTube. Chỉ viết lại PHẦN HIỆN TẠI, không viết các phần khác. Giữ đủ sự kiện và ý nghĩa, không bịa dữ kiện.\n'
   'ĐỘ DÀI: khoảng %d–%d ký tự, gần bằng phần nguồn; không kéo dài, cắt chi tiết thừa và đoạn gây chán.\n'
   'PHONG CÁCH CÁ NHÂN:\n%s\nDÀN Ý APRILYNNE CỦA CẢ VIDEO (viết đúng vai trò của phần này):\n%s\nVAI TRÒ PHẦN NÀY (%d/%d): %s\n%s\n'
-  'Đan xen hai tuyến truyện khi phần này có chất liệu; khi nói tới sử liệu thì kể công tìm hiểu bằng giọng tâm sự, chỉ dẫn nguồn có thật.\n'
-  'PHẦN LIỀN KỀ: %s\nPHẦN HIỆN TẠI - %s:\n%s\nChỉ trả nội dung kịch bản đã viết lại, không markdown.')%(
+  'Đan xen hai tuyến truyện khi phần này có chất liệu; nói tới sử liệu thì kể tự nhiên, chỉ dẫn nguồn có thật, không ghi chú biên tập.\n%s\n'
+  'PHẦN LIỀN KỀ: %s\nNGUỒN HỒI TRƯỚC KẾT Ở: %s\nNGUỒN HỒI SAU BẮT ĐẦU: %s\nPHẦN HIỆN TẠI - %s:\n%s\nChỉ trả nội dung kịch bản đã viết lại, không markdown.')%(
   round(L*0.9),round(L*1.3),style,json.dumps({k:plan.get(k) for k in ('title','hook','question','promise','tracks','turns','payoff','ending','sources')},ensure_ascii=False),
-  i+1,n,sec.get('role') or 'tiếp nối mạch kể',' '.join(x for x in role if x),ctx,sec['title'],sec['source'])
+  i+1,n,sec.get('role') or 'tiếp nối mạch kể',' '.join(x for x in role if x),FLOW_RULES,ctx,
+  sections[i-1]['source'][-600:] if i>0 else '(đây là hồi đầu)',sections[i+1]['source'][:400] if i<n-1 else '(đây là hồi cuối)',sec['title'],sec['source'])
+
+def edit_prompt(sec,i,n,plan,style,sections,issues):
+ """One pass over an act already written, with the acts around it: the whole script reads as one story (the step that made the Say Sử script flow)."""
+ told=[{'hồi':k+1,'tên':x['title'],'vai trò':x.get('role') or ''} for k,x in enumerate(sections)]
+ mine=[x['detail'] for x in issues if x['part']==i+1]
+ return ('Bạn là biên tập viên kịch bản YouTube. Biên tập lại HỒI %d/%d cho liền mạch với cả video, KHÔNG thêm sự kiện mới, không kéo dài: bản trả về ngắn hơn hoặc bằng bản hiện tại.\n%s\n'
+  'Việc cần làm: xóa câu và ý lặp với chính hồi này hoặc với hồi trước; mỗi giai thoại chỉ kể một lần; xóa ghi chú biên tập và câu rào đón; câu đầu nối thẳng từ câu cuối hồi trước; '
+  'khi giọng đánh giá nhân vật đổi thì thêm một câu bắc cầu; giữ giọng kênh, dữ kiện, các đoạn [HÌNH: …].\n'
+  'LỖI MÁY ĐÃ ĐO Ở HỒI NÀY: %s\nPHONG CÁCH CÁ NHÂN:\n%s\nDÀN Ý: %s\nCÁC HỒI CỦA VIDEO: %s\nCUỐI HỒI TRƯỚC: %s\nĐẦU HỒI SAU: %s\nHỒI HIỆN TẠI - %s:\n%s\n'
+  'Chỉ trả nội dung đầy đủ của hồi này sau khi biên tập, không markdown.')%(
+  i+1,n,FLOW_RULES,json.dumps(mine,ensure_ascii=False) if mine else 'không có',style,
+  json.dumps({k:plan.get(k) for k in ('title','question','promise','tracks','turns','payoff','ending')},ensure_ascii=False),json.dumps(told,ensure_ascii=False),
+  sections[i-1]['text'][-1500:] if i>0 else '(đây là hồi đầu)',sections[i+1]['text'][:800] if i<n-1 else '(đây là hồi cuối)',sec['title'],sec['text'])
 
 def review_prompt(plan,sections,style,last_error=''):
  parts=[]
@@ -178,7 +205,8 @@ def group_prompt(g,ids,plan,sections,style,last_error=''):
  return ('Bạn là biên tập viên kịch bản YouTube. Chấm kỹ nhưng trả lời ngay, chỉ trả một JSON.\nCÔNG THỨC APRILYNNE (chỉ các tiêu chí cần chấm):\n%s\n'
   'Đối chiếu %s. Tiêu đề đích: "%s". Chấm 0–10 đúng các ID %s; part là số phần chứa dẫn chứng, evidence trích nguyên văn từ phần đó, reason nói vì sao được điểm ấy; '
   'nếu dưới %d thì BẮT BUỘC có fix: cách sửa cụ thể (câu/đoạn nào, thêm hay cắt gì), không chung chung. %s'
-  'Trả {"rows":[{"id":%d,"score":7,"part":1,"evidence":"trích ngắn","reason":"một câu","fix":"một câu"}]} gồm đúng %d dòng.%s\nPHONG CÁCH KÊNH: %s\nDÀN Ý: %s\nKỊCH BẢN: %s')%(
+  'Thêm "facts": tối đa 5 khẳng định sai hoặc đáng ngờ về sự thật trong đoạn được chấm (tên người, quan hệ, ai làm gì, năm), mỗi mục {"part":1,"claim":"trích","fix":"nên sửa thành"}; không có thì trả [].'
+  'Trả {"rows":[{"id":%d,"score":7,"part":1,"evidence":"trích ngắn","reason":"một câu","fix":"một câu"}],"facts":[]} gồm đúng %d dòng.%s\nPHONG CÁCH KÊNH: %s\nDÀN Ý: %s\nKỊCH BẢN: %s')%(
   reference(ids),scope,plan.get('title',''),ids,THRESHOLD,('Cách chấm riêng: '+rules+' ') if rules else '',ids[0],len(ids),
   (' LƯU Ý: lần trước bị từ chối vì: '+last_error) if last_error else '',json.dumps(style[:1500],ensure_ascii=False),
   json.dumps({k:plan.get(k) for k in ('title','hook','question','promise','tracks','payoff','ending','sources')},ensure_ascii=False),json.dumps(group_parts(g,sections),ensure_ascii=False))
@@ -194,6 +222,17 @@ def accept_group(reply,ids,n):
   # A low score without a concrete fix cannot drive a repair: ask again.
   if sc<THRESHOLD and len(str(r.get('fix') or '').strip())<8:raise ValueError('Thiếu cách sửa cụ thể cho '+CRITERIA[i][0]+' (điểm dưới %d)'%THRESHOLD)
   out.append({'id':i,'score':float(sc),'part':pt,'evidence':str(r.get('evidence') or '')[:800],'reason':str(r.get('reason') or '')[:800],'fix':str(r.get('fix') or '')[:800]})
+ return out
+
+def accept_facts(reply,n):
+ """Doubtful facts the grader listed: kept as notes for the editor and given to the repair of their section."""
+ try:v=parse_json(reply)
+ except ValueError:return []
+ out=[]
+ for f in (v.get('facts') or [])[:5] if isinstance(v,dict) else []:
+  if not isinstance(f,dict) or not str(f.get('claim') or '').strip():continue
+  pt=f.get('part')
+  out.append({'part':pt if isinstance(pt,int) and 1<=pt<=n else None,'claim':str(f['claim'])[:300],'fix':str(f.get('fix') or '')[:300]})
  return out
 
 def accept_review(reply,n):
@@ -215,23 +254,37 @@ def accept_review(reply,n):
 
 def passed(rows):return sum(1 for r in rows if r['score'] is not None and r['score']>=THRESHOLD)
 def total(rows):return sum(r['score'] for r in rows if r['score'] is not None)
-def better(rows,best):
- """More criteria passed wins; on a tie the higher total score (a repair that lifts 6 to 7.5 still counts)."""
- return not best or (passed(rows),total(rows))>(best['passed'],best.get('total',total(best.get('rows') or [])))
-def failing_parts(rows,findings=()):return sorted({r['part']-1 for r in list(rows)+list(findings) if r['score'] is not None and r['score']<THRESHOLD and r.get('part')})
+def better(rows,best,clean=()):
+ """A script that passes the machine check wins; then more criteria passed; on a tie the higher total score (a repair that lifts 6 to 7.5 still counts)."""
+ return not best or (not clean,passed(rows),total(rows))>(not best.get('clean'),best['passed'],best.get('total',total(best.get('rows') or [])))
+def failing_parts(rows,findings=(),clean=()):
+ return sorted({r['part']-1 for r in list(rows)+list(findings) if r['score'] is not None and r['score']<THRESHOLD and r.get('part')}|{x['part']-1 for x in clean if x.get('part')})
+def gate(rows,clean):
+ """Criterion 13 (cut the boring parts) cannot pass while the machine still measures repetition or notes read aloud."""
+ if not clean:return rows
+ kinds=script_clean.summary(clean)
+ out=[]
+ for r in rows:
+  if r['id']==13 and r['score'] is not None and r['score']>6:
+   r=dict(r,score=6.0,reason='Máy đo còn lỗi liền mạch: '+', '.join('%s %d'%(k,v) for k,v in kinds.items())+'. '+str(r.get('reason') or ''),fix=clean[0]['detail'])
+  out.append(r)
+ return out
 
-def repair_prompt(sec,i,n,plan,style,rows,sections,findings=()):
+def repair_prompt(sec,i,n,plan,style,rows,sections,findings=(),clean=(),facts=()):
  issues=[r for r in list(rows)+list(findings) if r['part']==i+1 and r['score'] is not None and r['score']<THRESHOLD]
+ measured=[x['detail'] for x in clean if x['part']==i+1]
+ wrong=[{'khẳng định':f['claim'],'sửa':f['fix']} for f in facts if f.get('part')==i+1]
  rules=' '.join(dict.fromkeys(RULES[r['id']] for r in issues if r['id'] in RULES))
  # Criteria this section already meets: the repair must not break them (e.g. cutting the hook while trimming boring passages).
  keep=[CRITERIA[r['id']][0]+(': "'+r['evidence'][:200]+'"' if r.get('evidence') else '') for r in rows if r['part']==i+1 and r['score'] is not None and r['score']>=THRESHOLD]
  return ('Bạn là biên tập viên kịch bản YouTube. Chỉ sửa PHẦN %d/%d theo các tiêu chí Aprilynne chưa đạt gửi kèm, làm đúng từng "cách sửa". Giữ những đoạn tốt, dữ kiện, giọng kênh và liên kết với các phần khác; '
   'không kéo dài quá %d ký tự; khi tiêu chí là nhịp độ hoặc đoạn gây chán thì ưu tiên CẮT và gộp ý lặp hơn là viết thêm. %s\nPHONG CÁCH CÁ NHÂN:\n%s\nDÀN Ý: %s\nVAI TRÒ PHẦN NÀY: %s\nTIÊU CHÍ CHƯA ĐẠT: %s\n'
-  'TIÊU CHÍ ĐANG ĐẠT Ở PHẦN NÀY (giữ nguyên ý và câu dẫn chứng, không làm yếu đi): %s\nĐOẠN CUỐI PHẦN TRƯỚC: %s\nĐOẠN ĐẦU PHẦN SAU: %s\n'
+  'TIÊU CHÍ ĐANG ĐẠT Ở PHẦN NÀY (giữ nguyên ý và câu dẫn chứng, không làm yếu đi): %s\nLỖI LIỀN MẠCH MÁY ĐÃ ĐO (phải hết sau khi sửa): %s\nKHẲNG ĐỊNH CẦN SỬA CHO ĐÚNG SỰ THẬT: %s\n%s\nĐOẠN CUỐI PHẦN TRƯỚC: %s\nĐOẠN ĐẦU PHẦN SAU: %s\n'
   'PHẦN HIỆN TẠI - %s:\n%s\nChỉ trả nội dung đầy đủ của phần này sau khi sửa, không markdown.')%(
   i+1,n,round(len(sec['source'])*1.4),rules,style,json.dumps(plan,ensure_ascii=False),sec.get('role') or '',
   json.dumps([{'tiêu chí':CRITERIA[r['id']][0],'điểm':r['score'],'lý do':r['reason'],'cách sửa':r['fix']} for r in issues],ensure_ascii=False),
   json.dumps(keep,ensure_ascii=False) if keep else 'không có',
+  json.dumps(measured,ensure_ascii=False) if measured else 'không có',json.dumps(wrong,ensure_ascii=False) if wrong else 'không có',FLOW_RULES,
   sections[i-1]['text'][-800:] if i>0 else '',sections[i+1]['text'][:600] if i<n-1 else '',sec['title'],sec['text'])
 
 def studio_report(d):
@@ -244,7 +297,10 @@ def studio_report(d):
   'error':cut(d.get('last_error'),300),
   'rows':[{'id':r.get('id'),'score':r.get('score'),'part':r.get('part'),'evidence':cut(r.get('evidence'),300),'reason':cut(r.get('reason'),500),'fix':cut(r.get('fix'),500)} for r in rows],
   'findings':[{'id':r.get('id'),'score':r.get('score'),'part':r.get('part'),'fix':cut(r.get('fix'),300)} for r in (d.get('findings') or [])][:30],
-  'history':[{'round':h.get('round'),'passed':h.get('passed')} for h in (d.get('history') or [])][-12:]}
+  'history':[{'round':h.get('round'),'passed':h.get('passed')} for h in (d.get('history') or [])][-12:],
+  'clean':[{'kind':x.get('kind'),'part':x.get('part'),'detail':cut(x.get('detail'),200)} for x in (d.get('clean') or [])][:30],
+  'notes':[{'part':x.get('part'),'note':cut(x.get('note'),200)} for x in (d.get('notes') or [])][:30],
+  'facts':[{'part':x.get('part'),'claim':cut(x.get('claim'),200),'fix':cut(x.get('fix'),200)} for x in (d.get('facts') or [])][:20]}
 
 def fetch_transcript(url,language='vi'):
  body=json.dumps({'url':url,'languages':[language,'en']}).encode()
@@ -301,6 +357,12 @@ class Story:
    elif r.get('status')=='error':self.retry('plan',r.get('error'));return self.wait('plan:retry','Lập dàn ý lỗi, hỏi lại')
    else:return self.wait('plan','Đang lập dàn ý Aprilynne và chia phần')
   secs=d['sections'];n=len(secs)
+  def tidy():
+   # Editorial notes never stay in the narration: moved to the notes for the editor.
+   texts,notes=script_clean.strip_notes([x['text'] for x in secs])
+   for x,t in zip(secs,texts):x['text']=t
+   have={(n_['part'],n_['note']) for n_ in d.get('notes') or []}
+   d['notes']=(d.get('notes') or [])+[n_ for n_ in notes if (n_['part'],n_['note']) not in have]
   if d['stage']=='write':
    # The task list stays the same for the whole try (changing it while tabs work would block new hand-outs).
    wt=d.get('write_try',0)
@@ -317,7 +379,20 @@ class Story:
      if bad:d['write_try']=d.get('write_try',0)+1;self.retry('write',str(bad))
      done=sum(1 for x in secs if x['text'])
      return self.wait('write:%d'%done,'Đang viết theo dàn ý %d/%d phần'%(done,n),studio_rewrite_done=done,studio_rewrite_total=n)
-   d['stage']='review';self.save()
+   tidy();d['stage']='edit' if d.get('source')!='script' else 'review';self.save()
+  if d['stage']=='edit':
+   if 'edit_issues' not in d:d['edit_issues']=script_clean.check([x['text'] for x in secs]);self.save()
+   tasks=[{'id':'ed-%s'%x['id'],'title':'Biên tập liền mạch '+x['title'],'prompt':edit_prompt(x,i,n,d['plan'],self.style(),secs,d['edit_issues'])} for i,x in enumerate(secs)]
+   got=self.tasks(s,tasks)
+   if got is None:return self.wait('edit:busy','Chờ tab ChatGPT rảnh')
+   done=[i for i,x in enumerate(secs) if (got.get('ed-%s'%x['id']) or {}).get('status')=='done']
+   if len(done)<n and not (self.lanes or {}).get('studio_failed_items'):
+    return self.wait('edit:%d'%len(done),'Đang biên tập liền mạch %d/%d hồi'%(len(done),n))
+   for i in done:
+    t=str(got['ed-%s'%secs[i]['id']].get('text') or '').strip()
+    # An edit that grew the act a lot is not an edit: the written act is kept.
+    if t and len(t)<=len(secs[i]['text'])*1.15:secs[i]['text']=t
+   tidy();d['stage']='review';self.save()
   if d['stage']=='review':
    got_rows=d.setdefault('group_rows',{}).setdefault(str(d['round']),{})
    # A round started before the body was read in chunks keeps its single body review.
@@ -336,40 +411,49 @@ class Story:
      r=next((x for k,x in got.items() if str(k).startswith(base+'-t') and x.get('status')=='done'),None) or got.get(t['id']) or {}
      if r.get('status')=='error' and t['id'] in ((self.lanes or {}).get('studio_failed_items') or []):self.retry(base,r.get('error'));continue
      if r.get('status')!='done':continue
-     try:got_rows[g]=accept_group(r.get('text'),ids,n)
+     try:
+      got_rows[g]=accept_group(r.get('text'),ids,n)
+      d.setdefault('group_facts',{}).setdefault(str(d['round']),{})[g]=accept_facts(r.get('text'),n)
      except (ValueError,KeyError,TypeError) as e:self.retry(base,e)
     self.save()
     if any(g not in got_rows for g,_ in groups):
      return self.wait('review:%d:%d'%(d['round'],len(got_rows)),'Đang chấm Aprilynne vòng %d/%d (%d/%d nhóm tiêu chí)'%(d['round']+1,ROUNDS,len(got_rows),len(groups)))
    rows,findings=combine(groups,got_rows)
-   d['rows']=rows;d['findings']=findings
-   d.setdefault('history',[]).append({'round':d['round'],'passed':passed(rows),'total':total(rows),'rows':rows,'findings':findings})
-   rising=better(rows,d.get('best'))
-   if rising:d['best']={'passed':passed(rows),'total':total(rows),'texts':[x['text'] for x in secs],'rows':rows,'findings':findings,'round':d['round']}
-   elif failing_parts(rows,findings) and d['round']+1<ROUNDS:
+   clean=script_clean.check([x['text'] for x in secs])
+   rows=gate(rows,clean)
+   facts=[f for g in (d.get('group_facts') or {}).get(str(d['round']),{}).values() for f in g][:10]
+   d['rows']=rows;d['findings']=findings;d['clean']=clean;d['facts']=facts
+   d.setdefault('history',[]).append({'round':d['round'],'passed':passed(rows),'total':total(rows),'clean':len(clean),'rows':rows,'findings':findings})
+   rising=better(rows,d.get('best'),clean)
+   if rising:d['best']={'passed':passed(rows),'total':total(rows),'texts':[x['text'] for x in secs],'rows':rows,'findings':findings,'clean':clean,'facts':facts,'round':d['round']}
+   elif failing_parts(rows,findings,clean) and d['round']+1<ROUNDS:
     # This round's repairs made the script worse: the next repairs start again from the best version, never from a worse one.
     best=d['best']
     for x,t in zip(secs,best['texts']):x['text']=t
-    rows,findings=best['rows'],best.get('findings') or [];d['rows']=rows;d['findings']=findings
+    rows,findings,clean,facts=best['rows'],best.get('findings') or [],best.get('clean') or [],best.get('facts') or []
+    d['rows']=rows;d['findings']=findings;d['clean']=clean;d['facts']=facts
     d['note']='Vòng %d kém hơn bản tốt nhất (%d/%d): sửa tiếp từ bản tốt nhất'%(d['round']+1,best['passed'],len(CRITERIA))
-   todo=failing_parts(rows,findings)
+   todo=failing_parts(rows,findings,clean)
    best=d['best']
-   if not todo or best['passed']>=PASS_NEEDED:
+   # Approved: at least PASS_NEEDED criteria at 8 or more AND a clean script (no repetition, no notes read aloud).
+   if not todo or (best['passed']>=PASS_NEEDED and not best.get('clean')):
     # Approved: at least PASS_NEEDED criteria at 8 or more (the best version so far goes on to the scenes).
     for x,t in zip(secs,best['texts']):x['text']=t
-    d['rows']=best['rows'];d['findings']=best.get('findings') or []
+    d['rows']=best['rows'];d['findings']=best.get('findings') or [];d['clean']=best.get('clean') or [];d['facts']=best.get('facts') or []
     d['stage']='done';d['note']='Duyệt: đạt %d/%d tiêu chí từ 8 điểm (cần %d) sau %d lượt sửa'%(best['passed'],len(CRITERIA)-len(VISUAL),PASS_NEEDED,d['round'])
    elif d['round']+1>=ROUNDS and not (rising and d['round']+1<MAX_ROUNDS):
     best=d['best']
     for x,t in zip(secs,best['texts']):x['text']=t
-    d['rows']=best['rows'];d['findings']=best.get('findings') or []
+    d['rows']=best['rows'];d['findings']=best.get('findings') or [];d['clean']=best.get('clean') or [];d['facts']=best.get('facts') or []
     if best['passed']<PASS_AFTER_ROUNDS:
      self.save();raise RuntimeError('Kịch bản chưa đạt Aprilynne sau %d vòng: bản tốt nhất đạt %d/%d (cần %d). Xem điểm trong analysis/story.json.'%(ROUNDS,best['passed'],len(CRITERIA),PASS_AFTER_ROUNDS))
+    if best.get('clean'):
+     self.save();raise RuntimeError('Kịch bản đạt %d/12 tiêu chí nhưng còn lỗi liền mạch sau %d vòng: %s. Xem analysis/story.json (clean).'%(best['passed'],d['round']+1,', '.join('%s %d'%(k,v) for k,v in script_clean.summary(best['clean']).items())))
     d['stage']='done';d['note']='Hết %d vòng: dùng bản tốt nhất %d/%d'%(ROUNDS,best['passed'],len(CRITERIA))
    else:d['stage']='repair';d['repair']=todo
    self.save()
   if d['stage']=='repair':
-   todo=d['repair'];tasks=[{'id':'fix%d-%s'%(d['round'],secs[i]['id']),'title':'Sửa '+secs[i]['title'],'prompt':repair_prompt(secs[i],i,n,d['plan'],self.style(),d['rows'],secs,d.get('findings') or [])} for i in todo]
+   todo=d['repair'];tasks=[{'id':'fix%d-%s'%(d['round'],secs[i]['id']),'title':'Sửa '+secs[i]['title'],'prompt':repair_prompt(secs[i],i,n,d['plan'],self.style(),d['rows'],secs,d.get('findings') or [],d.get('clean') or [],d.get('facts') or [])} for i in todo]
    got=self.tasks(s,tasks)
    if got is None:return self.wait('repair:busy','Chờ tab ChatGPT rảnh')
    fixed=[i for i in todo if (got.get('fix%d-%s'%(d['round'],secs[i]['id'])) or {}).get('status')=='done']
@@ -378,7 +462,7 @@ class Story:
    for i in fixed:
     t=str(got['fix%d-%s'%(d['round'],secs[i]['id'])].get('text') or '').strip()
     if t:secs[i]['text']=t
-   d['round']+=1;d['stage']='review';self.save()
+   tidy();d['round']+=1;d['stage']='review';self.save()
    return self.wait('repair:done:%d'%d['round'],'Đã sửa, chấm lại vòng %d/%d'%(d['round']+1,ROUNDS))
   if d['stage']=='done':
    script='\n\n'.join(x['text'] for x in secs)
