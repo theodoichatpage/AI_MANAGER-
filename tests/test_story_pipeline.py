@@ -47,7 +47,13 @@ class StoryTests(unittest.TestCase):
   _,r=self.step();self.assertTrue(r['waiting'])
   prompts=[x['prompt'] for x in self.api.s['rewrite']['sections']]
   self.assertEqual(len(prompts),2);self.assertIn('PHẦN MỞ ĐẦU',prompts[0]);self.assertIn('bấm theo dõi',prompts[1])
-  self.api.answer(lambda x:'Viết lại '+x['id'])
+  self.assertNotIn('mở phần bằng một điểm chuyển hoặc câu hỏi',prompts[0]+prompts[1]);self.assertIn('LIỀN MẠCH',prompts[1])
+  self.api.answer(lambda x:'Viết lại '+x['id']+' [CẦN KIỂM TRA] năm sinh.')
+  _,r=self.step()
+  # One editing pass over every act before grading; the notes read aloud are already gone.
+  self.assertIn('Biên tập liền mạch',self.api.s['rewrite']['sections'][0]['title'])
+  self.assertNotIn('[CẦN KIỂM TRA]',self.api.s['rewrite']['sections'][0]['prompt'].split('HỒI HIỆN TẠI')[1])
+  self.api.answer(lambda x:'Biên tập '+x['id'])
   _,r=self.step()
   self.assertIn('Chấm Aprilynne',self.api.s['rewrite']['sections'][0]['title'])
   self.api.answer(lambda x:json.dumps(rows(lambda i:6 if i in (5,6,9,10,13) else 9)))
