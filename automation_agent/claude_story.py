@@ -58,6 +58,9 @@ class ClaudeStory:
   """Start the tool in the background; its output goes to analysis/aprilinne/chay.log."""
   c=self.w.c;root=tool_root(c);self.dir.mkdir(parents=True,exist_ok=True)
   env=dict(os.environ,APRILINNE_RUNS=str(self.dir),PYTHONIOENCODING='utf-8',PYTHONUTF8='1')
+  # MAN does not have ~/.local/bin (the Claude Code install) on its PATH: name that claude.exe for the tool.
+  local=Path.home()/'.local'/'bin'/('claude.exe' if os.name=='nt' else 'claude')
+  if not env.get('APRILINNE_CLAUDE') and local.is_file():env['APRILINNE_CLAUDE']=str(local)
   flags=(getattr(subprocess,'CREATE_NO_WINDOW',0)|getattr(subprocess,'CREATE_NEW_PROCESS_GROUP',0)) if os.name=='nt' else 0
   with open(self.dir/'chay.log','ab') as log:
    p=subprocess.Popen([sys.executable,'-m','aprilinne',*args],cwd=str(root),env=env,stdout=log,stderr=subprocess.STDOUT,stdin=subprocess.DEVNULL,creationflags=flags)
