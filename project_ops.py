@@ -38,6 +38,14 @@ def inputs(data):
   if len(text)>2_000_000:raise ValueError('Kịch bản quá dài')
   out['script']=text
  if 'separate_layers' in data:out['separate_layers']=4 if data['separate_layers']==4 else 3
+ # Who writes the script: 'claude' (CAU_TRUC_APRILINNE, Video dài / Series) or 'chatgpt' (the rewrite prompt, as before).
+ if 'story_engine' in data:out['story_engine']='claude' if data['story_engine']=='claude' else 'chatgpt'
+ if 'story_mode' in data:out['story_mode']='series' if data['story_mode']=='series' else 'video_dai'
+ if 'channel_name' in data:out['channel_name']=str(data['channel_name'] or '').strip()[:100]
+ if 'story_note' in data:
+  text=str(data['story_note'] or '')
+  if len(text)>2000:raise ValueError('Ghi chú quá dài (tối đa 2.000 ký tự)')
+  out['story_note']=text
  return out
 
 def update(p,data,atomic):

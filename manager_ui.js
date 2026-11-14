@@ -26,7 +26,8 @@ function mgForm(p){
  if(!mgForms[p.id]){const link=p.youtube_url||'',script=p.script||'';
   mgForms[p.id]={youtube_url:link,script,rewrite_style:p.rewrite_style||'',image_style:p.image_style||'',
    use_link:p.use_link??Boolean(link),use_script:p.use_script??(!link&&Boolean(script)),use_rewrite:p.rewrite??true,use_image:p.images??true,
-   download:p.download??true,separate:p.separate??false,parallax:p.parallax??false}}
+   download:p.download??true,separate:p.separate??false,parallax:p.parallax??false,
+   story_engine:p.story_engine==='claude'?'claude':'chatgpt',story_mode:p.story_mode==='series'?'series':'video_dai',channel_name:p.channel_name||'',story_note:p.story_note||''}}
  return mgForms[p.id];
 }
 function mgSet(key,value){const p=mgCurrent();if(p)mgForm(p)[key]=value}
@@ -53,7 +54,11 @@ function mgFormHTML(p){
  return `<section class="mg-card"><h2>${mgSvg('doc')} Tạo / Chỉnh sửa dự án</h2><div class="mg-form">
  <div class="mg-field">${check('use_link','Link tham khảo','(YouTube / Bài viết...)')}<div class="mg-input ${f.use_link?'':'off'}">${mgSvg('link')}<input id="neo_mg_link" placeholder="https://..." value="${autoAttr(f.youtube_url)}" oninput="mgSet('youtube_url',this.value)" onblur="render()"></div></div>
  <div class="mg-field">${check('use_script','Kịch bản')}<div class="mg-input ${f.use_script?'':'off'}">${mgSvg('doc')}<textarea id="neo_mg_script" class="one" placeholder="Nhập nội dung kịch bản..." oninput="mgSet('script',this.value)" onfocus="this.classList.remove('one')" onblur="this.classList.add('one');render()">${esc(f.script)}</textarea></div></div>
- <div class="row2"><div class="mg-field">${check('use_rewrite','Prompt viết lại kịch bản')}<div class="mg-input ${f.use_rewrite?'':'off'}">${mgSvg('wand')}<textarea id="neo_mg_rewrite" placeholder="Nhập prompt viết lại kịch bản..." oninput="mgSet('rewrite_style',this.value)" onblur="render()">${esc(f.rewrite_style)}</textarea></div></div>
+ <div class="mg-field mg-engine"><label>Viết kịch bản bằng</label><div class="mg-seg">${[['claude','Claude (Aprilinne)'],['chatgpt','ChatGPT (prompt)']].map(([v,t])=>`<button type="button" class="${f.story_engine===v?'on':''}" onclick="mgSet('story_engine','${v}');render()">${t}</button>`).join('')}</div>
+ ${f.story_engine==='claude'?`<div class="mg-seg">${[['video_dai','Video dài'],['series','Series']].map(([v,t])=>`<button type="button" class="${f.story_mode===v?'on':''}" onclick="mgSet('story_mode','${v}');render()">${t}</button>`).join('')}</div>
+ <div class="mg-input">${mgSvg('doc')}<input id="neo_mg_channel" placeholder="Tên kênh (lời chào nhắc tên này)" value="${autoAttr(f.channel_name)}" oninput="mgSet('channel_name',this.value)" onblur="render()"></div>
+ <small class="mg-note">Claude viết theo giọng kênh và bộ tiêu chuẩn ${f.story_mode==='series'?'Series':'Video dài'} của CAU_TRUC_APRILINNE, người chấm Claude độc lập; không cần prompt viết lại.</small>`:''}</div>
+ <div class="row2">${f.story_engine==='claude'?`<div class="mg-field"><label>Ghi chú thêm cho Claude <small>(không bắt buộc)</small></label><div class="mg-input">${mgSvg('wand')}<textarea id="neo_mg_note" placeholder="Ví dụ: nhấn mạnh vai trò Nguyễn Trãi..." oninput="mgSet('story_note',this.value)" onblur="render()">${esc(f.story_note)}</textarea></div></div>`:`<div class="mg-field">${check('use_rewrite','Prompt viết lại kịch bản')}<div class="mg-input ${f.use_rewrite?'':'off'}">${mgSvg('wand')}<textarea id="neo_mg_rewrite" placeholder="Nhập prompt viết lại kịch bản..." oninput="mgSet('rewrite_style',this.value)" onblur="render()">${esc(f.rewrite_style)}</textarea></div></div>`}
  <div class="mg-field">${check('use_image','Prompt tạo ảnh')}<div class="mg-input ${f.use_image?'':'off'}">${mgSvg('image')}<textarea id="neo_mg_image" placeholder="Nhập prompt tạo ảnh..." oninput="mgSet('image_style',this.value)" onblur="render()">${esc(f.image_style)}</textarea></div></div>
  <button class="mg-btn outline" ${mgBusy?'disabled':''} onclick="mgSave('${p.id}')">${mgSvg('save')} Lưu prompt</button></div></div>
  <div class="mg-actions"><button class="mg-btn primary" ${mgBusy||busy?'disabled':''} onclick="mgDeploy('${p.id}')">${mgSvg('play',1)} ${mgBusy==='deploy'?'Đang triển khai…':'Triển khai toàn bộ'}</button><button class="mg-btn outline" onclick="mgStop()">${mgSvg('pause')} Dừng toàn bộ</button>
@@ -114,7 +119,7 @@ function mgKindPopup(){return mgPickKind?`<div class="mg-overlay" onclick="mgNew
 function mgRename(id){mgMenu='';const p=state.projects.find(x=>x.id===id);const name=prompt('Tên mới:',p?.name||'');if(!name||!name.trim()||name.trim()===p?.name){render();return}mgRun('rename',async()=>{await api('/api/project-action',{id,action:'rename',name:name.trim()});mgMsg='Đã đổi tên'+(p?.studio_project_id?'; Studio nhận tên mới khi tab Studio mở':'')})}
 function mgCopy(id){mgMenu='';mgRun('copy',async()=>{const r=await api('/api/project-action',{id,action:'copy'});mgSel=r.id;mgMsg='Đã sao chép thành “'+r.name+'”.'})}
 function mgDelete(id){mgMenu='';const p=state.projects.find(x=>x.id===id);if(!confirm('Xóa dự án “'+(p?.name||'')+'”?\n\nThư mục được chuyển vào _Thung_rac trong thư mục dự án, không bị xóa hẳn.')){render();return}mgRun('delete',async()=>{await api('/api/project-action',{id,action:'delete'});delete mgForms[id];mgSel='';mgMsg='Đã chuyển vào thùng rác.'})}
-async function mgSaveForm(id){const f=mgForms[id];if(!f)return;await api('/api/project-action',{id,action:'update',youtube_url:f.youtube_url,script:f.script,rewrite_style:f.rewrite_style,image_style:f.image_style,use_link:f.use_link,use_script:f.use_script,rewrite:f.use_rewrite,images:f.use_image,download:f.download,separate:f.separate,parallax:f.parallax})}
+async function mgSaveForm(id){const f=mgForms[id];if(!f)return;await api('/api/project-action',{id,action:'update',youtube_url:f.youtube_url,script:f.script,rewrite_style:f.rewrite_style,image_style:f.image_style,use_link:f.use_link,use_script:f.use_script,rewrite:f.use_rewrite,images:f.use_image,download:f.download,separate:f.separate,parallax:f.parallax,story_engine:f.story_engine,story_mode:f.story_mode,channel_name:f.channel_name,story_note:f.story_note})}
 function mgSave(id){mgRun('save',async()=>{await mgSaveForm(id);delete mgForms[id];mgMsg='Đã lưu'})}
 function mgDeploy(id){mgRun('deploy',async()=>{
  const p=state.projects.find(x=>x.id===id),f=mgForm(p);await mgSaveForm(id);
@@ -126,10 +131,13 @@ function mgDeploy(id){mgRun('deploy',async()=>{
  const lanes=(p.lanes&&p.lanes.length?p.lanes:null)||p.work_config?.lanes||mgDefaultLanes();
  if(!p.studio_project_id){
   if(!link&&!script.trim())throw Error('Tích và nhập Link tham khảo hoặc Kịch bản');
-  await api('/api/studio-deploy',{project:id,youtube_url:link,script:link?'':script,rewrite:f.use_rewrite,rewrite_style:f.use_rewrite?f.rewrite_style:'',image_style:f.use_image?f.image_style:'',tasks,lanes});
+  const claude=f.story_engine==='claude';
+  await api('/api/studio-deploy',{project:id,youtube_url:link,script:link?'':script,rewrite:claude||f.use_rewrite,rewrite_style:!claude&&f.use_rewrite?f.rewrite_style:'',image_style:f.use_image?f.image_style:'',tasks,lanes,story_engine:f.story_engine,story_mode:f.story_mode,channel_name:f.channel_name,story_note:f.story_note});
  }else{
   // The run needs the link and the rewrite prompt again, otherwise it cannot get the transcript or turn it into the script by itself.
-  const extra=link?{studio_youtube_url:link,studio_rewrite:Boolean(f.use_rewrite),studio_language:p.language==='en'?'en':'vi',...(f.use_rewrite&&String(f.rewrite_style||'').trim()?{studio_rewrite_style:String(f.rewrite_style).trim().slice(0,20000)}:{})}:{};
+  const claude=f.story_engine==='claude';
+  const extra={...(link?{studio_youtube_url:link,studio_rewrite:claude||Boolean(f.use_rewrite),studio_language:p.language==='en'?'en':'vi',...(!claude&&f.use_rewrite&&String(f.rewrite_style||'').trim()?{studio_rewrite_style:String(f.rewrite_style).trim().slice(0,20000)}:{})}:{}),
+   ...(claude?{studio_story_engine:'claude',studio_story_mode:f.story_mode,...(f.channel_name.trim()?{studio_channel_name:f.channel_name.trim().slice(0,100)}:{}),...(f.story_note.trim()?{studio_story_note:f.story_note.trim().slice(0,2000)}:{})}:{})};
   await api('/api/automation',{command:'studio_attach',project:id,studio_project_id:p.studio_project_id,studio_url:p.studio_url,browser:'edge',browser_profile:lanes[0]?.profile||p.browser_profile||'Default',studio_extra:extra,work_config:{tasks,scopes:{},error_policy:'continue',retry_limit:2,rerun:false,lanes,separate_layers:p.separate_layers||3}});
   await api('/api/queue',{action:'start_batch',ids:[id]});
  }

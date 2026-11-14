@@ -311,11 +311,16 @@ class StudioStep:
   actual={'studio_total_parts':len(parts),'studio_completed_parts':sum(p.get('status')=='complete' for p in parts),'studio_total_scenes':sum(len(p.get('scenes') or []) for p in parts),'studio_current_part':job.get('partId') if job else None,'studio_message':None,'studio_external_job':None}
   if name=='STUDIO_TRANSCRIPT' and self.c.get('studio_youtube_url') and self.c.get('studio_rewrite',True) and self.c.get('studio_aprilynne',True) is not False and not self.j.get('aprilynne_done'):
    # Manager runs the whole story line itself (transcript, Aprilynne outline, writing, review); the Studio tabs only execute ChatGPT tasks.
-   from .story_pipeline import Story
-   story=Story(self);waiting=story.step(s)
+   # Engine 'claude': the CAU_TRUC_APRILINNE tool writes and grades with Claude instead (no ChatGPT tab involved).
+   from .claude_story import ClaudeStory,engine
+   if engine(self.c)=='claude':story=ClaudeStory(self)
+   else:
+    from .story_pipeline import Story
+    story=Story(self)
+   waiting=story.step(s)
    if waiting is not None:return waiting
    if self.ledger:
-    self.ledger.reopen('transcript','transcript');self.ledger.update('transcript','transcript','COMPLETED',reason='Kịch bản viết theo dàn ý Aprilynne, '+str(story.summary()))
+    self.ledger.reopen('transcript','transcript');self.ledger.update('transcript','transcript','COMPLETED',reason=('Kịch bản Claude (Aprilinne) đã duyệt, ' if engine(self.c)=='claude' else 'Kịch bản viết theo dàn ý Aprilynne, ')+str(story.summary()))
    return {'context':dict(actual,studio_stage='Transcript',studio_message='Kịch bản đã đạt Aprilynne',studio_waiting_action=None)}
   if name=='STUDIO_TRANSCRIPT':
    # GET_TRANSCRIPT is decided by the real Studio state, never skipped by default.
@@ -352,8 +357,11 @@ class StudioStep:
     # One route: a pasted script goes through Manager's own Aprilynne line too (outline, grade, rewrite what is weak, grade again);
     # the Studio tab no longer grades on its own.
     if self.c.get('studio_aprilynne',True) is not False and not self.j.get('aprilynne_done'):
-     from .story_pipeline import Story
-     waiting=Story(self,script=script).step(s)
+     from .claude_story import ClaudeStory,engine
+     if engine(self.c)=='claude':waiting=ClaudeStory(self,script=script).step(s)
+     else:
+      from .story_pipeline import Story
+      waiting=Story(self,script=script).step(s)
      if waiting is not None:return waiting
     # Studio saved the approved script on its server; read it again.
     script=str(self.api.request(self.sid).get('script') or script).strip()

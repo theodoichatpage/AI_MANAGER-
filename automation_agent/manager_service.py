@@ -70,7 +70,7 @@ class AutomationService:
    metadata=json.loads((Path(p['folder'])/'project.json').read_text(encoding='utf8'))
    if metadata.get('simulation_test_key'):raise ValueError('Chọn dự án thật, không dùng project TEST cho Studio')
    # "Dự án mới": YouTube link / rewrite request travel with the run context (never the e-mail or page text).
-   extra={k:v for k,v in (data.get('studio_extra') or {}).items() if k in ('studio_youtube_url','studio_rewrite','studio_rewrite_style','studio_language')}
+   extra={k:v for k,v in (data.get('studio_extra') or {}).items() if k in ('studio_youtube_url','studio_rewrite','studio_rewrite_style','studio_language','studio_story_engine','studio_story_mode','studio_channel_name','studio_story_note')}
    base_context=dict(data.get('context') or {},**extra) if (data.get('context') or extra) else None
    lanes=(data.get('work_config') or {}).get('lanes') or []
    if browser=='edge' and lanes:
