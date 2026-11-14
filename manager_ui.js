@@ -17,6 +17,9 @@ const MG_ICONS={
  dots:'M12 5h.01 M12 12h.01 M12 19h.01',
  pen:'M4 20h4L19 9l-4-4L4 16z',copy:'M9 9h11v11H9z M5 15H4V4h11v1',trash:'M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13',
  back:'M15 18l-6-6 6-6',
+ layers:'M12 3 3 8l9 5 9-5z M3 13l9 5 9-5 M3 17.5l9 5 9-5',sliders:'M4 7h10 M18 7h2 M4 17h4 M12 17h8 M14 5v4 M8 15v4 M4 12h6 M14 12h6 M10 10v4',
+ bulb:'M9 18h6 M10 21h4 M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z',bell:'M6 16V11a6 6 0 1 1 12 0v5l2 2H4z M10 21h4',
+ folder:'M3 6h6l2 2h10v11H3z',refresh:'M20 11a8 8 0 0 0-14.9-3.5 M4 4v4h4 M4 13a8 8 0 0 0 14.9 3.5 M20 20v-4h-4',chart:'M5 20V10 M12 20V4 M19 20v-7',
  book:'M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z M5 17a3 3 0 0 1 3-3h10 M9 8h5',film:'M4 5h16v14H4z M8 5v14 M16 5v14 M4 9h4 M4 15h4 M16 9h4 M16 15h4'};
 function mgSvg(n,fill){return `<svg viewBox="0 0 24 24"${fill?' style="fill:currentColor;stroke:none"':''}><path d="${MG_ICONS[n]}"/></svg>`}
 function mgProjects(){return (state.projects||[]).filter(p=>!p.simulation_test_key).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')))}
@@ -51,19 +54,34 @@ function mgFormHTML(p){
  if(!p)return `<section class="mg-card"><h2>${mgSvg('doc')} Tạo / Chỉnh sửa dự án</h2><div class="mg-note">Bấm “Tạo dự án mới” để bắt đầu.</div></section>`;
  const f=mgForm(p),busy=['running','paused'].includes((state.queue.find(x=>x.id===p.id)||{}).status);
  const check=(key,label,hint='')=>`<label><input type="checkbox" class="mg-check" ${f[key]?'checked':''} onchange="mgSet('${key}',this.checked);render()"> ${label}${hint?` <small>${hint}</small>`:''}</label>`;
- return `<section class="mg-card"><h2>${mgSvg('doc')} Tạo / Chỉnh sửa dự án</h2><div class="mg-form">
- <div class="mg-field">${check('use_link','Link tham khảo','(YouTube / Bài viết...)')}<div class="mg-input ${f.use_link?'':'off'}">${mgSvg('link')}<input id="neo_mg_link" placeholder="https://..." value="${autoAttr(f.youtube_url)}" oninput="mgSet('youtube_url',this.value)" onblur="render()"></div></div>
- <div class="mg-field">${check('use_script','Kịch bản')}<div class="mg-input ${f.use_script?'':'off'}">${mgSvg('doc')}<textarea id="neo_mg_script" class="one" placeholder="Nhập nội dung kịch bản..." oninput="mgSet('script',this.value)" onfocus="this.classList.remove('one')" onblur="this.classList.add('one');render()">${esc(f.script)}</textarea></div></div>
- <div class="mg-field mg-engine"><label>Viết kịch bản bằng</label><div class="mg-seg">${[['claude','Claude (Aprilinne)'],['chatgpt','ChatGPT (prompt)']].map(([v,t])=>`<button type="button" class="${f.story_engine===v?'on':''}" onclick="mgSet('story_engine','${v}');render()">${t}</button>`).join('')}</div>
- ${f.story_engine==='claude'?`<div class="mg-seg">${[['video_dai','Video dài'],['series','Series']].map(([v,t])=>`<button type="button" class="${f.story_mode===v?'on':''}" onclick="mgSet('story_mode','${v}');render()">${t}</button>`).join('')}</div>
- <div class="mg-input">${mgSvg('doc')}<input id="neo_mg_channel" placeholder="Tên kênh (lời chào nhắc tên này)" value="${autoAttr(f.channel_name)}" oninput="mgSet('channel_name',this.value)" onblur="render()"></div>
- <small class="mg-note">Claude viết theo giọng kênh và bộ tiêu chuẩn ${f.story_mode==='series'?'Series':'Video dài'} của CAU_TRUC_APRILINNE, người chấm Claude độc lập; không cần prompt viết lại.</small>`:''}</div>
- <div class="row2">${f.story_engine==='claude'?`<div class="mg-field"><label>Ghi chú thêm cho Claude <small>(không bắt buộc)</small></label><div class="mg-input">${mgSvg('wand')}<textarea id="neo_mg_note" placeholder="Ví dụ: nhấn mạnh vai trò Nguyễn Trãi..." oninput="mgSet('story_note',this.value)" onblur="render()">${esc(f.story_note)}</textarea></div></div>`:`<div class="mg-field">${check('use_rewrite','Prompt viết lại kịch bản')}<div class="mg-input ${f.use_rewrite?'':'off'}">${mgSvg('wand')}<textarea id="neo_mg_rewrite" placeholder="Nhập prompt viết lại kịch bản..." oninput="mgSet('rewrite_style',this.value)" onblur="render()">${esc(f.rewrite_style)}</textarea></div></div>`}
- <div class="mg-field">${check('use_image','Prompt tạo ảnh')}<div class="mg-input ${f.use_image?'':'off'}">${mgSvg('image')}<textarea id="neo_mg_image" placeholder="Nhập prompt tạo ảnh..." oninput="mgSet('image_style',this.value)" onblur="render()">${esc(f.image_style)}</textarea></div></div>
- <button class="mg-btn outline" ${mgBusy?'disabled':''} onclick="mgSave('${p.id}')">${mgSvg('save')} Lưu prompt</button></div></div>
- <div class="mg-actions"><button class="mg-btn primary" ${mgBusy||busy?'disabled':''} onclick="mgDeploy('${p.id}')">${mgSvg('play',1)} ${mgBusy==='deploy'?'Đang triển khai…':'Triển khai toàn bộ'}</button><button class="mg-btn outline" onclick="mgStop()">${mgSvg('pause')} Dừng toàn bộ</button>
- <label class="mg-opt"><input type="checkbox" class="mg-check" ${f.download?'checked':''} onchange="mgSet('download',this.checked)"> Tải ảnh</label><label class="mg-opt"><input type="checkbox" class="mg-check" ${f.separate?'checked':''} onchange="mgSet('separate',this.checked)"> Tách ảnh</label><label class="mg-opt" title="Sau khi tách ảnh: Parallax25D làm video 2.5D cho mỗi cảnh (thư mục Video Parallax của dự án)"><input type="checkbox" class="mg-check" ${f.parallax?'checked':''} onchange="mgSet('parallax',this.checked)"> Video Parallax</label>
- ${mgErr?`<span class="mg-note err">${esc(mgErr)}</span>`:mgMsg?`<span class="mg-note ok">${esc(mgMsg)}</span>`:''}</div></section>`;
+ const seg=(key,opts)=>`<div class="mg-seg">${opts.map(([v,t])=>`<button type="button" class="${f[key]===v?'on':''}" onclick="mgSet('${key}','${v}');render()">${t}</button>`).join('')}</div>`;
+ // Source is one choice: a reference link (YouTube / article) or a script typed by hand.
+ const src=f.use_script&&!f.use_link?'script':'link';
+ const pick=v=>`mgSet('use_link',${v==='link'});mgSet('use_script',${v==='script'});render()`;
+ const cat=state.studio_catalog||{},ready=Boolean(cat.studio_tab_open)&&Boolean(cat.chat_connected);
+ const claude=f.story_engine==='claude';
+ return `<div class="mg-ptitle">${mgSvg('doc')}<b>Dự án: ${esc(p.name)}</b><span>Cập nhật: ${esc(mgDate(p.updated_at||p.created_at))}</span></div>
+ <div class="mg-grid2 mg-top">
+ <section class="mg-card"><h2><span class="mg-num">{ }</span> 1. Nguồn &amp; Nội dung</h2>
+  <div class="mg-seg mg-tabs"><button type="button" class="${src==='link'?'on':''}" onclick="${pick('link')}">${mgSvg('link')} Liên kết tham khảo</button><button type="button" class="${src==='script'?'on':''}" onclick="${pick('script')}">${mgSvg('pen')} Kịch bản (nhập tay)</button></div>
+  ${src==='link'?`<div class="mg-input">${mgSvg('link')}<input id="neo_mg_link" placeholder="https://www.youtube.com/watch?v=..." value="${autoAttr(f.youtube_url)}" oninput="mgSet('youtube_url',this.value)" onblur="render()"></div>`
+  :`<div class="mg-input">${mgSvg('doc')}<textarea id="neo_mg_script" placeholder="Nhập nội dung kịch bản..." oninput="mgSet('script',this.value)" onblur="render()">${esc(f.script)}</textarea></div>`}
+ </section>
+ <section class="mg-card"><h2>${mgSvg('layers')} 2. Cài đặt AI</h2>
+  <div class="mg-kv"><span>Viết kịch bản bằng</span>${seg('story_engine',[['claude','Claude (Aprilinne)'],['chatgpt','ChatGPT (prompt)']])}</div>
+  ${claude?`<div class="mg-kv"><span>Định dạng đầu ra</span>${seg('story_mode',[['video_dai','Video dài'],['series','Series']])}</div>
+  <div class="mg-kv"><span>Tên kênh</span><div class="mg-input">${mgSvg('doc')}<input id="neo_mg_channel" placeholder="Lời chào nhắc tên này" value="${autoAttr(f.channel_name)}" oninput="mgSet('channel_name',this.value)" onblur="render()"></div></div>`:''}
+ </section></div>
+ <section class="mg-card"><h2>${mgSvg('sliders')} 3. Chỉ dẫn &amp; Tùy chọn</h2>
+  <div class="mg-guide">${claude?`<div class="mg-field"><label>Ghi chú thêm cho Claude <small>(không bắt buộc)</small></label><div class="mg-input">${mgSvg('pen')}<textarea id="neo_mg_note" placeholder="Ví dụ: nhấn mạnh vai trò Nguyễn Trãi..." oninput="mgSet('story_note',this.value)" onblur="render()">${esc(f.story_note)}</textarea></div></div>`
+  :`<div class="mg-field">${check('use_rewrite','Prompt viết lại kịch bản')}<div class="mg-input ${f.use_rewrite?'':'off'}">${mgSvg('wand')}<textarea id="neo_mg_rewrite" placeholder="Nhập prompt viết lại kịch bản..." oninput="mgSet('rewrite_style',this.value)" onblur="render()">${esc(f.rewrite_style)}</textarea></div></div>`}
+  <div class="mg-field">${check('use_image','Prompt tạo ảnh')}<div class="mg-input ${f.use_image?'':'off'}">${mgSvg('image')}<textarea id="neo_mg_image" placeholder="Nhập prompt tạo ảnh..." oninput="mgSet('image_style',this.value)" onblur="render()">${esc(f.image_style)}</textarea></div></div>
+  <button class="mg-btn outline" ${mgBusy?'disabled':''} onclick="mgSave('${p.id}')">${mgSvg('save')} Lưu prompt</button></div>
+  <div class="mg-actions"><label class="mg-opt"><input type="checkbox" class="mg-check" ${f.download?'checked':''} onchange="mgSet('download',this.checked)"> Tải ảnh</label><label class="mg-opt"><input type="checkbox" class="mg-check" ${f.separate?'checked':''} onchange="mgSet('separate',this.checked)"> Tách ảnh</label><label class="mg-opt" title="Sau khi tách ảnh: Parallax25D làm video 2.5D cho mỗi cảnh (thư mục Video Parallax của dự án)"><input type="checkbox" class="mg-check" ${f.parallax?'checked':''} onchange="mgSet('parallax',this.checked)"> Video Parallax</label>
+  <span class="mg-hint ${ready?'':'warn'}">${mgSvg('bulb')} ${ready?'Studio và ChatGPT đã sẵn sàng để triển khai.':'Để triển khai, hãy mở Studio và kết nối ChatGPT.'}</span></div>
+ </section>
+ <div class="mg-bigbtns"><button class="mg-btn primary big" ${mgBusy||busy?'disabled':''} onclick="mgDeploy('${p.id}')">${mgSvg('play',1)} ${mgBusy==='deploy'?'Đang triển khai…':'Triển khai toàn bộ'}</button><button class="mg-btn outline big" onclick="mgStop()">${mgSvg('pause')} Dừng toàn bộ</button>
+ ${mgErr?`<span class="mg-note err">${esc(mgErr)}</span>`:mgMsg?`<span class="mg-note ok">${esc(mgMsg)}</span>`:''}</div>`;
 }
 // What Studio itself holds for a linked project (it may be worked on in Studio directly, not by a Manager run).
 let mgPlans={};
@@ -96,12 +114,14 @@ function mgStatusHTML(p){
  if(c.studio_failed_items?.length)errs.push(c.studio_failed_items.length+' mục lỗi: '+c.studio_failed_items.slice(0,5).join(', '));
  if(c.studio_files_failed?.length)errs.push('Tải/tách ảnh lỗi: '+c.studio_files_failed.slice(0,5).join(', '));
  if(c.studio_message)errs.push(c.studio_message);
- if(!task&&!q.status&&!plan)return `<section class="mg-card mg-status"><div class="mg-empty">Dự án chưa chạy. Nhập thông tin rồi bấm “Triển khai toàn bộ”.</div></section>`;
- return `<section class="mg-card mg-status"><div class="mg-stage"><h2 style="margin:0">Tiến độ</h2><span class="mg-badge ${cls}">${esc(label)}</span><span class="mg-note">${esc(c.studio_stage||q.current_stage||'')}</span>${link}</div>
+ // Bottom row: notices and the project folder, side by side.
+ const bottom=`<div class="mg-grid2 mg-bottom"><section class="mg-card"><h2>${mgSvg('bell')} Thông báo</h2>${errs.length?errs.map(e=>`<div class="mg-err">${esc(e)}</div>`).join(''):`<div class="mg-note">Không có thông báo.</div>`}</section>
+ <section class="mg-card"><h2>${mgSvg('folder')} Thư mục</h2><div class="mg-note mg-path" title="${autoAttr(p.folder||'')}">${esc(p.folder||'')}</div><div class="mg-btns"><button class="mg-btn" onclick="mgOpenProject('${esc(p.id)}')">${mgSvg('folder')} Mở thư mục dự án</button>${typeof rootDialog!=='undefined'?`<button class="mg-btn" title="Thư mục gốc chứa mọi dự án; Studio cũng lưu ảnh tách vào đây" onclick="rootDialog.showModal()">${mgSvg('refresh')} Đổi thư mục lưu</button>`:''}</div></section></div>`;
+ if(!task&&!q.status&&!plan)return `<section class="mg-card mg-status"><div class="mg-stage"><h2 style="margin:0">${mgSvg('chart')} Tiến độ</h2><span class="mg-badge">Chưa chạy</span></div><div class="mg-note">Dự án chưa chạy. Nhập thông tin rồi bấm “Triển khai toàn bộ”.</div></section>${bottom}`;
+ return `<section class="mg-card mg-status"><div class="mg-stage"><h2 style="margin:0">${mgSvg('chart')} Tiến độ</h2><span class="mg-badge ${cls}">${esc(label)}</span><span class="mg-note">${esc(c.studio_stage||q.current_stage||'')}</span>${link}</div>
  <div class="mg-bars${live?' live':''}">${bar('Phân cảnh (phần)',c.studio_completed_parts,c.studio_total_parts)}${bar('Ảnh đã tạo',c.studio_images_generated,c.studio_scope_total)}${bar('Ảnh đã tải',c.studio_files_saved??c.studio_images_saved,c.studio_files_total??c.studio_scope_total)}${bar('Ảnh đã tách',sepDone,sepTotal,eng.busy)}${bar('Video Parallax',parDone,totalScenes,parRun)}</div>${parRun?`<div class="mg-note">Parallax25D đang làm video: ${par.done||0}/${par.total||'?'} cảnh (${par.percent||0}%)</div>`:par.state==='error'?`<div class="mg-err">Parallax25D báo lỗi: ${esc(par.error||'')}</div>`:par.state==='stopped'?`<div class="mg-err">Parallax25D đã tắt giữa chừng (${par.done||0}/${par.total||'?'} cảnh).</div>`:''}${eng.busy?`<div class="mg-note">Local Engine đang tách ảnh…</div>`:''}
  ${lanes.length?`<div class="mg-sec">Tab ChatGPT</div>${lanes.map((l,i)=>`<div class="mg-lane"><b>Tab ${i+1}</b> ${esc(l.label||'')}<span>${l.cooldown?'Nghỉ tạo ảnh':!l.job?'Rảnh':l.kind==='image_generation'?'Tạo ảnh '+esc(l.job):'Phân cảnh '+esc(l.job)}</span></div>`).join('')}`:''}
- ${errs.length?`<div class="mg-sec">Thông báo</div>${errs.map(e=>`<div class="mg-err">${esc(e)}</div>`).join('')}`:''}
- <div class="mg-sec">Thư mục</div><div class="mg-note">${esc(p.folder||'')}</div><div class="mg-btns"><button class="mg-btn" onclick="mgOpenProject('${esc(p.id)}')">Mở thư mục dự án</button>${typeof rootDialog!=='undefined'?'<button class="mg-btn" title="Thư mục gốc chứa mọi dự án; Studio cũng lưu ảnh tách vào đây" onclick="rootDialog.showModal()">Đổi thư mục lưu</button>':''}</div></section>`;
+ </section>${bottom}`;
 }
 function mgHTML(){
  const p=mgCurrent();
