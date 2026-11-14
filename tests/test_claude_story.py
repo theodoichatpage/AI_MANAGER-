@@ -122,4 +122,21 @@ class ClaudeStoryTests(unittest.TestCase):
   out=project_ops.inputs({'story_engine':'x','story_mode':'series','channel_name':' K ','story_note':'n'})
   self.assertEqual(out,{'story_engine':'chatgpt','story_mode':'series','channel_name':'K','story_note':'n'})
 
+class ChatGptWaitTests(unittest.TestCase):
+ """A Claude project needs no ChatGPT until its script is approved; a ChatGPT project always does."""
+ def step(self,c,j=None,chat=False):
+  presence={'studio_tab_open':True,'chat_connected':chat,'session_id':SID,'manager_run_id':'run','origin':'https://video-image-studio.vercel.app'}
+  with tempfile.TemporaryDirectory() as folder:
+   c=dict({'studio_project_id':SID,'studio_run_id':'run','studio_origin':presence['origin'],'studio_folder':folder},**c)
+   w=StudioStep(c,FakeAPI(),lambda:presence)
+   w.j.update(j or {})
+   return bool(w.ready()),w.chat_needed()
+ def test_claude_story_runs_without_chatgpt(self):
+  self.assertEqual(self.step({'studio_story_engine':'claude'}),(True,False))
+ def test_after_the_claude_script_chatgpt_is_needed_again(self):
+  self.assertEqual(self.step({'studio_story_engine':'claude'},{'aprilynne_done':True}),(False,True))
+  self.assertEqual(self.step({'studio_story_engine':'claude'},{'aprilynne_done':True},chat=True),(True,True))
+ def test_chatgpt_project_still_waits_for_chatgpt(self):
+  self.assertEqual(self.step({}),(False,True))
+
 if __name__=='__main__':unittest.main()

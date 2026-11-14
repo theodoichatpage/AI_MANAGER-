@@ -141,9 +141,14 @@ class StudioStep:
  def read_presence(self):
   query=urllib.parse.urlencode({'sessionId':self.sid,'runId':self.c['studio_run_id']})
   with urllib.request.urlopen('http://127.0.0.1:8765/api/studio-presence?'+query,timeout=3) as r:return json.load(r)
+ def chat_needed(self):
+  """ChatGPT is needed for every step except the script Claude writes: until that script is approved, a Claude
+  project waits only for its Studio tab (a ChatGPT tab that drops or is rate-limited must not pause Claude)."""
+  from .claude_story import engine
+  return not (engine(self.c)=='claude' and not self.j.get('aprilynne_done'))
  def ready(self):
   p=self.presence();self.c['studio_state']='connected' if p.get('studio_tab_open') else 'disconnected';self.c['chatgpt_state']='connected' if p.get('chat_connected') else 'disconnected'
-  return p.get('studio_tab_open') and p.get('chat_connected') and p.get('session_id')==self.sid and p.get('manager_run_id')==self.c['studio_run_id'] and p.get('origin')==self.c['studio_origin']
+  return p.get('studio_tab_open') and (p.get('chat_connected') or not self.chat_needed()) and p.get('session_id')==self.sid and p.get('manager_run_id')==self.c['studio_run_id'] and p.get('origin')==self.c['studio_origin']
  def wait(self,name,limit,context=None):
   # A retry epoch gets a fresh watchdog; an old attempt's start time must not time out the new one.
   start=self.j['stages'].setdefault(self.stage_key(name),self.clock());self.save()
