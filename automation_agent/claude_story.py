@@ -61,7 +61,8 @@ class ClaudeStory:
   # MAN does not have ~/.local/bin (the Claude Code install) on its PATH: name that claude.exe for the tool.
   local=Path.home()/'.local'/'bin'/('claude.exe' if os.name=='nt' else 'claude')
   if not env.get('APRILINNE_CLAUDE') and local.is_file():env['APRILINNE_CLAUDE']=str(local)
-  flags=(getattr(subprocess,'CREATE_NO_WINDOW',0)|getattr(subprocess,'CREATE_NEW_PROCESS_GROUP',0)) if os.name=='nt' else 0
+  # Breakaway: a MAN restart (deploy) closed MAN's job and killed the tool mid-run (seen 2026-11-14, project 034).
+  flags=(getattr(subprocess,'CREATE_NO_WINDOW',0)|getattr(subprocess,'CREATE_NEW_PROCESS_GROUP',0)|getattr(subprocess,'CREATE_BREAKAWAY_FROM_JOB',0)) if os.name=='nt' else 0
   with open(self.dir/'chay.log','ab') as log:
    p=subprocess.Popen([sys.executable,'-m','aprilinne',*args],cwd=str(root),env=env,stdout=log,stderr=subprocess.STDOUT,stdin=subprocess.DEVNULL,creationflags=flags)
   self.meta.update(pid=p.pid,args=args,started=self.w.clock());self.save_meta()
