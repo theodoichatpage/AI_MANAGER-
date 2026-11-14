@@ -188,3 +188,10 @@ body.mg .mgs-modal h1,body.mg .mgs-modal h2{text-transform:none;letter-spacing:0
 .mg-name:focus{outline:none;border-color:var(--mg-accent)}.mg-name.bad{border-color:#e5484d}
 .mg-kind-btn.on{border-color:var(--mg-accent);background:#16180f}
 .mg-dlg-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+/* Viết kịch bản bằng Claude (Aprilinne) / ChatGPT; chế độ Video dài / Series */
+.mg-engine{display:grid;gap:8px}
+.mg-seg{display:inline-flex;border:1px solid #3a3a40;border-radius:8px;overflow:hidden;width:max-content}
+.mg-seg button{background:transparent;color:inherit;border:0;padding:7px 14px;cursor:pointer;font:inherit}
+.mg-seg button+button{border-left:1px solid #3a3a40}
+.mg-seg button.on{background:var(--mg-accent);color:#0b0b0c;font-weight:700}
+.mg-engine .mg-note{display:block}

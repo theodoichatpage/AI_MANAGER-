@@ -94,7 +94,7 @@ def studio_deploy(data):
         import project_ops
         saved=project_ops.load(project_ops.find(projects(include_duplicates=True),str(data['project']))['folder'])
         data=dict(data)
-        for k,src in (('youtube_url','youtube_url'),('script','script'),('rewrite_style','rewrite_style'),('image_style','image_style'),('language','language'),('rewrite','rewrite'),('separate_layers','separate_layers'),('lanes','lanes')):
+        for k,src in (('youtube_url','youtube_url'),('script','script'),('rewrite_style','rewrite_style'),('image_style','image_style'),('language','language'),('rewrite','rewrite'),('separate_layers','separate_layers'),('lanes','lanes'),('story_engine','story_engine'),('story_mode','story_mode'),('channel_name','channel_name'),('story_note','story_note')):
             if k not in data and saved.get(src): data[k]=saved[src]
         if not data.get('tasks'): data['tasks']=['analysis','scenes']+[k for k,f in (('images','images'),('sync','download'),('separate','separate'),('parallax','parallax')) if saved.get(f)]
     name=str(data.get('name','')).strip()[:120]; url=str(data.get('youtube_url','')).strip(); script=str(data.get('script','')).strip()
@@ -118,7 +118,7 @@ def studio_deploy(data):
     else:
         p=create_project(name or ('YouTube '+vid if url else ''),script); manager().add(p); manager().stop(p['id'])
     # The project keeps its own inputs (link, prompts, options), so a copy or a new PC can run it again.
-    meta=project_ops.load(p['folder']); meta.update(project_ops.inputs({'youtube_url':url,'language':data.get('language'),'rewrite':data.get('rewrite',True),'rewrite_style':data.get('rewrite_style',''),'image_style':data.get('image_style',''),'images':'images' in tasks,'download':'sync' in tasks,'separate':'separate' in tasks,'parallax':'parallax' in tasks,'separate_layers':data.get('separate_layers',3)}),lanes=lanes)
+    meta=project_ops.load(p['folder']); meta.update(project_ops.inputs({'youtube_url':url,'language':data.get('language'),'rewrite':data.get('rewrite',True),'rewrite_style':data.get('rewrite_style',''),'image_style':data.get('image_style',''),'images':'images' in tasks,'download':'sync' in tasks,'separate':'separate' in tasks,'parallax':'parallax' in tasks,'separate_layers':data.get('separate_layers',3),**{k:data[k] for k in ('story_engine','story_mode','channel_name','story_note') if k in data}}),lanes=lanes)
     if script: meta['script']=script
     atomic(Path(p['folder'])/'project.json',meta)
     sid=uuid.uuid4().hex; api=StudioAPI(); api.create(sid)
@@ -127,6 +127,7 @@ def studio_deploy(data):
     work={'tasks':tasks,'scopes':{},'error_policy':'continue','retry_limit':2,'lanes':lanes,'separate_layers':meta.get('separate_layers',3)}
     extra={'studio_youtube_url':url,'studio_rewrite':bool(data.get('rewrite',True)),'studio_language':'en' if data.get('language')=='en' else 'vi'} if url else {}
     if url and str(data.get('rewrite_style','')).strip(): extra['studio_rewrite_style']=str(data['rewrite_style']).strip()[:20000]
+    extra.update(story_settings(meta))
     studio_url=str(data.get('studio_url') or 'https://video-image-studio-git-phase3-manager-presence-image-studio1.vercel.app/')
     automation().control({'command':'studio_attach','project':p['id'],'studio_project_id':sid,'studio_url':studio_url,'browser':browser,'browser_profile':profile,'stages':['analysis']+(['images'] if 'images' in tasks else []),'work_config':work,'studio_extra':extra})
     if data.get('start',True):
@@ -159,6 +160,14 @@ def studio_project_folder(sid):
         if sid in (p.get('studio_project_id'),p.get('studio_import_id'),(p.get('studio_source') or {}).get('id')): return p.get('folder')
     return None
 
+def story_settings(meta):
+    """Run context for a project whose script Claude writes (engine, Video dài / Series, channel, note); empty for ChatGPT."""
+    if meta.get('story_engine')!='claude': return {}
+    out={'studio_story_engine':'claude','studio_story_mode':meta.get('story_mode') or 'video_dai','studio_rewrite':True}
+    if meta.get('channel_name'): out['studio_channel_name']=meta['channel_name']
+    if str(meta.get('story_note') or '').strip(): out['studio_story_note']=meta['story_note']
+    return out
+
 _STORY_CACHE={}
 def story_review(sid):
     """The Aprilynne review AI MANAGER ran for this Studio project (analysis/story.json), for Studio's Analysis tab; read again only when the file changes."""
@@ -168,6 +177,15 @@ def story_review(sid):
         if seen and time.time()-seen[0]<60: folder=seen[1]
         else: folder=studio_project_folder(sid);_STORY_CACHE['sid:'+str(sid)]=(time.time(),folder)
         if not folder: return None
+        # A project Claude writes (CAU_TRUC_APRILINNE): its run, read again when the run's state changes.
+        claude=Path(folder)/'analysis'/'aprilinne'/'run'/'state.json'
+        if claude.is_file():
+            stamp=claude.stat().st_mtime_ns; hit=_STORY_CACHE.get(str(claude))
+            if hit and hit[0]==stamp: return hit[1]
+            from automation_agent import claude_story
+            report=claude_story.report(folder)
+            _STORY_CACHE[str(claude)]=(stamp,report)
+            return report
         path=Path(folder)/'analysis'/'story.json'
         if not path.is_file(): return None
         stamp=path.stat().st_mtime_ns
@@ -177,7 +195,7 @@ def story_review(sid):
         report=studio_report(json.loads(path.read_text(encoding='utf8')))
         _STORY_CACHE[str(path)]=(stamp,report)
         return report
-    except (OSError,ValueError,TypeError,KeyError): return None
+    except (OSError,ValueError,TypeError,KeyError,ImportError): return None
 
 def projects(include_duplicates=False):
     root=Path(config()['root']); result=[]
