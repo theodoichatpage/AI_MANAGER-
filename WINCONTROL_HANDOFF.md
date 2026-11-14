@@ -145,3 +145,5 @@ Triển khai: `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao
 - Studio: `phase3-manager-presence` fast-forward lên `7bf9b2d` (thẻ Aprilinne trong tab Phân tích, chỉ khi engine='aprilinne').
 - **Claude Code trên máy chưa đăng nhập** (`claude -p` → "Not logged in"): người dùng phải chạy `claude` → `/login`. Chưa chạy đầu-cuối thật. Thái Sư vẫn dừng.
 - Phiên CAU_TRUC_APRILINNE đã tách ra mục riêng trên thanh bên (không còn báo về đây).
+- 14/11 06:36Z triển khai `206a934→d46c251` (Aprilinne `8db8fe0`: dự án Claude không chờ ChatGPT khi đang viết). Người dùng duyệt "Tạm dừng 034 ngay": tạm dừng 034 → triển khai → chạy tiếp. Công cụ Claude (pid 19056) bị tắt theo Agent (job KILL_ON_JOB_CLOSE của `watchdog.py`, có BREAKAWAY_OK); ClaudeStory tự chạy lại (pid 29212, tries 1) từ bước biên tập vòng 1 — không mất dàn ý/bản viết.
+- Sửa `12758e8`: công cụ Claude khởi động với CREATE_BREAKAWAY_FROM_JOB. **Chưa triển khai** (đợi 034 xong hoặc lần triển khai sau).
