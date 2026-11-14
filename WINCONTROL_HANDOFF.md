@@ -139,3 +139,9 @@ Triển khai: `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao
 - Studio: origin đã tiến lên `4d9cee0` nên tạo merge `e6d4f64` (4d9cee0 + ee40947, không trùng file) và đẩy lên `phase3-manager-presence`. Lưu ý: `_vis_lanes_wt` có commit `95d4761` (Projects tab) của phiên khác **chưa đẩy**, giờ lệch với origin → phiên đó cần merge origin trước khi đẩy. Tôi không đụng commit đó.
 - Chưa kiểm thử thực tế: chưa chạy dự án thử viết lại kịch bản với ChatGPT.
 - 14/11 dự án thử `033_Thu_kich_ban_lien_mach_Thai_su` (link Thái Sư, chỉ viết lại; người dùng duyệt dừng Thái Sư để chạy): dàn ý 6 hồi → viết → biên tập → chấm 7/12 → sửa 1 lượt → **duyệt 8/12, máy kiểm tra 0 lỗi**, ~45.000 ký tự, ~57 phút (15:08–16:05 giờ VN). Bản cũ Thái Sư đo bằng cùng máy kiểm tra: 29 ghi chú, 24 lỗi (mở lại 13, câu hỏi 11). Đã tự dừng dự án thử ngay khi kịch bản lưu. Hai bản xuất ra `SO_SANH_*.txt` trong thư mục dự án thử. **Thái Sư đang ở trạng thái dừng, chờ người dùng cho chạy tiếp.**
+
+### 14/11: triển khai "viết kịch bản bằng Claude" (Aprilinne, repo CAU_TRUC_APRILINNE) — người dùng duyệt "Triển khai"
+- MAN: merge `f2f1885` (claude_story.py, form chọn Claude/ChatGPT, Video dài/Series) + sửa `206a934` (MAN không có `~\.local\bin` trong PATH → đặt APRILINNE_CLAUDE). 366 test, chỉ 3 lỗi có sẵn. Triển khai 06:20:43Z `d99bf1b→206a934`, checkpoint không đổi. Công cụ đọc tại `C:\Users\PC\Projects\CAU_TRUC_APRILINNE` (bản làm việc, không ghim).
+- Studio: `phase3-manager-presence` fast-forward lên `7bf9b2d` (thẻ Aprilinne trong tab Phân tích, chỉ khi engine='aprilinne').
+- **Claude Code trên máy chưa đăng nhập** (`claude -p` → "Not logged in"): người dùng phải chạy `claude` → `/login`. Chưa chạy đầu-cuối thật. Thái Sư vẫn dừng.
+- Phiên CAU_TRUC_APRILINNE đã tách ra mục riêng trên thanh bên (không còn báo về đây).
