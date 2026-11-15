@@ -207,3 +207,11 @@ Test: 382 test Python. Lỗi 3 test vốn đã lỗi từ trước, cộng `test
 | Tab ChatGPT còn bản cũ được tự tải lại | Studio `4a82f09`: extension 0.5.23 tự tải lại tab đang rảnh. **Chưa đủ**: tab còn nhớ một job cũ (`activeJobId`) nên vẫn bị bỏ qua | 0.5.23 mới lên ở Edge Default | Không đạt: cả 3 tab vẫn mất kết nối, cần bấm F5 tab ChatGPT ở mỗi hồ sơ |
 
 Phần 3 (`part_xbuwsf5`) đã chia cảnh xong lúc 17:53 (29 cảnh). Phần 2 (`part_cj5qzre`) vẫn bị từ chối.
+
+### 15/11 21:35: 035 sau khi người dùng F5 các tab ChatGPT
+
+- Kiểm thử thực tế: phần 2 (`part_cj5qzre`) đã chia cảnh xong lúc 18:39 (26 cảnh, dưới 30), lần đầu kể từ khi extension 0.5.22 thêm câu giới hạn. Cả 7 phần hoàn tất, 177 cảnh.
+- Ảnh: 71/173 đã tạo và lưu (`.vis/goc` có 81 ảnh gốc). Ảnh xem trước trên Supabase của các ảnh mới khoảng 22 KB/ảnh, `local: true`; ảnh gốc khoảng 4 MB chỉ nằm trên máy.
+- 21:3x: ChatGPT báo "You’re out of images". Hai tab Profile 1 và 2 (cùng một tài khoản) nghỉ tới 21:38, sau đó MAN tự chạy tiếp.
+- Edge Default vẫn chưa kết nối ChatGPT sau F5 (extension 0.5.23 chạy, `chat_connected` = false). 035 chạy bằng 2 tab.
+- Còn mở: extension 0.5.23 không tự tải lại tab cũ khi tab còn nhớ một `activeJobId` cũ.
