@@ -4,7 +4,7 @@ Manager only starts the tool and watches it: `python -m aprilinne` runs in the b
 (analysis/aprilinne/run/), writer and grader are separate `claude -p` calls. Every step's prompt, answer, script and
 scorecard stay there; Studio's Analysis tab reads them through story_review (aprilinne.studio.report).
 When the best version is approved, its acts become the Studio script and the story parts, exactly like the ChatGPT line."""
-import json,os,re,subprocess,sys
+import datetime,json,os,re,subprocess,sys
 from pathlib import Path
 
 RUN='run'
@@ -20,6 +20,28 @@ def runs_dir(folder):return Path(folder)/'analysis'/'aprilinne'
 def run_state(folder):
  try:return json.loads((runs_dir(folder)/RUN/'state.json').read_text(encoding='utf8'))
  except (OSError,ValueError):return None
+LIMIT=re.compile(r"(?i)(?:session|usage|weekly)\s+limit[^\n]*?resets\s+(?:([A-Za-z]{3})\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*([ap]m)")
+MONTHS=('jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec')
+def limit_reset(text,ref):
+ """When Claude's usage limit named in the tool's log opens again (epoch seconds), or None when the log shows no limit.
+ Claude says e.g. "You've hit your session limit · resets 6pm (Asia/Bangkok)": the next such time after `ref`
+ (when the log was written), in this PC's local time (the zone Claude names is the account's, here the PC's).
+ A limit without a readable time waits 30 minutes."""
+ m=None
+ for m in LIMIT.finditer(text):pass
+ if m is None:
+  old=re.findall(r'(?i)limit reached\|(\d{10})',text)
+  if old:return float(old[-1])
+  return ref+1800 if re.search(r"(?i)hit your (session|usage|weekly) limit|usage limit reached",text) else None
+ mon,day,hour,minute,ap=m.groups();hour=int(hour)%12+(12 if ap.lower()=='pm' else 0);minute=int(minute or 0)
+ base=datetime.datetime.fromtimestamp(ref)
+ if mon and mon.lower()[:3] in MONTHS:
+  at=base.replace(month=MONTHS.index(mon.lower()[:3])+1,day=int(day),hour=hour,minute=minute,second=0,microsecond=0)
+  if at.timestamp()<ref-86400:at=at.replace(year=at.year+1)
+ else:
+  at=base.replace(hour=hour,minute=minute,second=0,microsecond=0)
+  if at.timestamp()<=ref:at+=datetime.timedelta(days=1)
+ return at.timestamp()
 def engine(c):return 'claude' if str((c or {}).get('studio_story_engine') or '').lower()=='claude' else 'chatgpt'
 
 def _tool(root):
@@ -52,8 +74,8 @@ class ClaudeStory:
   except (OSError,ValueError):self.meta={'tries':0}
  def save_meta(self):
   self.dir.mkdir(parents=True,exist_ok=True);self.meta_path.write_text(json.dumps(self.meta,ensure_ascii=False),encoding='utf8')
- def wait(self,key,message):
-  return self.w.wait('claude:'+key,3600,dict(studio_stage='Viết kịch bản (Claude)',studio_message=message))
+ def wait(self,key,message,limit=3600):
+  return self.w.wait('claude:'+key,limit,dict(studio_stage='Viết kịch bản (Claude)',studio_message=message))
  def spawn(self,args):
   """Start the tool in the background; its output goes to analysis/aprilinne/chay.log."""
   c=self.w.c;root=tool_root(c);self.dir.mkdir(parents=True,exist_ok=True)
@@ -63,11 +85,14 @@ class ClaudeStory:
   if not env.get('APRILINNE_CLAUDE') and local.is_file():env['APRILINNE_CLAUDE']=str(local)
   # Breakaway: a MAN restart (deploy) closed MAN's job and killed the tool mid-run (seen 2026-11-14, project 034).
   flags=(getattr(subprocess,'CREATE_NO_WINDOW',0)|getattr(subprocess,'CREATE_NEW_PROCESS_GROUP',0)|getattr(subprocess,'CREATE_BREAKAWAY_FROM_JOB',0)) if os.name=='nt' else 0
-  with open(self.dir/'chay.log','ab') as log:
+  log_path=self.dir/'chay.log'
+  # Only this run's output counts when Manager reads the log (an older run's limit message must not stop a new one).
+  self.meta['log_from']=log_path.stat().st_size if log_path.is_file() else 0
+  with open(log_path,'ab') as log:
    p=subprocess.Popen([sys.executable,'-m','aprilinne',*args],cwd=str(root),env=env,stdout=log,stderr=subprocess.STDOUT,stdin=subprocess.DEVNULL,creationflags=flags)
   self.meta.update(pid=p.pid,args=args,started=self.w.clock());self.save_meta()
  def log_tail(self,n=1500):
-  try:return (self.dir/'chay.log').read_bytes()[-n:].decode('utf8','replace')
+  try:return (self.dir/'chay.log').read_bytes()[int(self.meta.get('log_from') or 0):][-n:].decode('utf8','replace')
   except OSError:return ''
  def source(self):
   """Text the run starts from: the pasted script, or the transcript of the reference link."""
@@ -95,6 +120,16 @@ class ClaudeStory:
    tail=self.log_tail()
    if 'Not logged in' in tail or '/login' in tail:
     raise RuntimeError('Claude Code chưa đăng nhập trên máy này: mở cửa sổ lệnh, chạy "claude", gõ /login, rồi chạy lại dự án')
+   # Claude's usage limit: wait until it opens again and go on from the same step, without using up a try
+   # (on 2026-11-14 the three tries went in minutes on a "session limit", project 034).
+   try:ref=(self.dir/'chay.log').stat().st_mtime
+   except OSError:ref=w.clock()
+   until=limit_reset(tail,ref)
+   if until is not None:
+    if w.clock()<until+120:
+     at=datetime.datetime.fromtimestamp(until).strftime('%H:%M %d/%m')
+     return self.wait('limit:%d'%until,label+' — Claude hết hạn mức, chờ đến %s rồi viết tiếp'%at,limit=max(0,until-w.clock())+3600)
+    self.spawn(['chay',RUN,'--may','cli']);return self.wait('%s:%s:after_limit:%d'%(st.get('buoc'),st.get('vong'),until),label+' (viết tiếp sau khi Claude mở lại hạn mức)')
    self.meta['tries']=self.meta.get('tries',0)+1
    if self.meta['tries']>TRIES:raise RuntimeError('Công cụ Aprilinne dừng giữa chừng %d lần ở bước %s: %s'%(TRIES,st.get('buoc'),tail[-300:].strip()))
    self.spawn(['chay',RUN,'--may','cli']);return self.wait('%s:%s:retry%d'%(st.get('buoc'),st.get('vong'),self.meta['tries']),label+' (chạy tiếp lần %d)'%self.meta['tries'])

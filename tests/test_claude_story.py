@@ -88,6 +88,42 @@ class ClaudeStoryTests(unittest.TestCase):
   (cs.runs_dir(self.tmp.name)/'chay.log').write_text('RuntimeError: Claude Code báo lỗi: Not logged in · Please run /login',encoding='utf8')
   with self.assertRaisesRegex(RuntimeError,'chưa đăng nhập'):self.step()
 
+ def tries(self):
+  m=cs.runs_dir(self.tmp.name)/'manager.json'
+  return json.loads(m.read_text(encoding='utf8')).get('tries',0) if m.is_file() else 0
+
+ def limit_log(self,reset,written):
+  log=cs.runs_dir(self.tmp.name)/'chay.log'
+  log.write_text("RuntimeError: Claude Code báo lỗi: You've hit your session limit · resets %s (Asia/Bangkok)"%reset,encoding='utf8')
+  os.utime(log,(written,written))
+
+ def test_usage_limit_waits_for_the_reset_without_using_a_try(self):
+  import datetime,time
+  self.write_state(buoc='sua',vong=1)
+  at=datetime.datetime.now()+datetime.timedelta(hours=2)
+  self.limit_log(at.strftime('%I:%M%p').lstrip('0').lower(),time.time()-60)
+  for _ in range(5):
+   w,r=self.step();self.assertTrue(r['waiting'])
+  self.assertEqual(self.spawned,[]);self.assertIn('hết hạn mức',r['context']['studio_message'])
+  self.assertEqual(self.tries(),0)
+
+ def test_after_the_limit_reset_the_run_goes_on_without_using_a_try(self):
+  import datetime
+  self.write_state(buoc='sua',vong=1)
+  yesterday=datetime.datetime.now().replace(hour=13,minute=0)-datetime.timedelta(days=1)
+  self.limit_log('6pm',yesterday.timestamp())
+  w,r=self.step();self.assertTrue(r['waiting'])
+  self.assertEqual(self.spawned,[['chay',cs.RUN,'--may','cli']])
+  self.assertEqual(self.tries(),0)
+
+ def test_limit_times(self):
+  import datetime
+  ref=datetime.datetime(2026,11,14,13,43).timestamp();at=lambda s:datetime.datetime.fromtimestamp(cs.limit_reset(s,ref))
+  self.assertEqual(at("You've hit your session limit · resets 6pm (Asia/Bangkok)"),datetime.datetime(2026,11,14,18,0))
+  self.assertEqual(at("You've hit your session limit · resets 1:30am"),datetime.datetime(2026,11,15,1,30))
+  self.assertEqual(at("You've hit your weekly limit · resets Nov 18, 3am"),datetime.datetime(2026,11,18,3,0))
+  self.assertIsNone(cs.limit_reset('Traceback: KeyError',ref))
+
  @unittest.skipUnless(HAVE_TOOL,'CAU_TRUC_APRILINNE chưa có trên máy')
  def test_approved_script_goes_to_studio_as_parts(self):
   graded_run(self.tmp.name)

@@ -1,6 +1,6 @@
 /* Settings popup (gear, top right). Layout from the user's mockup, AI Manager's own style (14px text, 32px controls,
    black + lime). Two tabs: Kết nối, Dữ liệu. A connection that is not up shows "Đang chờ". */
-let mgSet2={open:false,tab:'conn',sys:null,msg:'',err:'',timer:null,checked:false};
+let mgSet2={open:false,tab:'conn',sys:null,msg:'',err:'',timer:null,checked:false,downloadVersion:'',downloadBusy:false};
 Object.assign(MG_ICONS,{
  x:'M6 6l12 12 M18 6 6 18',db:'M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6 M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
  win:'M3 5l8-1v7H3z M13 4l8-1v8h-8z M3 13h8v7l-8-1z M13 13h8v8l-8-1z',
@@ -12,8 +12,21 @@ Object.assign(MG_ICONS,{
  refresh:'M20 12a8 8 0 1 1-2.3-5.7 M20 4v5h-5',puzzle:'M9 3h6v4a2 2 0 1 0 0 4v4h-4a2 2 0 1 0-4 0H3V9h4a2 2 0 1 0 0-4V3z',
  list:'M8 6h12 M8 12h12 M8 18h12 M4 6h.01 M4 12h.01 M4 18h.01',chip:'M9 9h6v6H9z M12 2v4 M12 18v4 M2 12h4 M18 12h4 M5 5l3 3 M16 16l3 3 M5 19l3-3 M16 8l3-3',
  bolt:'M13 2 4 14h7l-1 8 9-12h-7z'});
-function mgOpenSettings(){mgSet2.open=true;mgSet2.msg='';mgSet2.err='';mgSysPoll();
+function mgOpenSettings(){mgCheckDownload();mgSet2.open=true;mgSet2.msg='';mgSet2.err='';mgSysPoll();
  if(!mgSet2.checked&&typeof appCall==='function'){mgSet2.checked=true;appCall('update-check')}render()}
+// The download follows main; its label must follow the published manifest, not this running server.
+async function mgCheckDownload(){
+ if(mgSet2.downloadBusy)return;
+ mgSet2.downloadBusy=true;
+ try{
+  const r=await fetch('https://raw.githubusercontent.com/theodoichatpage/AI_MANAGER-/main/build_info.json',{cache:'no-store',signal:AbortSignal.timeout(8000)});
+  if(!r.ok)throw Error('Không đọc được phiên bản tải xuống');
+  const info=await r.json();
+  if(!/^\d+\.\d+\.\d+$/.test(info.version||''))throw Error('Phiên bản không hợp lệ');
+  mgSet2.downloadVersion=info.version;
+ }catch(_){mgSet2.downloadVersion=''}
+ finally{mgSet2.downloadBusy=false;if(mgSet2.open)render()}
+}
 function mgCloseSettings(){mgSet2.open=false;clearTimeout(mgSet2.timer);render()}
 function mgSysPoll(){clearTimeout(mgSet2.timer);if(!mgSet2.open)return;api('/api/app',{action:'system'}).then(r=>{mgSet2.sys=r;render()}).catch(()=>{}).finally(()=>{if(mgSet2.open)mgSet2.timer=setTimeout(mgSysPoll,5000)})}
 async function mgAct(action,extra={},done){mgSet2.msg='';mgSet2.err='';render();try{const r=await api('/api/app',{action,...extra});mgSet2.msg=done?done(r):''}catch(e){mgSet2.err=e.message}render()}
@@ -67,11 +80,11 @@ function mgDataTab(){
  <div class="mgs-btns"><select id="neo_main_profile" class="mgs-select" onchange="uiChooseMainProfile(this.value)">${profiles.map(p=>`<option value="${autoAttr(p.directory)}" ${studioDraft.profile===p.directory?'selected':''}>${esc(p.name||p.directory)}</option>`).join('')||'<option>Đang đọc hồ sơ Edge…</option>'}</select><button class="mg-btn" onclick="refreshEdgeProfiles().then(render)">Đọc lại</button><button class="mg-btn" onclick="uiCloneProfile()">+ Tạo hồ sơ phụ</button></div>
  <details class="mgs-guide"><summary>Cài Extension cho hồ sơ mới</summary><ol><li><button class="mg-btn" onclick="api('/api/extension-update',{action:'open'})">Mở thư mục Extension</button></li><li>Trong Edge mở <code>edge://extensions</code>, bật Chế độ nhà phát triển.</li><li>Bấm Tải tiện ích đã giải nén, chọn thư mục ở bước 1, rồi đăng nhập chatgpt.com.</li></ol></details></section>
  <section class="mg-card"><h2>${mgSvg('win')} Ứng dụng trên máy</h2><p class="mgs-sub">Cài biểu tượng, tải bản cài cho máy mới, kiểm tra máy này</p>
- <div class="mgs-btns"><button class="mg-btn" ${b?'disabled':''} onclick="appCall('install')">Cài thành ứng dụng</button><a class="mg-btn" href="${autoAttr(state.download_url||'')}" target="_blank" rel="noopener">Tải bản cài v${esc(state.version||'')}</a><button class="mg-btn" ${b?'disabled':''} onclick="appCall('setup-check')">${b==='setup-check'?'Đang kiểm tra…':'Kiểm tra máy này'}</button></div>
+ <div class="mgs-btns"><button class="mg-btn" ${b?'disabled':''} onclick="appCall('install')">Cài thành ứng dụng</button><a class="mg-btn" href="${autoAttr(state.download_url||'')}" target="_blank" rel="noopener">Tải bản cài ${mgSet2.downloadVersion?'v'+esc(mgSet2.downloadVersion):'mới nhất'}</a><button class="mg-btn" ${b?'disabled':''} onclick="appCall('setup-check')">${b==='setup-check'?'Đang kiểm tra…':'Kiểm tra máy này'}</button></div>
  ${t.check?`<div class="mgs-check">${t.check.map(i=>`<div class="${i.state}"><span>${icon[i.state]}</span><div><b>${esc(i.label)}</b><small>${esc(i.detail)}</small>${i.fix&&i.state!=='ok'?`<small class="fix">→ ${esc(i.fix)}</small>`:''}</div></div>`).join('')}</div>`:''}
  ${t.msg?`<div class="mg-note ok">${esc(t.msg)}</div>`:''}</section></div>`;
 }
-function mgUpdateCheck(){appCall('update-check');api('/api/extension-update',{action:'check'}).then(refresh).catch(()=>{})}
+function mgUpdateCheck(){mgCheckDownload();appCall('update-check');api('/api/extension-update',{action:'check'}).then(refresh).catch(()=>{})}
 function mgExtCheck(){mgSet2.msg='';mgSet2.err='';api('/api/extension-update',{action:'check'}).then(async()=>{await refresh();const e=state.extension||{},cat=state.studio_catalog||{};mgSet2.msg=e.status==='responding'||cat.chat_connected?'Extension đang phản hồi':'Chưa thấy Extension phản hồi. Mở Studio và một tab ChatGPT đã đăng nhập; máy mới cần cài Extension (tab Dữ liệu).';render()}).catch(e=>{mgSet2.err=e.message;render()})}
 function mgCleanTemp(){if(!confirm('Xóa dữ liệu tạm?\n\nChỉ xóa ảnh chụp chẩn đoán và bộ nhớ đệm. Dự án, ảnh và thùng rác không bị đụng tới.'))return;mgAct('clean-temp',{},r=>'Đã xóa '+r.files+' tệp tạm ('+(r.freed/1048576).toFixed(1)+' MB)')}
 function mgSettingsHTML(){
