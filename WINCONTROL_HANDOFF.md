@@ -147,3 +147,18 @@ Triển khai: `integration_reports\takeover_20261111\deploy_wincontrol.ps1` (sao
 - Phiên CAU_TRUC_APRILINNE đã tách ra mục riêng trên thanh bên (không còn báo về đây).
 - 14/11 06:36Z triển khai `206a934→d46c251` (Aprilinne `8db8fe0`: dự án Claude không chờ ChatGPT khi đang viết). Người dùng duyệt "Tạm dừng 034 ngay": tạm dừng 034 → triển khai → chạy tiếp. Công cụ Claude (pid 19056) bị tắt theo Agent (job KILL_ON_JOB_CLOSE của `watchdog.py`, có BREAKAWAY_OK); ClaudeStory tự chạy lại (pid 29212, tries 1) từ bước biên tập vòng 1 — không mất dàn ý/bản viết.
 - Sửa `12758e8`: công cụ Claude khởi động với CREATE_BREAKAWAY_FROM_JOB. **Chưa triển khai** (đợi 034 xong hoặc lần triển khai sau).
+
+### 15/11: MAN về bản đầy đủ 0.2.25 (người dùng duyệt "Đưa về bản đầy đủ")
+
+Nguyên nhân 034 lỗi lúc 07:52: lúc 07:44, MAN bị thay bằng bản cũ `C:\Users\PC\Downloads\AI_MANAGER_v0.2.24` (bản này không có Claude). Bản trên máy là 0.2.23, thấp hơn bản phát hành 0.2.24, nên trình cập nhật mời cài bản đó.
+
+| Việc | Đã sửa mã | Đã triển khai | Kiểm thử thực tế |
+|---|---|---|---|
+| Gộp 3 commit của origin/main (1244f62, fe26bc1, 0e30f2c) | `5801777`. Xung đột `studio_workflow.py`: giữ `transcript_redo`, thêm `transcript_done` của 0.2.24. Xung đột `server.py`: giữ `analysis_review_state` | `deploy_man` 02:15:51Z `d46c251→5801777`, checkpoint không đổi. MAN chạy từ `C:\Users\PC\Projects\AI_MANAGER\server.py` | `/api/state` báo version 0.2.25 |
+| VERSION 0.2.25 | `5801777` | có | Trình cập nhật không còn mời cài 0.2.24 |
+| Claude hết hạn mức → chờ đến giờ mở lại | `claude_story.limit_reset`: đọc "resets 6pm" hoặc "resets Nov 18, 3am". Chờ đến giờ đó, không tốn lượt thử. Chỉ đọc phần log của lần chạy hiện tại (`log_from`) | có | 034 chạy lại: đọc giới hạn cũ (18:00 ngày 14/11, đã qua), chạy tiếp ở bước `sua` vòng 1, tries vẫn 0 |
+| Tách công cụ khỏi job của MAN | `12758e8` (đi cùng đợt này) | có | Chưa khởi động lại MAN trong lúc 034 đang chạy |
+
+**Sự cố khi chạy test (đã khôi phục):** lúc 09:11, `tests/test_http_restart.py` gửi lệnh vào MAN thật (bản 0.2.24 đang bận). Test chỉ chờ 1 giây để dò xem MAN có chạy không; MAN trả lời chậm hơn nên test tưởng không có MAN và chạy tiếp. Test đổi `~/.ai_manager/config.json` root sang `%TEMP%\tmpk7b4r_xy\projects`. Hàng đợi thật (`VIDEO_PROJECTS\.ai_manager_queue.sqlite3`) không bị đổi. Đã đặt lại root qua `/api/root`; bản sao config bị ghi đè lưu ở `config.json.test_overwrite_20261115`. Sửa `6a2f935`: test bỏ qua khi có bất kỳ tiến trình nào nghe ở cổng 8765 (dò bằng kết nối TCP). Thư mục tạm `tmpk7b4r_xy` để nguyên.
+
+Test: 381 test Python. Chỉ lỗi 3 test vốn đã lỗi từ trước (`test_startup_port`, 2 test `test_work_orchestration`), cộng `test_neon_browser.cjs` thiếu playwright. Các test Node còn lại đạt.
