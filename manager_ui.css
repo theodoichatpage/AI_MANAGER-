@@ -195,3 +195,26 @@ body.mg .mgs-modal h1,body.mg .mgs-modal h2{text-transform:none;letter-spacing:0
 .mg-seg button+button{border-left:1px solid #3a3a40}
 .mg-seg button.on{background:var(--mg-accent);color:#0b0b0c;font-weight:700}
 .mg-engine .mg-note{display:block}
+/* Card layout of the project screen (mockup 14/11): title, 1 Nguồn | 2 Cài đặt AI, 3 Chỉ dẫn, big buttons, Tiến độ, Thông báo | Thư mục */
+.mg-main{overflow:auto;padding-right:2px}
+.mg-ptitle{display:flex;align-items:center;gap:10px;padding:4px 4px 0;font-size:18px}
+.mg-ptitle svg{width:20px;height:20px;color:var(--mg-accent)}
+.mg-ptitle span{color:var(--mg-muted);font-size:13px;padding-left:12px;border-left:1px solid var(--mg-line)}
+.mg-grid2{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:12px}
+.mg-grid2.mg-bottom{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+.mg-num{color:var(--mg-accent);font-weight:800;font-size:14px;letter-spacing:-1px}
+.mg-tabs{margin-bottom:12px}
+.mg-tabs button{display:inline-flex;align-items:center;gap:8px;padding:8px 16px}
+.mg-kv{display:grid;grid-template-columns:150px 1fr;align-items:center;gap:12px;margin-bottom:12px}
+.mg-kv>span{font-weight:600}
+.mg-kv .mg-seg button{padding:8px 18px}
+.mg-guide{display:grid;grid-template-columns:1fr 1fr auto;gap:16px;align-items:end}
+.mg-hint{display:inline-flex;align-items:center;gap:6px;margin-left:auto;color:var(--mg-accent);font-size:13px}
+.mg-hint.warn{color:#f2c94c}
+.mg-bigbtns{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.mg-btn.big{height:46px;padding:0 44px;font-size:16px;border-radius:10px}
+.mg-btn.big svg{width:18px;height:18px}
+.mg-status{flex:none;overflow:visible}
+.mg-path{word-break:break-all;margin-bottom:6px}
+.mg-bottom .mg-card{min-height:120px}
+@media (max-width:1100px){.mg-grid2,.mg-grid2.mg-bottom,.mg-guide{grid-template-columns:1fr}.mg-kv{grid-template-columns:1fr}}
