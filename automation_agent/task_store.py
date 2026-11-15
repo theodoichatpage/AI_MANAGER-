@@ -90,6 +90,14 @@ class TaskStore:
    t['error']='Action dang chay da dung; kiem tra checkpoint truoc khi tiep tuc.' if uncertain else 'Task da dung tai checkpoint.'
    if not uncertain:t['in_flight']=False
    self.save(t)
+ def supersede(self,tid,by):
+  """A new Studio workflow was attached to the project: its old unfinished task can never be claimed, released,
+  requeued or resumed again (two tasks of one project once ran one after the other, 2026-11-15, project 035)."""
+  with self.lock,self.db:
+   t=self.get(tid)
+   if t['status'] in ('running','waiting'):raise ValueError('Task cũ của dự án vẫn đang chạy; dừng dự án trước khi gắn workflow mới')
+   if t['status'] in ('completed','superseded'):return
+   t.update(status='superseded',in_flight=False,error='Đã thay bằng workflow '+str(by));self.save(t)
  def resume(self,tid,reviewed=False):
   with self.lock,self.db:
    t=self.get(tid)

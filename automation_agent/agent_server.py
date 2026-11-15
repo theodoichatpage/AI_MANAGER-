@@ -71,6 +71,9 @@ class AgentHandler(BaseHTTPRequestHandler):
     r.store.resume(data['task_id'])
     if not wincontrol:r.start()
     return self.reply(200,{'ok':True})
+   if self.path=='/supersede':
+    with r.lock:r.store.supersede(str(data.get('task_id','')),str(data.get('by','')))
+    return self.reply(200,{'ok':True})
    if self.path=='/cancel':return self.reply(200,r.cancel_task(str(data.get('task_id',''))))
    self.reply(404,{'error':'Not found'})
   except Exception as e:self.reply(400,{'error':str(e)})

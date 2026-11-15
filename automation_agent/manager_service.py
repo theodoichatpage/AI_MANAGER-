@@ -105,6 +105,10 @@ class AutomationService:
    metadata.update(browser=browser,browser_profile=profile,browser_profile_name=profile_name,studio_project_id=sid,studio_url=url,studio_stages=context['studio_stages'],work_config=context.get('work_config'))
    from .studio_workflow import atomic
    atomic(Path(p['folder'])/'project.json',metadata)
+   # The project's older unfinished Studio task is retired first, so only the new workflow can ever run.
+   old=[t for t in self.snapshot().get('tasks',[]) if t.get('project')==p['id'] and t.get('context',{}).get('studio_project_id') and t['status'] not in ('completed','superseded')]
+   if any(t['status'] in ('running','waiting') for t in old):raise ValueError('Task Studio cũ của dự án vẫn đang chạy; dừng dự án trước khi gắn workflow mới')
+   for t in old:self.client.request('/supersede',{'task_id':t['id'],'by':'mới'})
    result=self.client.request('/submit',{'actions':actions,'context':context,'project':p['id'],'held':True})
    q.attach_automation(p['id'],result['task_id']);q.stop(p['id']);self.ensure_bridge();return result
   if cmd=='start_agent':self.client.restart();return {'ok':True}
