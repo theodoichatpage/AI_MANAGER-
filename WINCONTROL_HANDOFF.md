@@ -166,3 +166,18 @@ Test: 381 test Python. Chỉ lỗi 3 test vốn đã lỗi từ trước (`test_
 **034 lỗi ở bước "Đối chiếu Aprilynne" sau khi gộp 0.2.25 (đã sửa):** bản vòng 2 do Claude viết đạt 9/9 tiêu chí và đã lưu sang Studio. Sau đó dự án chờ Studio tự chấm lại suốt 30 phút rồi quá giờ (`review:waiting:0`). Nguyên nhân: khi gộp, commit 1244f62 của origin đưa lại bước Studio tự chấm vào `STUDIO_ANALYZE` mà git không báo xung đột, dù bước này đã bị bỏ ở 2b6d520. Sửa ở `6d92094`: bỏ lại bước đó; test `test_no_studio_tab_review_gate` kiểm để bước này không quay lại. Đã triển khai lúc 03:21:42Z (`9446aa1→6d92094`), các checkpoint không đổi.
 
 **Giao diện MAN dạng thẻ** (phiên "AI MANAGER v0.2.20 takeover", `3034a70`, chỉ sửa `manager_ui.js`/`.css`): đã gộp ở `9446aa1`. Người dùng duyệt "Triển khai khi rảnh"; đã triển khai lúc 03:20:57Z. Đã kiểm thử thực tế trên MAN: màn hình dự án hiện đúng các thẻ 1 Nguồn & Nội dung, 2 Cài đặt AI (Claude/ChatGPT), 3 Chỉ dẫn & Tùy chọn.
+
+### 15/11 chiều: dự án 035 (thu_02) — đồng hồ giám sát lanes, thêm tạo ảnh
+
+035 = `cfdbd21d-a5a3-4c9f-9f47-72f0dbbc3ad4`, Studio `b60ba8066793432daca0897bde0a7cb8`, thư mục `VIDEO_PROJECTS\035_Le_Loi_thu_02_ban_san_xuat`. Dự án 034 vẫn giữ để so sánh.
+
+| Việc | Đã sửa mã | Đã triển khai | Kiểm thử thực tế |
+|---|---|---|---|
+| 035 lỗi "Studio quá thời gian tại lanes:5:0" (2 lần) | `dc45bea`: khóa chờ của đồng hồ giám sát gồm thêm số lượt thử/số đợt thử lại (cả hai đều có giới hạn). Mỗi lượt gửi lại phần lỗi được tính giờ lại từ đầu. Test `test_a_new_set_of_tries_is_not_time_without_progress`: lỗi trên mã cũ, đạt trên mã mới | `deploy_man` 06:47:24Z `6d92094→dc45bea`, checkpoint không đổi | Xem dòng 035 bên dưới |
+| Thêm tạo ảnh cho 035 (người dùng: "Thêm tạo ảnh") | — | `studio_attach`: tasks analysis/scenes/images/sync/separate/parallax, 3 lane Edge, `scopes.scenes` = phần 1,4,5,6,7 (5 phần đã chia cảnh xong) | Bắt đầu chạy 13:59. Lúc 14:20, ảnh đầu tiên xong (tab Default) và đã lưu vào `Anh/Phan 1 - …/Canh 2 - Cuoc chien sau chien thang.png`. Phạm vi 118 cảnh. 1 ảnh bị lỗi "ChatGPT không phản hồi sau 2 lần tự tải lại tab", MAN tự thử lại. Chưa theo dõi đến lúc chạy xong |
+
+Nguyên nhân (đọc từ checkpoint và `analysis/studio_lanes.json`): sau lần chạy lại lúc 12:42, khóa `lanes:5:0` chỉ được đặt lại khi có thêm phần hoặc ảnh hoàn tất. Thời gian chờ thử lại (15/30/60 phút) của phần lỗi vẫn tính vào đồng hồ này. Đến 13:42, part_xbuwsf5 được gửi lại: đồng hồ đã chạy 3600 giây, vượt giới hạn 2280 giây. MAN báo lỗi trong khi Studio vẫn đang xử lý phần đó.
+
+**Hai phần chưa chia cảnh được (lỗi phía Studio, chưa sửa):** part_cj5qzre (phần 2, 3631 ký tự) và part_xbuwsf5 (phần 3, 3520 ký tự). Lần nào Studio cũng từ chối câu trả lời cuối với lỗi "Cần JSON scenes có từ 1 đến 30 cảnh…" (`studio-api/handler.ts:134`). Khi đang chạy, Studio đã nhận 28 cảnh hợp lệ (bản progress), nên khả năng cao ChatGPT trả về hơn 30 cảnh. Prompt chia cảnh không ghi giới hạn số cảnh. Chưa xem được câu trả lời gốc nên chưa khẳng định. Cách sửa (ở Studio): ghi rõ "tối đa 30 cảnh" trong prompt, hoặc nâng giới hạn. Sau đó chạy lại 2 phần này.
+
+Test: 382 test Python. Lỗi 3 test vốn đã lỗi từ trước, cộng `test_claude_story.test_approved_script_goes_to_studio_as_parts`. Test này lỗi vì commit `0666da1` (10:50 hôm nay) của CAU_TRUC_APRILINNE đã bắt buộc kiểu mở bài H1, nên kịch bản mẫu trong test bị chấm trượt H1. Cần sửa mẫu trong test, không phải lỗi của MAN.
