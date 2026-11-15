@@ -181,3 +181,10 @@ Nguyên nhân (đọc từ checkpoint và `analysis/studio_lanes.json`): sau l�
 **Hai phần chưa chia cảnh được (lỗi phía Studio, chưa sửa):** part_cj5qzre (phần 2, 3631 ký tự) và part_xbuwsf5 (phần 3, 3520 ký tự). Lần nào Studio cũng từ chối câu trả lời cuối với lỗi "Cần JSON scenes có từ 1 đến 30 cảnh…" (`studio-api/handler.ts:134`). Khi đang chạy, Studio đã nhận 28 cảnh hợp lệ (bản progress), nên khả năng cao ChatGPT trả về hơn 30 cảnh. Prompt chia cảnh không ghi giới hạn số cảnh. Chưa xem được câu trả lời gốc nên chưa khẳng định. Cách sửa (ở Studio): ghi rõ "tối đa 30 cảnh" trong prompt, hoặc nâng giới hạn. Sau đó chạy lại 2 phần này.
 
 Test: 382 test Python. Lỗi 3 test vốn đã lỗi từ trước, cộng `test_claude_story.test_approved_script_goes_to_studio_as_parts`. Test này lỗi vì commit `0666da1` (10:50 hôm nay) của CAU_TRUC_APRILINNE đã bắt buộc kiểu mở bài H1, nên kịch bản mẫu trong test bị chấm trượt H1. Cần sửa mẫu trong test, không phải lỗi của MAN.
+
+### 15/11 14:30: prompt tạo ảnh đồng bộ từ MAN, giới hạn 30 cảnh
+
+| Việc | Đã sửa mã | Đã triển khai | Kiểm thử thực tế |
+|---|---|---|---|
+| Lưu prompt tạo ảnh trên MAN → Studio (người dùng sửa prompt chỉ trên MAN vì có nhiều tab Studio đang mở) | `0ce34fb`: `project-action update` gửi `stylePrompt` sang Studio của dự án khi prompt thay đổi, công tắc "Prompt tạo ảnh" bật và nội dung không trống. Không làm hỏng việc lưu. Test `test_image_style_sync` | **Chưa**: `deploy_man` sẽ từ chối khi 035 đang chạy | Riêng 035 đã đẩy tay prompt mới (6795 ký tự) sang Studio `b60ba806…`; đọc lại trên Studio thấy khớp. Các ảnh tiếp theo dùng prompt mới |
+| Studio từ chối 2 phần của 035 vì vượt 30 cảnh | Studio `878d5d0` (nhánh `phase3-manager-presence`, worktree `C:\Users\PC\Projects\_wt_scene_cap`): prompt chia cảnh ghi rõ tối đa 30 cảnh, câu dài thì gộp, không bỏ lời đọc. Không đổi phần kiểm tra | **Chưa**: Supabase CLI đòi xác nhận, người dùng cần tự chạy `functions deploy studio-api` từ `_wt_scene_cap\vercel-migration` | Chưa. Sau khi triển khai: chạy lại phần 2 và 3 của 035 |
