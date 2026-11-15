@@ -113,6 +113,22 @@ class Lanes(unittest.TestCase):
   st.finish('laneA',ok=False);r=w.round()
   self.assertNotIn('waiting',r,'after the last new set it stays failed and the run ends');self.assertEqual(r['context']['studio_failed_items'],['part:p1'])
 
+ def test_a_new_set_of_tries_is_not_time_without_progress(self):
+  # Found live 2026-11-15 (project 035): the pause before a failed part's new set of tries ran on the progress
+  # watchdog, so the run failed the moment the part was sent again, while Studio was working on it.
+  class Watched(W):
+   def wait(self,name,limit,ctx=None):
+    start=self.j['stages'].setdefault(name,self.now)
+    if self.now-start>limit:raise TimeoutError('Studio quá thời gian tại '+name)
+    return super().wait(name,limit,ctx)
+  st=FakeStudio(parts=2);w=Watched(st,[worker('laneA'),worker('laneB')],retry=0)
+  w.round();st.finish('laneA');st.finish('laneB',ok=False);w.round()
+  for pause in (900,1800,3600):
+   w.now+=pause;w.round();self.assertEqual(st.job('laneA')['partId'],'p2','sent again after the pause')
+   w.now+=1500;w.round()  # Studio still working on it: no timeout
+   st.finish('laneA',ok=False);w.round()
+  self.assertTrue(any(n.startswith('lanes:1:0') for n in w.waits))
+
  def test_chatgpt_limit_is_not_a_used_try(self):
   st=FakeStudio(parts=1,scenes=1);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'}])
   w=W(st,[worker('laneA')],tasks=('images',),retry=0)

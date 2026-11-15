@@ -308,7 +308,11 @@ def step(w,s,post=None):
  # Watchdog keyed on progress: any finished part/image restarts the clock, and so does the end of a rest
  # (time spent resting is not time without progress).
  rested=max([float(v or 0) for v in st['cooldown'].values() if float(v or 0)<=now]+[0])
- return w.wait('lanes:'+str(done_parts)+':'+str(done_images)+(':after'+str(int(rested)) if rested else ''),JOB_LIMIT+LANE_LOST+300,ctx)
+ # A new try of a failed item (a retry, or a new set after the pause) is a fresh attempt: its time is not time without
+ # progress. Seen live 2026-11-15 (project 035): the pause before a new set ran on the clock of "lanes:5:0", so the
+ # moment the part was sent again the run failed although Studio was working on it. Bounded: tries and sets are capped.
+ attempt=':t'+str(sum(int(items[k].get('tries',0)) for k in items))+'.'+str(sum(int(items[k].get('rearm',0)) for k in items))
+ return w.wait('lanes:'+str(done_parts)+':'+str(done_images)+(':after'+str(int(rested)) if rested else '')+attempt,JOB_LIMIT+LANE_LOST+300,ctx)
 
 def rewrite_round(w,s,post=None,single=False):
  """Get Transcript on several tabs: give each free lane the next rewrite section the Studio tab uploaded.
