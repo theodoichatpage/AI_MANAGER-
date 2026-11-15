@@ -25,23 +25,16 @@ class TranscriptPipeline(unittest.TestCase):
   api.s['script']='Kịch bản viết lại';self.presence=tab(pipeline={'id':cmd['id'],'stage':'done','done':8,'total':8})
   r=self.step(api).step('STUDIO_TRANSCRIPT');self.assertNotIn('waiting',r);self.assertIn('viết lại',r['context']['studio_transcript_state'])
   self.assertEqual(api.posts,[])
- def test_manager_waits_for_approved_review_and_exact_server_script(self):
+ def test_no_studio_tab_review_gate(self):
+  # 2b6d520: Manager's own Aprilynne line grades the script; the Studio-tab review (origin 1244f62) must not come back
+  # (it did through the 0.2.25 merge and stopped project 034 for 30 minutes at "Đối chiếu Aprilynne").
   run_id='a'*32
-  self.c.update(studio_run_id=run_id,studio_youtube_url='')
-  api=FakeAPI({'id':SID,'parts':[],'script':'Bản chưa duyệt'})
-  def presence(**state):self.presence=dict(tab(**state),manager_run_id=run_id)
-  presence()
-  self.assertTrue(self.step(api).step('STUDIO_ANALYZE')['waiting'])
-  review_id=self.sent[-1]['id'];self.assertEqual(self.sent[-1]['type'],'analysis_review')
-  presence(analysis_review={'id':review_id,'stage':'limited'})
-  self.assertTrue(self.step(api).step('STUDIO_ANALYZE')['waiting']);self.assertEqual(api.posts,[])
-  approved='Bản đã duyệt'
-  presence(analysis_review={'id':review_id,'stage':'approved','fingerprint':hashlib.sha256(approved.encode()).hexdigest()})
-  self.assertTrue(self.step(api).step('STUDIO_ANALYZE')['waiting']);self.assertEqual(api.posts,[])
-  api.s['script']=approved
+  self.c.update(studio_run_id=run_id,studio_youtube_url='',studio_aprilynne=False)
+  api=FakeAPI({'id':SID,'parts':[],'script':'Kịch bản đã có'})
+  self.presence=dict(tab(),manager_run_id=run_id)
   self.step(api).step('STUDIO_ANALYZE')
-  self.assertEqual(len(api.posts),1)
-  self.assertIn('/analysis',str(api.posts[0]))
+  self.assertNotIn('analysis_review',[x.get('type') for x in self.sent if x])
+  self.assertIn('/analysis',str(api.posts))
 
  def test_studio_error_stops_with_clear_message(self):
   api=FakeAPI({'id':SID,'parts':[],'script':''});self.step(api).step('STUDIO_TRANSCRIPT')

@@ -357,24 +357,7 @@ class StudioStep:
     if s.get('status')=='error' and not self.c.get('studio_retry_epoch'):raise RuntimeError('Studio lỗi: '+str(s.get('lastError') or 'Phân tích thất bại'))
     # Studio's server copy wins; the Manager project's own script is only a fallback.
     script=str(s.get('script') or self.c.get('studio_script') or '').strip()
-    run_id=str(self.c.get('studio_run_id') or '')
-    if re.fullmatch(r'[a-f0-9]{32}',run_id):
-     source='transcript' if self.j.get('transcript_command') else 'script'
-     review_id=run_id+'-review-'+str(self.c.get('studio_retry_epoch',0))
-     self.post_command({'type':'analysis_review','id':review_id,'source':source})
-     review=(self.presence().get('project_state') or {}).get('analysis_review') or {}
-     stage=review.get('stage') if review.get('id')==review_id else 'waiting'
-     if stage!='approved':
-      message={'limited':'Còn tiêu chí dưới 8/10. Có thể sửa thêm trong tab Phân tích.',
-               'error':review.get('error') or 'Studio chưa hoàn tất đối chiếu.',
-               'saving':'Đang lưu bản đã đạt vào Phân tách.'}.get(stage,'Đang chờ Studio đối chiếu và sửa kịch bản.')
-      return self.wait('review:'+str(stage)+':'+str(review.get('progress',0)),1800,
-                       dict(actual,studio_stage='Đối chiếu Aprilynne',studio_message=message))
-     server_script=str(s.get('script') or '').strip()
-     if not server_script or hashlib.sha256(server_script.encode()).hexdigest()!=review.get('fingerprint'):
-      return self.wait('review:script',120,dict(actual,studio_stage='Chờ bản đã duyệt'))
-     script=server_script
-     self.post_command(None)
+    # The Studio-tab review gate (origin 1244f62, back through the 0.2.25 merge) stays removed: Manager's own Aprilynne line grades (2b6d520).
     if not script:
      from .studio_reconcile import reconcile
      return self.script_wait(name,s,actual,reconcile(s,self.presence()))
