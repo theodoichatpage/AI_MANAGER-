@@ -129,6 +129,14 @@ class Lanes(unittest.TestCase):
    st.finish('laneA',ok=False);w.round()
   self.assertTrue(any(n.startswith('lanes:1:0') for n in w.waits))
 
+ def test_no_pictures_for_a_part_that_is_not_split_yet(self):
+  st=FakeStudio(parts=2,scenes=2);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'} for _ in range(2)])
+  st.part('p2').update(status='error',scenes=[{'prompt':'partial','imageStatus':'waiting'} for _ in range(2)])
+  w=W(st,[worker('laneA'),worker('laneB'),worker('laneC')],tasks=('images',))
+  w.round()
+  self.assertEqual(sorted(j['sceneKey'] for j in st.s['laneJobs']),['p1:0'],'only the finished part gets pictures (one image lane)')
+  self.assertEqual(w.round()['context']['studio_scope_total'],2)
+
  def test_chatgpt_limit_is_not_a_used_try(self):
   st=FakeStudio(parts=1,scenes=1);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'}])
   w=W(st,[worker('laneA')],tasks=('images',),retry=0)

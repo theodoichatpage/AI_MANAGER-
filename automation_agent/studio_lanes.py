@@ -139,7 +139,9 @@ def image_scope(w,s):
  if 'images' not in cfg.get('tasks',[]):return []
  from .work_config import in_scope
  scope=(cfg.get('scopes') or {}).get('images',{'mode':'all'})
- allowed={p['id'] for p in scoped_parts(w,s.get('parts') or [])}
+ # Only a part whose scene split is finished: a part still being split (or refused) shows the scenes received so far,
+ # which change when it is split again (2026-11-15, 035: 10 pictures were made for such scenes of part 2).
+ allowed={p['id'] for p in scoped_parts(w,s.get('parts') or []) if p.get('status')=='complete'}
  return [(i,key,scene) for i,(key,scene) in enumerate(rows(s),1) if key.rsplit(':',1)[0] in allowed and in_scope(i,scope)]
 
 def backup_image(folder,key,run):
