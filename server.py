@@ -135,6 +135,18 @@ def studio_deploy(data):
         q=manager(); automation().ensure_bridge(); automation().resume_studio([p['id']]); q.start_selected(p['id'])
     return {'project':p['id'],'studio_project_id':sid,'name':p['name']}
 
+def sync_image_style(p,meta):
+    """The image prompt saved in Manager is the one Studio uses: push it to the project's Studio when it changed.
+    Only when the "Prompt tạo ảnh" switch is on and the text is not empty. Never fails the save: returns what happened."""
+    sid=p.get('studio_project_id') or meta.get('studio_project_id'); style=str(meta.get('image_style') or '').strip()
+    if not sid or not meta.get('images') or not style: return 'skipped'
+    try:
+        from automation_agent.studio_workflow import StudioAPI
+        api=StudioAPI()
+        if str(api.request(sid).get('stylePrompt') or '').strip()==style: return 'same'
+        api.request(sid,'/settings',{'stylePrompt':style}); return 'synced'
+    except Exception as exc: return 'error: '+str(exc)[:200]
+
 def pending_renames():
     """{studio id: name} for projects renamed in Manager that Studio has not picked up yet."""
     try: return {p['studio_project_id']:p['name'] for p in projects(include_duplicates=True) if p.get('name_pending') and p.get('studio_project_id')}
@@ -557,7 +569,7 @@ class Handler(BaseHTTPRequestHandler):
                     if action=='rename': return self.send(200,project_ops.rename(p,data.get('name'),slug,q,atomic))
                     if action=='copy': return self.send(201,project_ops.copy(p,create_project,q,atomic))
                     if action=='delete': return self.send(200,project_ops.delete(p,q,config()['root']))
-                    if action=='update': return self.send(200,project_ops.update(p,data,atomic))
+                    if action=='update': meta=project_ops.update(p,data,atomic); return self.send(200,dict(meta,studio_style=sync_image_style(p,meta) if 'image_style' in data else None))
                     if action=='open': os.startfile(p['folder']); return self.send(200,{'ok':True})
                     raise ValueError('Thao tác không hợp lệ')
                 if path=='/api/studio-deploy': return self.send(201,studio_deploy(data))
