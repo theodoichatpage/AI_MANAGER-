@@ -194,3 +194,16 @@ Test: 382 test Python. Lỗi 3 test vốn đã lỗi từ trước, cộng `test
 - **Studio function chưa nhận `878d5d0`:** `supabase functions list` cho thấy `studio-api` vẫn ở version 10, cập nhật lần cuối 07/11 06:25 (ngay sau `dbb6e4c`). Lúc 15:44 job gửi phần 2–3 không có câu "Tối đa 30 cảnh". Lần này, bản progress của Studio nhận tới 30 và 29 cảnh trước khi câu trả lời cuối bị từ chối: thêm bằng chứng cho giả thuyết ChatGPT trả về hơn 30 cảnh. Người dùng cần chạy lại lệnh deploy và kiểm tra bằng `functions list` (version 11, updated_at hôm nay). Sau đó MAN tự gửi lại 2 phần này ở lượt thử lại kế tiếp.
 - **Hai task cho một dự án (đã sửa mã `0559570`, chưa triển khai):** gắn lại 035 lúc 14:58 không dừng task cũ `d92ec98a` (5 phần). Lệnh dừng lúc 14:42 có dừng task này, nhưng lúc 14:56 nó lại chạy. Nhật ký không ghi lý do. Task mới `0013971e` (7 phần) phải chờ sau task cũ. Đã xử lý tay: dừng qua `/api/queue stop` rồi `start_selected`. Hiện chỉ `0013971e` chạy, `d92ec98a` ở trạng thái stopped. Bản sửa: `studio_attach` từ chối khi task cũ còn running/waiting, và chuyển các task cũ khác sang `superseded`, trạng thái không thể claim, release, requeue hay resume. Test `test_task_supersede`.
 - **Chờ triển khai MAN (khi 035 xong):** `0ce34fb` (đồng bộ prompt ảnh) và `0559570` (superseded).
+
+### 15/11 18:35: 035 chạy lại, extension 0.5.22/0.5.23
+
+| Việc | Đã sửa mã | Đã triển khai | Kiểm thử thực tế |
+|---|---|---|---|
+| Ảnh xem trước gửi lên Supabase nhỏ hơn (người dùng: chỉ cần ảnh gốc trên máy) | Studio `0479de4`: extension 0.5.22 gửi ảnh xem trước 320 px WebP q0.6 (trước 640 px q0.8). Ảnh gốc vẫn chỉ về MAN (`.vis/goc`) | Extension 0.5.22 đã vào thư mục và chạy ở cả 3 hồ sơ | Chưa: chưa có ảnh nào tạo bằng 0.5.22 |
+| Prompt chia cảnh có câu tối đa 30 cảnh mà không cần deploy function | `0479de4`: content.js thêm câu giới hạn vào prompt `part_analysis` khi prompt của Studio chưa có câu này | như trên | Chưa: phần 2 chưa được gửi lại |
+| Ảnh chỉ tạo cho phần đã chia cảnh xong | `8be8f9c`. 10 ảnh đã tạo cho các cảnh tạm của phần 2 (cùng bản tách lớp và Parallax) đã chuyển vào `_backups/phan2_chia_lai_20261115` trong `Anh/`, `Tach anh/`, `Video Parallax/`. Không xóa | `deploy_man` 11:11:45Z | — |
+| Khóa task cũ khi gắn workflow mới (`0559570`) | | 11:11:45Z | Có: gắn lại 035 → 3 task cũ thành `superseded`, chỉ `c5ae7470` chạy |
+| Thiếu tab chính thì chạy tiếp với các tab còn lại, không báo hết giờ | `20bcd2f` (`open_step` tính giờ chờ từ lần chờ đầu tiên) | 11:19:55Z | Có: 035 đã qua bước "Mở 3 tab" |
+| Tab ChatGPT còn bản cũ được tự tải lại | Studio `4a82f09`: extension 0.5.23 tự tải lại tab đang rảnh. **Chưa đủ**: tab còn nhớ một job cũ (`activeJobId`) nên vẫn bị bỏ qua | 0.5.23 mới lên ở Edge Default | Không đạt: cả 3 tab vẫn mất kết nối, cần bấm F5 tab ChatGPT ở mỗi hồ sơ |
+
+Phần 3 (`part_xbuwsf5`) đã chia cảnh xong lúc 17:53 (29 cảnh). Phần 2 (`part_cj5qzre`) vẫn bị từ chối.
