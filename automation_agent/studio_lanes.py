@@ -118,7 +118,11 @@ def open_step(w,launch=None):
  notes=warnings(workers)
  ctx={'studio_stage':'Mở '+str(len(extra)+1)+' tab ChatGPT','studio_lanes_live':len(live),'studio_lanes_wanted':len(extra)+1,'studio_warnings':notes}
  if len(live)>=len(extra)+1:return {'context':dict(ctx,studio_waiting_action=None)}
- first=min(st['opened'].values()) if st['opened'] else w.clock()
+ # Counted from the first wait, not only from a lane Manager opened: when the missing lane is the main one (never
+ # opened here) the old start was "now" on every round and the run timed out instead of going on with fewer tabs
+ # (2026-11-15, 035: Edge Default reloading Extension 0.5.22).
+ st.setdefault('open_since',w.clock());w.save()
+ first=min(list(st['opened'].values())+[float(st['open_since'])])
  if w.clock()-first>=OPEN_WAIT:
   return {'context':dict(ctx,studio_waiting_action=None,studio_message='Chỉ '+str(len(live))+'/'+str(len(extra)+1)+' tab ChatGPT kết nối; chạy với số tab hiện có. Kiểm tra đăng nhập ChatGPT và Extension ở hồ sơ còn thiếu.')}
  return w.wait('lanes:open',OPEN_WAIT+120,dict(ctx,studio_message='Đang chờ ChatGPT ở các hồ sơ trình duyệt kết nối với dự án.'))

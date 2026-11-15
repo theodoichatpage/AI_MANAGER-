@@ -137,6 +137,12 @@ class Lanes(unittest.TestCase):
   self.assertEqual(sorted(j['sceneKey'] for j in st.s['laneJobs']),['p1:0'],'only the finished part gets pictures (one image lane)')
   self.assertEqual(w.round()['context']['studio_scope_total'],2)
 
+ def test_missing_main_lane_goes_on_with_fewer_tabs(self):
+  st=FakeStudio(parts=1);w=W(st,[worker('edge_Profile_1'),worker('edge_Profile_2')],lanes=[{'browser':'edge','profile':'Default'},{'browser':'edge','profile':'Profile 1'},{'browser':'edge','profile':'Profile 2'}])
+  self.assertTrue(open_step(w,launch=lambda lane,url:None).get('waiting'))
+  w.now+=studio_lanes.OPEN_WAIT+1;r=open_step(w,launch=lambda lane,url:None)
+  self.assertNotIn('waiting',r,'goes on with the 2 connected tabs');self.assertIn('2/3',r['context']['studio_message'])
+
  def test_chatgpt_limit_is_not_a_used_try(self):
   st=FakeStudio(parts=1,scenes=1);st.part('p1').update(status='complete',scenes=[{'prompt':'x','imageStatus':'waiting'}])
   w=W(st,[worker('laneA')],tasks=('images',),retry=0)
