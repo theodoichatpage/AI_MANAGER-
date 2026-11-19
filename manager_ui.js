@@ -46,9 +46,11 @@ function mgHeader(){
  <div class="mg-pills"><span class="mg-pill"><i class="${studioOn?'on':''}"></i><span>Studio: <b class="${studioOn?'on':''}">${studioOn?'Đã kết nối':'Chưa mở'}</b></span></span><span class="mg-pill"><i class="${chatOn?'on':''}"></i><span>ChatGPT: <b class="${chatOn?'on':''}">${chatOn?'Đã kết nối':'Chưa kết nối'}</b></span></span>
  <button class="mg-icon-btn mg-gear ${typeof mgSet2!=='undefined'&&mgSet2.open?'on':''}" title="Cài đặt" onclick="mgSet2.open?mgCloseSettings():mgOpenSettings()">${mgSvg('gear')}</button></div></header>`;
 }
+// Each project's state at a glance: finished, running, waiting, paused or failed (stopped / never run: no chip).
+function mgChip(p){const st=(state.queue||[]).find(x=>x.id===p.id)?.status,m={completed:['ok','✓ Hoàn tất'],running:['run','Đang chạy'],waiting:['wait','Chờ chạy'],paused:['wait','Tạm dừng'],failed:['err','Lỗi'],needs_review:['err','Cần kiểm tra']}[st];return m?` <span class="mg-chip ${m[0]}">${m[1]}</span>`:''}
 function mgListHTML(){
  const q=mgSearch.trim().toLowerCase(),list=mgProjects().filter(p=>!q||p.name.toLowerCase().includes(q));
- return list.map(p=>`<div class="mg-item ${p.id===mgSel?'sel':''}" onclick="mgPick('${p.id}')"><span class="kind ${p.kind==='story'?'story':'studio'}" title="${p.kind==='story'?'Dự án cho Xưởng Nội Dung':'Dự án cho Studio'}">${mgSvg(p.kind==='story'?'book':'film')}</span><div class="t"><div class="n" title="${autoAttr(p.name)}">${esc(p.name)}</div><div class="d">${esc(mgDate(p.created_at))}</div></div><button class="k" title="Tuỳ chọn" onclick="event.stopPropagation();mgMenu=mgMenu==='${p.id}'?'':'${p.id}';render()">${mgSvg('dots')}</button>${mgMenu===p.id?`<div class="mg-menu" onclick="event.stopPropagation()"><button onclick="mgRename('${p.id}')">${mgSvg('pen')} Sửa tên</button><button onclick="mgCopy('${p.id}')">${mgSvg('copy')} Sao chép</button><button class="del" onclick="mgDelete('${p.id}')">${mgSvg('trash')} Xóa</button></div>`:''}</div>`).join('')||`<div class="mg-note" style="padding:10px">${q?'Không có dự án khớp.':'Chưa có dự án.'}</div>`;
+ return list.map(p=>`<div class="mg-item ${p.id===mgSel?'sel':''}" onclick="mgPick('${p.id}')"><span class="kind ${p.kind==='story'?'story':'studio'}" title="${p.kind==='story'?'Dự án cho Xưởng Nội Dung':'Dự án cho Studio'}">${mgSvg(p.kind==='story'?'book':'film')}</span><div class="t"><div class="n" title="${autoAttr(p.name)}">${esc(p.name)}</div><div class="d">${esc(mgDate(p.created_at))}${mgChip(p)}</div></div><button class="k" title="Tuỳ chọn" onclick="event.stopPropagation();mgMenu=mgMenu==='${p.id}'?'':'${p.id}';render()">${mgSvg('dots')}</button>${mgMenu===p.id?`<div class="mg-menu" onclick="event.stopPropagation()"><button onclick="mgRename('${p.id}')">${mgSvg('pen')} Sửa tên</button><button onclick="mgCopy('${p.id}')">${mgSvg('copy')} Sao chép</button><button class="del" onclick="mgDelete('${p.id}')">${mgSvg('trash')} Xóa</button></div>`:''}</div>`).join('')||`<div class="mg-note" style="padding:10px">${q?'Không có dự án khớp.':'Chưa có dự án.'}</div>`;
 }
 function mgFormHTML(p){
  if(!p)return `<section class="mg-card"><h2>${mgSvg('doc')} Tạo / Chỉnh sửa dự án</h2><div class="mg-note">Bấm “Tạo dự án mới” để bắt đầu.</div></section>`;
@@ -97,8 +99,8 @@ function mgStatusHTML(p){
  const plan=q.status!=='running'?mgPlan(p):null;
  if(plan){c.studio_total_parts=plan.parts;c.studio_completed_parts=plan.parts_done;c.studio_scope_total=plan.scenes;c.studio_images_generated=plan.images_done;if(!c.studio_stage)c.studio_stage=plan.active_job?'Studio đang xử lý':'Theo dữ liệu Studio';}
  const studioBusy=Boolean(plan?.active_job);
- const label=studioBusy?'Studio đang chạy':(typeof names!=='undefined'&&names[q.status])||q.status||'Chưa chạy';
- const cls=q.status==='running'||studioBusy?'run':['failed','needs_review'].includes(task?.status)?'err':'';
+ const label=studioBusy?'Studio đang chạy':(typeof names!=='undefined'&&names[q.status])||(q.status&&typeof studioStatusName==='function'?studioStatusName(q.status):q.status)||'Chưa chạy';
+ const cls=q.status==='running'||studioBusy?'run':q.status==='completed'?'ok':['failed','needs_review'].includes(task?.status)?'err':'';
  const bar=(l,a,b,act)=>{const pct=b?Math.round(100*(a||0)/b):0;return `<div class="mg-bar${b&&pct<100?' run':''}${act&&b&&pct<100?' act':''}"><div class="l">${l}</div><div class="v">${b?`${a||0}/${b}`:'—'}</div><div class="p"><i style="width:${pct}%"></i></div></div>`};
  const lanes=c.studio_lanes||[];
  // Work done by hand (Tách ảnh in Studio, Parallax25D) does not go through the workflow: the board reads it from the folders.
