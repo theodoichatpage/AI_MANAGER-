@@ -173,6 +173,14 @@ def studio_project_folder(sid):
         if sid in (p.get('studio_project_id'),p.get('studio_import_id'),(p.get('studio_source') or {}).get('id')): return p.get('folder')
     return None
 
+def studio_project_status(q,sid):
+    """(http status, body) with the Manager state of the project linked to a Studio session."""
+    if not re.fullmatch(r'[A-Za-z0-9-]{16,64}',str(sid or '')): return 404,{'error':'Dự án này chưa nằm trong Manager'}
+    project=next((p for p in projects() if sid in (p.get('studio_project_id'),p.get('studio_import_id'),(p.get('studio_source') or {}).get('id'))),None)
+    if not project: return 404,{'error':'Dự án này chưa nằm trong Manager'}
+    item=next((x for x in q.list() if x.get('id')==project.get('id')),{})
+    return 200,{'name':project.get('name'),'status':item.get('status') or '','stage':item.get('current_stage') or '','completed_scenes':item.get('completed_scenes') or 0,'total_scenes':item.get('total_scenes') or 0,'updated_at':item.get('updated_at')}
+
 def story_settings(meta):
     """Run context for a project whose script Claude writes (engine, Video dài / Series, channel, note); empty for ChatGPT."""
     if meta.get('story_engine')!='claude': return {}
@@ -390,6 +398,12 @@ class Handler(BaseHTTPRequestHandler):
             if not folder: return self.send(404,{'error':'Dự án này chưa nằm trong Manager'},cors=True)
             from automation_agent import tach_anh
             return self.send(200,{'folder':folder,'tach_anh':str(Path(folder)/'Tach anh'),'scenes':tach_anh.scene_parts(folder),'done':tach_anh.done_scenes(folder)},cors=True)
+        if path=='/api/studio-project-status':
+            # Studio's project page shows whether Manager finished the whole run (images, separation, Parallax).
+            origin=self.headers.get('Origin','')
+            if origin and not STUDIO_ORIGIN.fullmatch(origin): return self.send(403,{'error':'Nguồn không hợp lệ'})
+            with LOCK: code,body=studio_project_status(manager(),parse_qs(urlparse(self.path).query).get('sessionId',[''])[0])
+            return self.send(code,body,cors=True)
         if path=='/api/studio-presence':
             query=parse_qs(urlparse(self.path).query);return self.send(200,PRESENCE.snapshot(query.get('sessionId',[None])[0],query.get('runId',[None])[0]),cors=True)
         self.send(404,{'error':'Không tìm thấy'})
